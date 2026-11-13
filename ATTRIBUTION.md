@@ -1,0 +1,10 @@
+# PocketBand source and licenses
+
+PocketBand's original code, icons, and changes to Angband are distributed under the GNU General Public License, version 2 only. See [COPYING](COPYING). Copyright (C) 2026 PocketBand contributors.
+
+- **Angband engine and game data:** from [Angband revision `42cd156ac`](https://github.com/eugene-lesnov/angband/tree/42cd156ac9f95ddf4311e88dd7ad462292d6d1d6). PocketBand distributes its modified build under GPL version 2 and retains Angband's original copyright notices and dual-license terms for the upstream work. See `angband/docs/copying.rst` in the source archive or `angband-copying.txt` in the app.
+- **Adam Bolt's 16×16 tiles:** the atlas comes from `lib/tiles/adam-bolt/16x16.png` at the same revision. It keeps the separate permission in Angband's copying notice. Its mapping tables come from the same directory. Other upstream tilesets, sounds, fonts and SDL are absent from the package.
+- **Emscripten 4.0.7:** the JavaScript runtime and C library glue come from the [Emscripten SDK](https://github.com/emscripten-core/emscripten/tree/4.0.7). The source archive contains the SDK's runtime sources and notices, including Emscripten's MIT/NCSA terms, musl's copyright notice, compiler-rt's Apache-2.0 license with LLVM exceptions, and Doug Lea's public-domain allocator notice in `dlmalloc.c`.
+- **PocketZot:** used as a design reference for the mobile and offline flows. The package does not incorporate PocketZot code or assets.
+
+The archive includes the Angband sources as built, with the PocketBand changes applied, plus the port, the web app, the runtime sources and the build and deployment scripts. With [Emscripten 4.0.7 active](https://emscripten.org/docs/tools_reference/emsdk.html#how-do-i-install-a-specific-version), run `bash build.sh` from the extracted `pocketband-source` directory. The archive contains the Angband inputs, so a separate checkout is unnecessary. The build uses the active SDK's runtime; to change it, apply your edits to that SDK and rebuild the affected libraries. Serve the resulting `dist/` with `python3 -m http.server 8736 --bind 127.0.0.1 --directory dist`.

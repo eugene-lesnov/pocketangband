@@ -1,0 +1,576 @@
+diff --git a/src/main.c b/src/main.c
+--- a/src/main.c
++++ b/src/main.c
+@@ -59,6 +59,10 @@
+ #include "SDL_main.h"
+ #endif
+ 
++#ifdef __EMSCRIPTEN__
++extern errr init_web(int argc, char **argv);
++#endif
++
+ /**
+  * List of the available modules in the order they are tried.
+  */
+@@ -95,6 +99,10 @@ static const struct module modules[] =
+ #ifdef USE_IBM
+ 	{ "ibm", help_ibm, init_ibm, false, true },
+ #endif /* USE_IBM */
++
++#ifdef __EMSCRIPTEN__
++	{ "web", "Web Worker terminal", init_web, false, false },
++#endif
+ };
+ 
+ /**
+diff --git a/src/ui-game.c b/src/ui-game.c
+--- a/src/ui-game.c
++++ b/src/ui-game.c
+@@ -521,6 +521,12 @@ void textui_process_command(void)
+ 	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
+ 
+ 	switch (e.type) {
++#ifdef __EMSCRIPTEN__
++		case EVT_WEB_SAVE:
++			save_game();
++			return;
++#endif
++
+ 		case EVT_DISCONNECT:
+ 			/*
+ 			 * Try to save before exiting.  If the front end
+@@ -761,6 +767,48 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+ 	mem_free(entries);
+ }
+ 
++#ifdef __EMSCRIPTEN__
++extern bool web_stage_save_import(const char *staged);
++extern bool web_finish_save_import(const char *staged, const char *path);
++extern void web_export_save_file(const char *path);
++
++static void web_find_free_slot(char *path, size_t len)
++{
++	unsigned int number = 0;
++	char name[32];
++	char panic[sizeof(savefile)];
++
++	do {
++		strnfmt(name, sizeof(name), "Slot %u", ++number);
++		path_build(path, len, ANGBAND_DIR_SAVE, name);
++		savefile_get_panic_name(panic, sizeof(panic), path);
++	} while (file_exists(path) || file_exists(panic));
++}
++
++static bool web_import_save(void)
++{
++	const char *staged = "/tmp/pocketband-import";
++	char path[sizeof(savefile)] = "";
++	bool imported = false;
++
++	if (web_stage_save_import(staged)) {
++		if (savefile_check_import(staged)) {
++			web_find_free_slot(path, sizeof(path));
++		}
++		imported = web_finish_save_import(staged, path[0] ? path : NULL);
++	}
++	file_delete(staged);
++	return imported;
++}
++
++static void web_export_save(const char *name)
++{
++	char path[sizeof(savefile)];
++	if (name) path_build(path, sizeof(path), ANGBAND_DIR_SAVE, name);
++	web_export_save_file(name ? path : NULL);
++}
++#endif
++
+ /**
+  * Help play_game():  implement the savefile selection menu.
+  *
+@@ -768,10 +816,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+  * by an earlier one could not be loaded.
+  * \param new_game points to a boolean.  The pointed to value at entry is not
+  * used.  At exit *new_game will be true if the user selected to start a new
+- * game.  Otherwise, it will be false.
++ * game.  Otherwise, it will be false when a save was selected.  Returns
++ * false after importing a save, when the menu needs to be rebuilt.
+  */
+-static void select_savefile(bool retry, bool *new_game)
++static bool select_savefile(bool retry, bool *new_game)
+ {
++#ifdef __EMSCRIPTEN__
++	const int notify = EVT_WEB_IMPORT | EVT_WEB_EXPORT;
++#else
++	const int notify = 0;
++#endif
+ 	/* Build the list of selections. */
+ 	savefile_getter g = NULL;
+ 	/*
+@@ -878,11 +932,26 @@ static void select_savefile(bool retry, bool *new_game)
+ 	prt("(escape or second mouse button).", 1, 0);
+ 	prt((retry) ? "The previously selected savefile was unusable." : "",
+ 		2, 0);
+-	selection = menu_select(m, 0, false);
++	while (true) {
++		selection = menu_select(m, notify, false);
++#ifdef __EMSCRIPTEN__
++		if (selection.type == EVT_WEB_IMPORT) {
++			if (!web_import_save()) continue;
++		} else if (selection.type == EVT_WEB_EXPORT) {
++			web_export_save(m->cursor >= 0 ? names[m->cursor] : NULL);
++			continue;
++		}
++#endif
++		break;
++	}
+ 	screen_load();
+ 
+ 	if (selection.type == EVT_SELECT) {
+ 		if (m->cursor == 0 && allow_new_game) {
++#ifdef __EMSCRIPTEN__
++			web_find_free_slot(savefile, sizeof(savefile));
++			arg_name[0] = '\0';
++#endif
+ 			*new_game = true;
+ 		} else {
+ 			*new_game = false;
+@@ -899,6 +968,7 @@ static void select_savefile(bool retry, bool *new_game)
+ 	if (selection.type == EVT_ESCAPE) {
+ 		quit(NULL);
+ 	}
++	return !(selection.type & notify);
+ }
+ 
+ /**
+@@ -923,7 +993,9 @@ void play_game(enum game_mode_type mode)
+ 				bool new_game = false, retry = false;
+ 
+ 				while (1) {
+-					select_savefile(retry, &new_game);
++					if (!select_savefile(retry, &new_game)) {
++						continue;
++					}
+ 					if (start_game(new_game)) {
+ 						break;
+ 					}
+@@ -1013,6 +1085,19 @@
+ 	return result;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++extern bool web_persist_profile(bool saved);
++#endif
++
++static bool save_player(void)
++{
++	bool saved = savefile_save(savefile);
++#ifdef __EMSCRIPTEN__
++	saved = web_persist_profile(saved);
++#endif
++	return saved;
++}
++
+ /**
+  * Save the game.
+  */
+@@ -1051,30 +1136,27 @@
+ 	/* The player is not dead */
+ 	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
+ 
++	/* Save the window prefs */
++	path_build(path, sizeof(path), ANGBAND_DIR_USER, "window.prf");
++	if (!prefs_save(path, option_dump, "Dump window settings"))
++		prt("Failed to save subwindow preferences", 0, 0);
++
++	/* Refresh */
++	Term_fresh();
++
++	/* Save monster memory to user directory */
++	if (!lore_save("lore.txt")) {
++		msg("Lore save failed!");
++		event_signal(EVENT_MESSAGE_FLUSH);
++	}
++
+ 	/* Save the player */
+-	if (savefile_save(savefile)) {
++	if (save_player()) {
+ 		prt("Saving game... done.", 0, 0);
+ 		result = true;
+ 	} else {
+ 		prt("Saving game... failed!", 0, 0);
+ 		result = false;
+-	}
+-
+-	/* Refresh */
+-	Term_fresh();
+-
+-	/* Save the window prefs */
+-	path_build(path, sizeof(path), ANGBAND_DIR_USER, "window.prf");
+-	if (!prefs_save(path, option_dump, "Dump window settings"))
+-		prt("Failed to save subwindow preferences", 0, 0);
+-
+-	/* Refresh */
+-	Term_fresh();
+-
+-	/* Save monster memory to user directory */
+-	if (!lore_save("lore.txt")) {
+-		msg("Lore save failed!");
+-		event_signal(EVENT_MESSAGE_FLUSH);
+ 	}
+ 
+ 	/* Refresh */
+@@ -1133,7 +1215,7 @@
+ 		}
+ 
+ 		/* Save dead player */
+-		while (prompting && !savefile_save(savefile)) {
++		while (prompting && !save_player()) {
+ 			if (!prompt_failed_save || terms_disconnecting
+ 					|| !get_check("Saving failed.  Try again? ")) {
+ 				prompting = false;
+diff --git a/src/ui-event.h b/src/ui-event.h
+--- a/src/ui-event.h
++++ b/src/ui-event.h
+@@ -39,6 +39,12 @@ typedef enum
+ 	EVT_SWITCH	= 0x0080,	/* Menu switch */
+ 
+ 	EVT_DISCONNECT	= 0x0100,	/* UI is disconnecting */
++#ifdef __EMSCRIPTEN__
++	EVT_WEB_SAVE	= 0x0200,
++	EVT_WEB_IMPORT	= 0x0400,
++	EVT_WEB_EXPORT	= 0x0800,
++	EVT_WEB_TILES	= 0x1000,
++#endif
+ } ui_event_type;
+ 
+ 
+diff --git a/src/ui-birth.c b/src/ui-birth.c
+--- a/src/ui-birth.c
++++ b/src/ui-birth.c
+@@ -1358,7 +1358,13 @@
+ 		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
+ 		Term_gotoxy(1 + x, 19 + y);
+ 
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
++#endif
+ 		ke = inkey();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 		switch (ke.code) {
+ 			case ESCAPE:
+ 				return -1;
+@@ -1506,7 +1512,13 @@
+ 
+ 	/* Ask for some history */
+ 	prt("Accept character history? [y/n]", 0, 0);
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++#endif
+ 	ke = inkey();
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
+ 
+ 	/* Quit, go back, change history, or accept */
+ 	if (ke.code == KTRL('X')) {
+diff --git a/src/ui-input.c b/src/ui-input.c
+--- a/src/ui-input.c
++++ b/src/ui-input.c
+@@ -897,7 +897,14 @@
+ 		Term_gotoxy(x + k, y);
+ 
+ 		/* Get a key */
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
++		if (previous == WEB_INPUT_QUANTITY) web_set_input_mode(previous);
++#endif
+ 		ch = inkey();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 
+ 		/* Let the keypress handler deal with the keypress */
+ 		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
+@@ -1156,7 +1163,13 @@
+ 	my_strcpy(buf, player->full_name, buflen);
+ 
+ 	/* Ask the user for a string */
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_NAME);
++#endif
+ 	res = askfor_aux_ext(buf, buflen, get_name_keypress, handle_name_mouse);
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
+ 
+ 	/* Clear prompt */
+ 	prt("", 0, 0);
+@@ -1205,6 +1218,7 @@
+  */
+ static int textui_get_quantity(const char *prompt, int max)
+ {
++	bool entered;
+ 	int amt = 1;
+ 
+ 	/* Prompt if needed */
+@@ -1225,7 +1239,14 @@
+ 		strnfmt(buf, sizeof(buf), "%d", amt);
+ 
+ 		/* Ask for a quantity */
+-		if (!get_string(prompt, buf, 7)) return (0);
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_QUANTITY);
++#endif
++		entered = get_string(prompt, buf, 7);
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
++		if (!entered) return (0);
+ 
+ 		/* Extract a number */
+ 		amt = atoi(buf);
+@@ -1269,7 +1290,13 @@
+ 
+ 	/* Prompt for it */
+ 	prt(buf, 0, 0);
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++#endif
+ 	ke = inkey_m();
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
+ 
+ 	/* Erase the prompt */
+ 	prt("", 0, 0);
+@@ -1634,7 +1661,14 @@
+ 			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
+ 
+ 		/* Get a command (or Cancel) */
+-		if (!get_com_ex(p, &ke)) break;
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_AIM);
++#endif
++		bool entered = get_com_ex(p, &ke);
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
++		if (!entered) break;
+ 
+ 		if (ke.type == EVT_MOUSE) {
+ 			if (ke.mouse.button == 1) {
+@@ -1909,6 +1943,13 @@ ui_event textui_get_command(int *count)
+ 			Term_set_cursor(false);
+ 		}
+ 
++#ifdef __EMSCRIPTEN__
++		if (ke.type == EVT_WEB_TILES) {
++			web_toggle_tiles();
++			continue;
++		}
++#endif
++
+ 		if (ke.type == EVT_DISCONNECT) {
+ 			break;
+ 		}
+diff --git a/src/ui-input.h b/src/ui-input.h
+--- a/src/ui-input.h
++++ b/src/ui-input.h
+@@ -24,6 +24,17 @@
+ #include "ui-event.h"
+ #include "ui-term.h"
+ 
++#ifdef __EMSCRIPTEN__
++enum web_input_mode {
++	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
++	WEB_INPUT_TEXT, WEB_INPUT_QUANTITY, WEB_INPUT_CONFIRM, WEB_INPUT_AIM,
++	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS
++};
++
++enum web_input_mode web_set_input_mode(enum web_input_mode mode);
++void web_toggle_tiles(void);
++#endif
++
+ /**
+  * Holds a generic command.  If hook is not NULL, that function
+  * will be called.  Otherwise, if cmd is not CMD_NULL, that command
+diff --git a/src/ui-menu.c b/src/ui-menu.c
+--- a/src/ui-menu.c
++++ b/src/ui-menu.c
+@@ -781,7 +781,15 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+ 		int cursor = menu->cursor;
+ 
+ 		menu_refresh(menu, popup);
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(
++			(notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT)) ?
++			WEB_INPUT_SAVE_SLOTS : WEB_INPUT_MENU);
++#endif
+ 		in = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 
+ 		/* Handle mouse & keyboard commands */
+ 		if (in.type == EVT_MOUSE) {
+diff --git a/src/ui-store.c b/src/ui-store.c
+--- a/src/ui-store.c
++++ b/src/ui-store.c
+@@ -466,7 +466,13 @@
+ 	prt(prompt, 0, 0);
+ 
+ 	/* Get an answer */
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++#endif
+ 	ch = inkey();
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
+ 
+ 	/* Erase the prompt */
+ 	prt("", 0, 0);
+diff --git a/src/ui-target.c b/src/ui-target.c
+--- a/src/ui-target.c
++++ b/src/ui-target.c
+@@ -501,7 +501,11 @@
+ 	prt(out_val, 0, 0);
+ 	move_cursor_relative(auxst->grid.y, auxst->grid.x);
+ 
++#ifdef __EMSCRIPTEN__
++	auxst->press = inkey_m();
++#else
+ 	auxst->press.key = inkey();
++#endif
+ 
+ 	/* Stop on everything but "return" */
+ 	return auxst->press.key.code != KC_ENTER;
+@@ -1341,8 +1345,14 @@
+ 					player->grid.y, player->grid.x);
+ 
+ 		/* Describe and Prompt */
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TARGET);
++#endif
+ 		ui_event press = target_set_interactive_aux(y, x,
+ 				mode | (use_free_mode ? TARGET_LOOK : 0));
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 
+ 		/* Remove the path */
+ 		if (path_drawn) load_path(path_n, path_g, path_char, path_attr);
+@@ -1396,6 +1406,7 @@
+ 			y = KEY_GRID_Y(press);
+ 			x = KEY_GRID_X(press);
+ 
++#ifndef __EMSCRIPTEN__
+ 			/* If they clicked on an edge of the map, drag the cursor further
+ 			   to trigger a panel scroll */
+ 			if (press.mouse.y <= 1) {
+@@ -1407,6 +1418,7 @@
+ 			} else if (press.mouse.x >= Term->wid - 2) {
+ 				x++;
+ 			}
++#endif
+ 
+ 			/* Restrict cursor to inbounds */
+ 			x = MAX(0, MIN(x, cave->width - 1));
+diff --git a/src/savefile.c b/src/savefile.c
+--- a/src/savefile.c
++++ b/src/savefile.c
+@@ -89,6 +89,10 @@ struct blockheader {
+ 	char name[16];
+ 	uint32_t version;
+ 	uint32_t size;
++#ifdef __EMSCRIPTEN__
++	uint32_t payload_size;
++	uint32_t checksum;
++#endif
+ };
+ 
+ struct blockinfo {
+@@ -493,6 +497,10 @@ static errr next_blockheader(ang_file *f, struct blockheader *b) {
+ 	my_strcpy(b->name, (char *)&savefile_head, sizeof b->name);
+ 	b->version = RECONSTRUCT_U32B(16);
+ 	b->size = RECONSTRUCT_U32B(20);
++#ifdef __EMSCRIPTEN__
++	b->payload_size = b->size;
++	b->checksum = RECONSTRUCT_U32B(24);
++#endif
+ 
+ 	/* Pad to 4 bytes */
+ 	if (b->size % 4)
+@@ -501,6 +509,55 @@ static errr next_blockheader(ang_file *f, struct blockheader *b) {
+ 	return 0;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static bool check_import_blocks(ang_file *file)
++{
++	struct blockheader block;
++	uint8_t bytes[4096];
++
++	if (!check_header(file)) return false;
++
++	for (size_t i = 0; i < N_ELEMENTS(savers); i++) {
++		if (next_blockheader(file, &block) != 0 ||
++				!streq(block.name, savers[i].name) ||
++				block.version != savers[i].version ||
++				block.size < block.payload_size) return false;
++
++		bool description = i == 0;
++		if (description && !block.payload_size) return false;
++
++		uint32_t checksum = 0;
++		uint32_t payload_left = block.payload_size;
++		for (uint32_t left = block.size; left > 0;) {
++			size_t count = MIN(left, sizeof(bytes));
++			size_t payload_count = MIN(payload_left, count);
++			if (file_read(file, (char *)bytes, count) != (int)count) {
++				return false;
++			}
++			if (description && payload_count && payload_left == payload_count &&
++					bytes[payload_count - 1] != 0) return false;
++			for (size_t j = 0; j < payload_count; j++) {
++				checksum += bytes[j];
++			}
++			payload_left -= payload_count;
++			left -= count;
++		}
++		if (checksum != block.checksum) return false;
++	}
++
++	return next_blockheader(file, &block) == 1;
++}
++
++bool savefile_check_import(const char *path)
++{
++	ang_file *file = file_open(path, MODE_READ, FTYPE_TEXT);
++	if (!file) return false;
++	bool valid = check_import_blocks(file);
++	file_close(file);
++	return valid;
++}
++#endif
++
+ /**
+  * Find the right loader for this block, return it
+  */
+diff --git a/src/savefile.h b/src/savefile.h
+--- a/src/savefile.h
++++ b/src/savefile.h
+@@ -37,6 +37,10 @@ extern bool character_saved;
+  */
+ bool savefile_save(const char *path);
+ 
++#ifdef __EMSCRIPTEN__
++bool savefile_check_import(const char *path);
++#endif
++
+ /**
+  * Load the savefile given.  Returns true on succcess, false otherwise.
+  */

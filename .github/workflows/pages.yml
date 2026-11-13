@@ -1,0 +1,74 @@
+name: Deploy a PocketBand release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to serve (also used for rollback)
+        required: true
+        type: string
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      - name: Download and verify release files
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          download_release() {
+            local tag="$1" folder
+            if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]]; then
+              printf 'Invalid release tag: %s\n' "$tag" >&2
+              exit 1
+            fi
+            folder="$RUNNER_TEMP/pocketband-$tag"
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$folder" \
+              --pattern pocketband-web.zip --pattern pocketband-source.tar.gz --pattern SHA256SUMS
+            downloads+=("$folder")
+          }
+
+          tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
+            '.[] | select(.draft == false and any(.assets[]; .name == "pocketband-web.zip")) | .tag_name')
+          if ! grep -Fxq -- "$RELEASE_TAG" <<< "$tags"; then
+            printf 'Release must be published with a web bundle: %s\n' "$RELEASE_TAG" >&2
+            exit 1
+          fi
+          downloads=()
+          download_release "$RELEASE_TAG"
+          while IFS= read -r tag; do
+            if [[ $tag != "$RELEASE_TAG" ]]; then
+              download_release "$tag"
+            fi
+          done <<< "$tags"
+          python3 deploy/release.py pages "$RUNNER_TEMP/pocketband-pages" "${downloads[@]}"
+      - name: Upload site files
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+        with:
+          path: ${{ runner.temp }}/pocketband-pages
+
+  publish:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
