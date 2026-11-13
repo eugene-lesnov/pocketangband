@@ -7,6 +7,15 @@ output_dir=${2:-"$project_dir/dist"}
 source "$project_dir/engine/versions.sh"
 angband_patch_date=2026-11-13
 
+pocketband_version=${3:-dev}
+if [[ -z ${3:-} && -f "$project_dir/VERSION" ]]; then
+    pocketband_version=$(<"$project_dir/VERSION")
+fi
+if [[ $pocketband_version != dev && ! $pocketband_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$ ]]; then
+    printf 'Invalid PocketBand version: %s\n' "$pocketband_version" >&2
+    exit 1
+fi
+
 if [[ -L $output_dir ]] || [[ -e $output_dir && ( ! -d $output_dir || -n $(ls -A -- "$output_dir") ) ]]; then
     printf 'Choose an empty build output directory: %s\n' "$output_dir" >&2
     exit 1
@@ -27,6 +36,7 @@ cp "$project_dir"/.github/workflows/pages.yml "$source_dir/.github/workflows/"
 cp "$project_dir"/deploy/release.py "$source_dir/deploy/"
 cp "$project_dir"/engine/{angband-web.patch,main-web.c,versions.sh} "$source_dir/engine/"
 cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
+printf '%s\n' "$pocketband_version" > "$source_dir/VERSION"
 
 if [[ -z ${1:-} && -f "$project_dir/angband/docs/copying.rst" ]]; then
     cp -R "$project_dir/angband/." "$source_dir/angband/"
@@ -63,6 +73,7 @@ tar --format=gnu --sort=name --mtime=@0 --numeric-owner --owner=0 --group=0 \
 
 mkdir site
 cp "$source_dir"/web/* site/
+sed -i "s/__POCKETBAND_VERSION__/$pocketband_version/" site/licenses.html
 cp "$source_dir/COPYING" site/gpl-2.0.txt
 cp "$source_dir/emscripten/LICENSE" site/emscripten-license.txt
 cp "$source_dir/emscripten/AUTHORS" site/emscripten-authors.txt
