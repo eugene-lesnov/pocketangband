@@ -4,9 +4,8 @@ set -euo pipefail
 project_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 output_dir=${2:-"$project_dir/dist"}
 [[ $output_dir = /* ]] || output_dir="$PWD/$output_dir"
-angband_revision=42cd156ac9f95ddf4311e88dd7ad462292d6d1d6
+source "$project_dir/engine/versions.sh"
 angband_patch_date=2026-11-13
-emscripten_version=4.0.7
 
 if [[ -L $output_dir ]] || [[ -e $output_dir && ( ! -d $output_dir || -n $(ls -A -- "$output_dir") ) ]]; then
     printf 'Choose an empty build output directory: %s\n' "$output_dir" >&2
@@ -26,7 +25,7 @@ mkdir -p "$source_dir"/{.github/workflows,angband,deploy,engine,web,emscripten}
 cp "$project_dir"/{build.sh,COPYING,ATTRIBUTION.md} "$source_dir/"
 cp "$project_dir"/.github/workflows/pages.yml "$source_dir/.github/workflows/"
 cp "$project_dir"/deploy/release.py "$source_dir/deploy/"
-cp "$project_dir"/engine/{angband-web.patch,main-web.c} "$source_dir/engine/"
+cp "$project_dir"/engine/{angband-web.patch,main-web.c,versions.sh} "$source_dir/engine/"
 cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
 
 if [[ -z ${1:-} && -f "$project_dir/angband/docs/copying.rst" ]]; then
@@ -84,7 +83,7 @@ read -r -a objects <<< "$object_list"
 sources=("${objects[@]/%.o/.c}")
 sources=("${sources[@]/#/src/}")
 
-emcc -O2 -Isrc -DBUILD_ID="${angband_revision:0:9}" \
+emcc -O2 -Isrc -DBUILD_ID="$angband_version" \
     -DPRIVATE_USER_PATH='"/profile"' -DUSE_PRIVATE_PATHS \
     -sMODULARIZE -sEXPORT_ES6 -sENVIRONMENT=worker -sEXIT_RUNTIME=1 \
     -sASYNCIFY -sASYNCIFY_STACK_SIZE=65536 -sALLOW_MEMORY_GROWTH \

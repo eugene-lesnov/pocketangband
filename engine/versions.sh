@@ -1,0 +1,3 @@
+angband_version=4.2.6
+angband_revision=f3082213b73f3e463e3d0d60bff4b00462beae6e
+emscripten_version=4.0.7
