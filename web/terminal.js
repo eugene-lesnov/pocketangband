@@ -43,6 +43,11 @@ const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
 const previousMessage = document.querySelector("#previous-message");
 const latestMessage = document.querySelector("#latest-message");
+const messagePause = document.querySelector("#message-pause");
+const pausedMessage = document.querySelector("#paused-message");
+const continueMessage = document.querySelector("#continue-message");
+const pausedControls = [...messagePause.parentElement.children, hud, document.querySelector(".controls")]
+    .filter((element) => element !== messagePause);
 const directionPad = document.querySelector("#direction-pad");
 const directionCenter = document.querySelector("#direction-center");
 const centerCaption = document.querySelector("#center-caption");
@@ -174,6 +179,7 @@ let activeView = views.terminal;
 let worker;
 let request;
 let mode;
+let messagePauseTrigger;
 let world;
 let context = {};
 let menu;
@@ -733,7 +739,6 @@ function updateControls() {
     const reviewing = mode === "birth-review";
     const stats = mode === "birth-stats" || rolling;
     const birthChoiceMenu = !!menu?.birth;
-    const more = mode === "more";
     const overview = mode === "overview";
     const details = mode === "details";
     const character = mode === "character";
@@ -743,7 +748,7 @@ function updateControls() {
     const retiring = mode === "retire";
     const hasTarget = aiming && context.current;
     const canOpenKeyboard = !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
-        !more && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
+        !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
@@ -795,13 +800,13 @@ function updateControls() {
         overview || details || character ? "Close" : "Continue";
     confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
-        (!more && !!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
+        (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
         history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
         "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    cancelKey.hidden = more || character || victory;
+    cancelKey.hidden = character || victory;
     setActions(worldActions, showRunControls || (playing && !stopVisible), disabled || showRunControls);
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
@@ -825,8 +830,8 @@ function updateControls() {
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
     setActions(actionsScreen, !!openPanel && openPanel !== "character", disabled);
-    setActions(menuActions, !more && !!menu?.actions.length, disabled);
-    menuRows.disabled = menuSections.disabled = disabled || more;
+    setActions(menuActions, !!menu?.actions.length, disabled);
+    menuRows.disabled = menuSections.disabled = disabled;
     saveManagement.hidden = mode !== "save-slots";
     deleteSave.disabled = disabled || !(menuCursor > 0);
 }
@@ -858,7 +863,40 @@ function terminalLine(row) {
         row * frame.width, (row + 1) * frame.width)).trim() : "";
 }
 
+function showMessagePause(data) {
+    if (messagePause.hidden) messagePauseTrigger = document.activeElement;
+    journal.open = false;
+    if (menu?.store && data.menu?.id === menu.id) {
+        const store = data.menu.store;
+        if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
+    }
+    pausedMessage.textContent = terminalLine(0).replace(/\s*-more-\s*$/, "");
+    messagePause.hidden = false;
+    for (const element of pausedControls) element.inert = true;
+    continueMessage.disabled = false;
+    continueMessage.focus({ preventScroll: true });
+}
+
+function closeMessagePause() {
+    if (messagePause.hidden) return;
+    messagePause.hidden = true;
+    for (const element of pausedControls) element.inert = false;
+    const trigger = messagePauseTrigger;
+    messagePauseTrigger = undefined;
+    return trigger;
+}
+
+function acknowledgeMessage(code) {
+    if (request === undefined || continueMessage.disabled) return;
+    worker.postMessage({ type: "key", code, request });
+    request = undefined;
+    continueMessage.disabled = true;
+}
+
+continueMessage.addEventListener("click", () => acknowledgeMessage(keyCode("Enter")));
+
 function updatePrompt() {
+    if (!messagePause.hidden) return;
     let text = context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
@@ -866,10 +904,8 @@ function updatePrompt() {
     if (mode === "save-slots") text = "Choose a save or start a new game.";
     if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
     if (mode === "rest" && !stopAction.hidden) text = "Resting…";
-    if (mode === "target" || mode === "more" ||
-        (!text && (isTextEntry(mode) || mode === "quantity"))) {
+    if (mode === "target" || (!text && (isTextEntry(mode) || mode === "quantity"))) {
         text = terminalLine(0);
-        if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
     else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
@@ -985,6 +1021,7 @@ function stop(message, failed) {
     context = {};
     openPanel = panelTrigger = characterTrigger = undefined;
     clearPendingInput();
+    closeMessagePause();
     clearResultFile();
     keyboardOpen = false;
     updateControls();
@@ -1012,6 +1049,15 @@ function handleWorkerMessage({ data }) {
             }
             break;
         case "waiting": {
+            if (data.mode === "more") {
+                clearTimeout(stopTimer);
+                request = data.request;
+                launch.hidden = true;
+                main.classList.remove("starting");
+                showMessagePause(data);
+                break;
+            }
+            const pauseTrigger = closeMessagePause();
             const restoreRunFocus = document.activeElement === runAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
@@ -1054,6 +1100,9 @@ function handleWorkerMessage({ data }) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (pauseTrigger && document.activeElement === document.body) {
+                pauseTrigger.focus({ preventScroll: true });
+            }
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
@@ -1097,6 +1146,7 @@ function handleWorkerMessage({ data }) {
             break;
         case "restarting":
             clearPendingInput();
+            closeMessagePause();
             request = mode = world = menu = undefined;
             context = {};
             openPanel = panelTrigger = characterTrigger = undefined;
@@ -1145,7 +1195,7 @@ function clearPendingInput() {
 }
 
 function sendInput(input) {
-    if (request === undefined || saving || deletingSave || stopped) return false;
+    if (request === undefined || saving || deletingSave || stopped || !messagePause.hidden) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
@@ -1187,7 +1237,7 @@ main.addEventListener("click", (event) => {
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
     if (button === cancelKey && closeInputPanel()) return;
-    if (button === confirmKey && menu && mode !== "more") {
+    if (button === confirmKey && menu) {
         sendInput({ type: "menu-row", code: menuCursor });
         return;
     }
@@ -1705,6 +1755,15 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+    if (!messagePause.hidden) {
+        if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+        const code = keyCode(event.key);
+        if (code && event.key !== "Tab") {
+            event.preventDefault();
+            if (!event.repeat) acknowledgeMessage(code);
+        }
+        return;
+    }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
     if (event.key === "Escape" && pendingInput !== undefined && (running || !stopAction.hidden)) {
         interruptAction(running ? runAction : stopAction);
@@ -1744,7 +1803,7 @@ document.addEventListener("keydown", (event) => {
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 
     if (event.key === "Tab") return;
-    if (menu && mode !== "more" && event.key === "Enter") {
+    if (menu && event.key === "Enter") {
         event.preventDefault();
         if (menu.rows.some((row) => row.index === menuCursor && row.enabled)) {
             sendInput({ type: "menu-row", code: menuCursor });

@@ -101,6 +101,7 @@ dt { color: var(--muted); }
 .view-bar { min-height: 44px; padding-inline: 0.625rem 0.25rem; }
 .view:has(.menu-screen:not([hidden])) .view-bar { min-height: 2rem; }
 .view {
+    --message-row-height: 46px;
     position: relative;
     display: grid;
     grid-template: "bar" auto "content" minmax(0, 1fr) "prompt" auto "journal" auto "save" auto / minmax(0, 1fr);
@@ -290,7 +291,7 @@ dt { color: var(--muted); }
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
     align-items: center;
-    min-height: 44px;
+    height: calc(var(--message-row-height) - 2px);
     padding: 0.25rem 0.5rem;
     font: 0.875rem/1.25 system-ui, sans-serif;
     cursor: pointer;
@@ -328,11 +329,39 @@ dt { color: var(--muted); }
 }
 #messages li + li { margin-top: 0.15rem; }
 
+#message-pause {
+    position: absolute;
+    grid-area: content;
+    z-index: 3;
+    inset-inline: 0;
+    inset-block-end: 0;
+    height: var(--message-row-height);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+    padding-inline-start: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--panel);
+}
+.view:has(#journal:not([hidden])) #message-pause { grid-area: journal; }
+.view:has(#message-pause:not([hidden])) #journal { visibility: hidden; }
+#paused-message {
+    max-height: 100%;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    color: var(--accent);
+    font: 0.875rem/1.25 system-ui, sans-serif;
+}
+#continue-message { padding-inline: 0.625rem; border-color: #9c7749; }
+
 .controls {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
+.controls[inert] { opacity: 0.65; }
 .control-body {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
