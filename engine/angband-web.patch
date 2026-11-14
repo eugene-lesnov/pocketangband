@@ -3242,7 +3242,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  		{
 +#ifdef __EMSCRIPTEN__
 +			if (death_actions[death_menu->cursor].tag == 'n') {
-+				play_again = get_check("Start a new game?");
++				play_again = true;
 +			} else {
 +				done = true;
 +			}
