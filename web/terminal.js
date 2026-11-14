@@ -11,6 +11,7 @@ const saveTransfer = document.querySelector("#save-transfer");
 const transferActions = document.querySelector("#save-transfer-actions");
 const importSave = document.querySelector("#import-save");
 const exportSave = document.querySelector("#export-save");
+const deleteSave = document.querySelector("#delete-save");
 const importFile = document.querySelector("#import-file");
 const transferStatus = document.querySelector("#transfer-status");
 const exportFile = document.querySelector("#export-file");
@@ -566,6 +567,7 @@ function updateControls() {
     menuRows.disabled = menuSections.disabled = disabled;
     saveTransfer.hidden = mode !== "save-slots";
     transferActions.disabled = disabled;
+    deleteSave.disabled = !(menuCursor > 0);
 }
 
 function showTransferStatus(message, failed = false) {
@@ -598,13 +600,15 @@ function prepareExport(slot, data) {
 
 function requestSaveTransfer(type, file) {
     if (mode !== "save-slots" || transferring || request === undefined) return;
+    if (type === "delete-save" && !(menuCursor > 0)) return;
     clearExport();
     const selectedRequest = request;
     request = undefined;
     transferring = true;
-    showTransferStatus(type === "import-save" ? "Importing save…" : "Preparing save file…");
+    if (type === "delete-save") transferStatus.hidden = true;
+    else showTransferStatus(type === "import-save" ? "Importing save…" : "Preparing save file…");
     updateControls();
-    worker.postMessage({ type, request: selectedRequest, file });
+    worker.postMessage({ type, request: selectedRequest, file, cursor: menuCursor });
 }
 
 importSave.addEventListener("click", () => importFile.click());
@@ -614,6 +618,7 @@ importFile.addEventListener("change", () => {
     if (file) requestSaveTransfer("import-save", file);
 });
 exportSave.addEventListener("click", () => requestSaveTransfer("export-save"));
+deleteSave.addEventListener("click", () => requestSaveTransfer("delete-save"));
 shareSave.addEventListener("click", async () => {
     const file = preparedFile;
     if (!file) return;
@@ -782,6 +787,7 @@ function handleWorkerMessage({ data }) {
             request = data.request;
             context = data.context;
             menu = data.menu;
+            transferring = false;
             if (changed && isTextEntry(mode)) renderKeyboard();
             launch.hidden = true;
             main.classList.remove("starting");
@@ -824,6 +830,11 @@ function handleWorkerMessage({ data }) {
             transferring = false;
             updateControls();
             showTransferStatus(`Imported into ${data.slot}.`);
+            break;
+        case "save-deleted":
+            transferring = false;
+            updateControls();
+            showTransferStatus(`Deleted ${data.slot}.`);
             break;
         case "save-exported":
             transferring = false;

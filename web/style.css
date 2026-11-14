@@ -62,6 +62,7 @@ a { color: var(--muted); font-size: 0.75rem; }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
 #save-transfer { display: grid; gap: 0.25rem; }
+#save-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #hud {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

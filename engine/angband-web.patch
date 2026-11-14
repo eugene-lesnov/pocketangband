@@ -81,7 +81,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +769,48 @@
+@@ -758,6 +769,65 @@
  	mem_free(entries);
  }
  
@@ -89,6 +89,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +extern bool web_stage_save_import(const char *staged);
 +extern bool web_finish_save_import(const char *staged, const char *path);
 +extern void web_export_save_file(const char *path);
++extern bool web_delete_save_file(const char *path, const char *panic);
 +
 +static void web_find_free_slot(char *path, size_t len)
 +{
@@ -125,33 +126,47 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +	if (name) path_build(path, sizeof(path), ANGBAND_DIR_SAVE, name);
 +	web_export_save_file(name ? path : NULL);
 +}
++
++static bool web_delete_save(const char *name)
++{
++	char path[sizeof(savefile)];
++	char panic[sizeof(savefile)];
++	char prompt[320];
++
++	if (!name) return false;
++	strnfmt(path, sizeof(path), "%s%s%s", ANGBAND_DIR_SAVE, PATH_SEP, name);
++	savefile_get_panic_name(panic, sizeof(panic), path);
++
++	strnfmt(prompt, sizeof(prompt), "Delete the save %s permanently?", name);
++	if (!get_check(prompt)) return false;
++
++	return web_delete_save_file(path, file_exists(panic) ? panic : NULL);
++}
 +#endif
 +
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +818,16 @@
+@@ -765,10 +835,16 @@
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
 - * game.  Otherwise, it will be false.
-- */
--static void select_savefile(bool retry, bool *new_game)
--{
 + * game.  Otherwise, it will be false when a save was selected.  Returns
-+ * false after importing a save, when the menu needs to be rebuilt.
-+ */
++ * false after importing or deleting a save, when the menu needs to be rebuilt.
+  */
+-static void select_savefile(bool retry, bool *new_game)
 +static bool select_savefile(bool retry, bool *new_game)
-+{
+ {
 +#ifdef __EMSCRIPTEN__
-+	const int notify = EVT_WEB_IMPORT | EVT_WEB_EXPORT;
++	const int notify = EVT_WEB_IMPORT | EVT_WEB_EXPORT | EVT_WEB_DELETE;
 +#else
 +	const int notify = 0;
 +#endif
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +934,26 @@
+@@ -875,11 +951,29 @@
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -164,6 +179,9 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +		} else if (selection.type == EVT_WEB_EXPORT) {
 +			web_export_save(m->cursor >= 0 ? names[m->cursor] : NULL);
 +			continue;
++		} else if (selection.type == EVT_WEB_DELETE) {
++			if (m->cursor < 0 || m->cursor >= count ||
++					!web_delete_save(names[m->cursor])) continue;
 +		}
 +#endif
 +		break;
@@ -179,7 +197,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +970,7 @@
+@@ -896,6 +990,7 @@
  	if (selection.type == EVT_ESCAPE) {
  		quit(NULL);
  	}
@@ -187,7 +205,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  }
  
  /**
-@@ -920,7 +995,9 @@
+@@ -920,7 +1015,9 @@
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -198,7 +216,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -1010,6 +1087,19 @@
+@@ -1010,6 +1107,19 @@
  	return result;
  }
  
@@ -218,7 +236,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1136,25 @@
+@@ -1046,11 +1156,25 @@
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -245,11 +263,10 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1063,23 +1167,6 @@
- 
+@@ -1064,23 +1188,6 @@
  	/* Allow suspend again */
  	signals_handle_tstp();
--
+ 
 -	/* Save the window prefs */
 -	path_build(path, sizeof(path), ANGBAND_DIR_USER, "window.prf");
 -	if (!prefs_save(path, option_dump, "Dump window settings"))
@@ -266,10 +283,11 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 -
 -	/* Refresh */
 -	Term_fresh();
- 
+-
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
-@@ -1132,7 +1219,7 @@
+ 
+@@ -1132,7 +1239,7 @@
  		death_screen();
  
  		/* Save dead player */
@@ -278,7 +296,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!prompt_failed_save
  					|| !get_check("Saving failed.  Try again? ")) {
  				prompting = false;
-@@ -1149,6 +1236,7 @@
+@@ -1149,6 +1256,7 @@
  			}
  		}
  
@@ -286,7 +304,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1245,7 @@
+@@ -1157,6 +1265,7 @@
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -297,7 +315,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,18 @@ typedef enum
+@@ -36,7 +36,19 @@ typedef enum
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -313,11 +331,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_STORE_ACTION = 0x8000,
 +	EVT_WEB_AIM_CELL = 0x10000,
 +	EVT_WEB_TARGET_CELL = 0x20000,
++	EVT_WEB_DELETE = 0x40000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +207,14 @@ struct keypress {
+@@ -196,6 +208,14 @@ struct keypress {
  	uint8_t mods;
  };
  
@@ -332,7 +351,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +240,9 @@ struct mouseclick {
+@@ -221,6 +241,9 @@ struct mouseclick {
   */
  typedef union {
  	ui_event_type type;
@@ -669,7 +688,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  	ui_event in = EVENT_EMPTY;
  	bool no_act = (menu->flags & MN_NO_ACTION) ? true : false;
 +#ifdef __EMSCRIPTEN__
-+	bool save_slots = notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT);
++	bool save_slots = notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT | EVT_WEB_DELETE);
 +	bool web_rows = menu->web_render || (save_slots && menu->row_funcs == &menu_iter_strings);
 +#endif
  

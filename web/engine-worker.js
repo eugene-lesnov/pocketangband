@@ -1,6 +1,7 @@
 import createAngband from "./angband.js";
 
 const maxSaveSize = 64 * 1024 * 1024;
+const profileDirectory = "/profile";
 const input = [];
 let waiting;
 let request = 0;
@@ -40,8 +41,9 @@ self.addEventListener("message", ({ data }) => {
         }
         return;
     }
-    if (data.type === "import-save" || data.type === "export-save") {
-        if (waiting?.mode !== "save-slots" || data.request !== waiting.request) {
+    if (["import-save", "export-save", "delete-save"].includes(data.type)) {
+        if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
+            (data.type === "delete-save" && (!(data.cursor > 0) || data.cursor !== waiting.menu?.cursor))) {
             transferError("The save slot selection changed. Try again.", waiting?.request);
             return;
         }
@@ -86,6 +88,27 @@ function syncProfile(fs, populate) {
             if (error) reject(error);
             else resolve();
         });
+    });
+}
+
+async function deleteProfileFiles(idbfs, paths) {
+    const db = await new Promise((resolve, reject) => {
+        idbfs.getDB(profileDirectory, (error, database) => {
+            if (error) reject(error);
+            else resolve(database);
+        });
+    });
+    await new Promise((resolve, reject) => {
+        const transaction = db.transaction(idbfs.DB_STORE_NAME, "readwrite");
+        transaction.oncomplete = resolve;
+        transaction.onabort = () => reject(transaction.error);
+        try {
+            const store = transaction.objectStore(idbfs.DB_STORE_NAME);
+            for (const path of paths) store.delete(path);
+        } catch (error) {
+            transaction.abort();
+            reject(error);
+        }
     });
 }
 
@@ -203,6 +226,34 @@ async function play(lock) {
                 transferError("Could not read the selected save.");
             }
         },
+        async deleteSaveFile(path, panic) {
+            const fs = game.FS;
+            const paths = panic ? [path, panic] : [path];
+            try {
+                const keys = paths.map((file) => {
+                    const entry = fs.analyzePath(file, true);
+                    if (!entry.exists || !entry.path.startsWith(profileDirectory + "/") ||
+                        !fs.isFile(entry.object.mode)) {
+                        throw new Error("The selected save is not a regular profile file.");
+                    }
+                    return entry.path;
+                });
+                await deleteProfileFiles(game.IDBFS, keys);
+            } catch (error) {
+                console.error(error);
+                transferError("Could not delete the selected save.");
+                return 0;
+            }
+            try {
+                for (const file of paths) fs.unlink(file);
+            } catch (error) {
+                console.error(error);
+                self.postMessage({ type: "error", message: "The save was deleted. Reopen the save slots." });
+                return 0;
+            }
+            self.postMessage({ type: "save-deleted", slot: path.split("/").pop() });
+            return 1;
+        },
         async persistProfile(saved) {
             let ok = false;
             if (saved) {
@@ -228,8 +279,8 @@ async function play(lock) {
     });
 
     try {
-        game.FS.mkdir("/profile");
-        game.FS.mount(game.IDBFS, {}, "/profile");
+        game.FS.mkdir(profileDirectory);
+        game.FS.mount(game.IDBFS, {}, profileDirectory);
         await syncProfile(game.FS, true);
     } catch (error) {
         console.error(error);
