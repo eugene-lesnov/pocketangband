@@ -298,7 +298,16 @@ dt { color: var(--muted); }
 }
 #journal summary::-webkit-details-marker { display: none; }
 #journal:not([open]) #messages { display: none; }
-#journal[open] #recent-messages { visibility: hidden; }
+#journal[open] summary {
+    position: relative;
+    z-index: 2;
+    width: 44px;
+    margin-inline-start: auto;
+    grid-template-columns: 1fr;
+    justify-items: end;
+    align-items: end;
+}
+#journal[open] :is(#recent-messages, #journal-label) { display: none; }
 #journal:has(#latest-message:not(:empty)) #journal-label { display: none; }
 #recent-messages span {
     display: block;
@@ -314,14 +323,16 @@ dt { color: var(--muted); }
     position: absolute;
     z-index: 1;
     inset-inline: -1px;
-    bottom: 100%;
+    inset-block-end: -1px;
     overflow: auto;
     overscroll-behavior: contain;
+    min-height: var(--message-row-height);
     max-height: min(12rem, 30dvh);
     margin: 0;
     padding: 0.5rem;
+    padding-inline-end: 44px;
     border: 1px solid var(--border);
-    border-radius: 0.4375rem 0.4375rem 0 0;
+    border-radius: 0.5rem;
     background: var(--panel);
     list-style: none;
     overflow-wrap: anywhere;
