@@ -510,7 +510,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,19 @@
+@@ -36,7 +36,21 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -527,11 +527,13 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_DELETE = 0x40000,
 +	EVT_WEB_BUY_STAT = 0x80000,
 +	EVT_WEB_SELL_STAT = 0x100000,
++	EVT_WEB_INSPECT_CELL = 0x200000,
++	EVT_WEB_MOVE_TO_CELL = 0x400000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +208,14 @@
+@@ -196,6 +210,14 @@
  	uint8_t mods;
  };
  
@@ -546,7 +548,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +241,9 @@
+@@ -221,6 +243,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -1101,7 +1103,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1840,6 +1950,13 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +1950,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -1109,6 +1111,14 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +		if (ke.type == EVT_WEB_TILES) {
 +			web_toggle_tiles();
 +			continue;
++		}
++		if (ke.type == EVT_WEB_INSPECT_CELL) {
++			web_inspect_cell(ke.mouse.x, ke.mouse.y);
++			continue;
++		}
++		if (ke.type == EVT_WEB_MOVE_TO_CELL) {
++			web_move_to_cell(ke.mouse.x, ke.mouse.y);
++			break;
 +		}
 +#endif
 +
@@ -1118,7 +1128,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,70 @@
+@@ -24,6 +24,72 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1144,6 +1154,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_direction_center(bool available);
 +void web_set_target_options(bool free_aim, int count, bool can_select,
 +	bool can_inspect, bool attack);
++void web_inspect_cell(int x, int y);
++void web_move_to_cell(int x, int y);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
 +void web_cancel_birth(void);

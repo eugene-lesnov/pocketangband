@@ -284,7 +284,8 @@ function draw() {
         if (!source) return;
         const target = mode === "aim" && context.target && containsCell(region, context.target) ?
             context.target : undefined;
-        const cursor = target ? target.y * source.width + target.x : source.cursor;
+        const selected = view === views.map ? context.mapCell : target;
+        const cursor = selected ? selected.y * source.width + selected.x : source.cursor;
         const frame = cursor === source.cursor ? source : { ...source, cursor };
         const previousGrid = view.gridElement;
         const cursorCell = mode === "target" && cursor >= 0 ?
@@ -920,7 +921,7 @@ continueMessage.addEventListener("click", () => acknowledgeMessage(keyCode("Ente
 
 function updatePrompt() {
     if (!messagePause.hidden) return;
-    let text = context.prompt || (menu?.options ? undefined : menu?.prompt);
+    let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running) text = "Running…";
@@ -1228,11 +1229,18 @@ function sendInput(input) {
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
-    running = mode === "run-direction" && input.type === "key" && input.code !== keyCode("Escape");
+    const movingToCell = input.type === "map-cell" &&
+        input.x === context.mapCell?.x && input.y === context.mapCell?.y;
+    running = (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
+        (mode === "run-direction" && input.type === "key" && input.code !== keyCode("Escape"));
+    if (context.mapCell) {
+        context = { ...context, mapCell: undefined };
+        draw();
+    }
     worker.postMessage({ ...input, request });
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
-        ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
+        (movingToCell || ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type))) {
         pendingInput = request;
         if (!running) {
             stopTimer = setTimeout(() => {
@@ -1662,7 +1670,7 @@ runAction.addEventListener("click", () => {
     if (running) interruptAction(runAction);
 });
 
-for (const view of [views.terminal, views.target]) {
+for (const view of Object.values(views)) {
     let tap;
     view.viewport.addEventListener("pointerdown", (event) => {
         tap = event.isPrimary && event.button === 0 ?
@@ -1674,12 +1682,14 @@ for (const view of [views.terminal, views.target]) {
     });
     view.viewport.addEventListener("pointercancel", () => { tap = undefined; });
     view.viewport.addEventListener("click", (event) => {
-        const type = view === views.target ? mode === "target" ? "target-cell" :
+        const type = view === views.map ? mode === "command" ? "map-cell" : undefined :
+            view === views.target ? mode === "target" ? "target-cell" :
             mode === "aim" || mode === "direction" ? "aim-cell" : undefined :
             isMenu() && !menu ? "tap" : undefined;
+        const source = view === views.map ? view.frame : views.terminal.frame;
         if (event.detail === 0 || !request || tap?.request !== request || activeView !== view ||
             !type || !view.grid || !view.gridElement.contains(event.target) ||
-            view.rendered !== views.terminal.frame || !sameRegion(view.region, view.crop)) return;
+            view.rendered !== source || !sameRegion(view.region, view.crop)) return;
         tap = undefined;
         const { x, y, columns, rows } = view.grid;
         const grid = view.gridElement.getBoundingClientRect();

@@ -52,15 +52,20 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
-    } else if (["tap", "aim-cell", "target-cell"].includes(data.type)) {
+    } else if (["tap", "aim-cell", "target-cell", "map-cell"].includes(data.type)) {
         if (!waiting || data.request !== waiting.request ||
             !Number.isInteger(data.x) || !Number.isInteger(data.y)) return;
         if (data.type === "tap" && !["menu", "save-slots"].includes(waiting.mode)) return;
         if (data.type === "aim-cell" && !["aim", "direction"].includes(waiting.mode)) return;
         if (data.type === "target-cell" && waiting.mode !== "target") return;
+        if (data.type === "map-cell" && (waiting.mode !== "command" || !waiting.context.worldView)) return;
         const { region } = waiting;
         if (!region || data.x < region.x || data.y < region.y ||
             data.x >= region.x + region.width || data.y >= region.y + region.height) return;
+        if (data.type === "map-cell") {
+            const selected = waiting.context.mapCell;
+            data.code = Number(data.x === selected?.x && data.y === selected?.y);
+        }
     } else if (data.type === "buy-stat" || data.type === "sell-stat") {
         if (waiting?.mode !== "birth-stats" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 0) return;

@@ -8,10 +8,13 @@
 #include "grafmode.h"
 #include "init.h"
 #include "message.h"
+#include "mon-desc.h"
+#include "mon-predicate.h"
 #include "monster.h"
 #include "obj-desc.h"
 #include "obj-gear.h"
 #include "obj-ignore.h"
+#include "obj-pile.h"
 #include "obj-util.h"
 #include "object.h"
 #include "player.h"
@@ -19,6 +22,7 @@
 #include "player-timed.h"
 #include "player-util.h"
 #include "target.h"
+#include "trap.h"
 #include "ui-display.h"
 #include "ui-input.h"
 #include "ui-map.h"
@@ -523,6 +527,72 @@ static void publish_world(bool commands)
 
 static double last_interrupt_poll;
 
+static struct loc web_map_grid(int x, int y)
+{
+    const term *map = angband_term[MAP_TERM];
+    return loc(map->offset_x + x / tile_width, map->offset_y + y / tile_height);
+}
+
+EM_JS(void, set_map_cell, (int x, int y, const char *description), {
+    Module['inputContext'] = { mapCell: { x, y, description: UTF8ToString(description) } };
+});
+
+void web_inspect_cell(int x, int y)
+{
+    struct loc grid = web_map_grid(x, y);
+    if (!square_in_bounds(cave, grid)) return;
+
+    struct monster *mon = square_monster(cave, grid);
+    bool obvious_monster = mon && monster_is_obvious(mon);
+    bool here = loc_eq(player->grid, grid);
+    const char *phrase = here ? "You are on " : square_isseen(cave, grid) ? "You see " :
+        obvious_monster ? "You sense " : "You recall ";
+    const char *article = "";
+    char name[160];
+
+    if (player->timed[TMD_IMAGE]) {
+        my_strcpy(name, "something strange", sizeof(name));
+    } else if (obvious_monster) {
+        monster_desc(name, sizeof(name), mon, MDESC_IND_VIS);
+    } else if (square_isvisibletrap(player->cave, grid)) {
+        const char *trap_name = square(player->cave, grid)->trap->kind->desc;
+        article = is_a_vowel(trap_name[0]) ? "an " : "a ";
+        my_strcpy(name, trap_name, sizeof(name));
+    } else {
+        struct object *floor_list[z_info->floor_size];
+        int count = scan_distant_floor(floor_list, N_ELEMENTS(floor_list), player, grid);
+        if (count > 1) {
+            strnfmt(name, sizeof(name), "a pile of %d objects", count);
+        } else if (count == 1) {
+            object_desc(name, sizeof(name), floor_list[0], ODESC_PREFIX | ODESC_FULL, player);
+        } else {
+            if (here) phrase = "You are ";
+            strnfmt(name, sizeof(name), "%s%s%s",
+                here ? square_apparent_look_in_preposition(player->cave, grid) : "",
+                square_apparent_look_prefix(player->cave, grid),
+                square_apparent_name(player->cave, grid));
+        }
+    }
+
+    char description[192];
+    strnfmt(description, sizeof(description), "%s%s%s.", phrase, article, name);
+    set_map_cell(x, y, description);
+}
+
+void web_move_to_cell(int x, int y)
+{
+    struct loc grid = web_map_grid(x, y);
+    if (!square_in_bounds_fully(cave, grid) || loc_eq(grid, player->grid)) return;
+
+    if (ABS(grid.x - player->grid.x) <= 1 && ABS(grid.y - player->grid.y) <= 1) {
+        if (!cmdq_push(CMD_WALK))
+            cmd_set_arg_direction(cmdq_peek(), "direction", motion_dir(player->grid, grid));
+    } else if (!cmdq_push(CMD_PATHFIND)) {
+        cmd_set_arg_point(cmdq_peek(), "point", grid);
+        pace_run = true;
+    }
+}
+
 EM_JS(bool, take_interrupt, (void), {
     return Module['takeInterrupt']();
 });
@@ -548,7 +618,8 @@ void web_poll_interrupt(void)
 }
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
-        int store_action, int aim_cell, int target_cell, int buy_stat, int sell_stat), {
+        int store_action, int aim_cell, int target_cell, int inspect_cell, int move_to_cell,
+        int buy_stat, int sell_stat), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -566,6 +637,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
         case "target-cell": return target_cell;
+        case "map-cell": return event.code ? move_to_cell : inspect_cell;
         case "buy-stat": return buy_stat;
         case "sell-stat": return sell_stat;
         default: return 0;
@@ -655,7 +727,11 @@ static ui_event_type wait_for_input(void)
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
         publish_world(mode == WEB_INPUT_COMMAND);
     if (playing && aiming && map_visible) web_character_sheet(false);
-    if (mode == WEB_INPUT_TARGET || (map_visible && aiming)) {
+    if (mode == WEB_INPUT_COMMAND && world_view) {
+        const term *map = angband_term[MAP_TERM];
+        width = MIN(map->wid, (cave->width - map->offset_x) * tile_width);
+        height = MIN(map->hgt, (cave->height - map->offset_y) * tile_height);
+    } else if (mode == WEB_INPUT_TARGET || (map_visible && aiming)) {
         x = COL_MAP;
         y = ROW_MAP;
         width = SCREEN_WID * tile_width;
@@ -681,13 +757,15 @@ static errr queue_input(void)
     int code = 0, x = 0, y = 0;
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
-        EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT);
+        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT);
 
     switch (type) {
         case EVT_NONE: return 1;
         case EVT_KBRD: return Term_keypress(code, 0);
         case EVT_MOUSE: return Term_mousepress(x, y, 1);
         case EVT_WEB_AIM_CELL:
+        case EVT_WEB_INSPECT_CELL:
+        case EVT_WEB_MOVE_TO_CELL:
         case EVT_WEB_TARGET_CELL: {
             const ui_event action = { .mouse = { .type = type, .x = x, .y = y, .button = 1 } };
             return Term_event_push(&action);
