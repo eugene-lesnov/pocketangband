@@ -61,12 +61,15 @@ const otherPlayKeys = [...playKeys.children].filter((button) => button !== runAc
 const playKeyboard = document.querySelector("#play-keyboard");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
-const aimActions = document.querySelector("#aim-actions");
 const nearest = document.querySelector("#nearest");
 const targetActions = document.querySelector("#target-actions");
 const previousTarget = document.querySelector("#previous-target");
 const nextTarget = document.querySelector("#next-target");
 const targetMode = document.querySelector("#target-mode");
+const targetTypes = document.querySelector("#target-types");
+const targetMonster = document.querySelector("#target-monster");
+const targetLocation = document.querySelector("#target-location");
+const confirmTarget = document.querySelector("#confirm-target");
 const targetInspect = document.querySelector("#target-inspect");
 const inputPrompt = document.querySelector("#input-prompt");
 const editScreen = document.querySelector("#edit-screen");
@@ -746,7 +749,9 @@ function updateControls() {
     const victory = mode === "victory";
     const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Create spoilers";
     const retiring = mode === "retire";
-    const hasTarget = aiming && context.current;
+    const targeting = aiming || selecting;
+    const attackTargeting = selecting && context.attack;
+    const targetUnavailable = aiming ? !context.current : !context.canSelect;
     const canOpenKeyboard = !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
         !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
@@ -754,6 +759,7 @@ function updateControls() {
     const playing = command && !openPanel && !showKeyboard;
     const showRunControls = !openPanel && !showKeyboard && (runDirection || running);
     const stopVisible = running || !stopAction.hidden;
+    const showTargetControls = targeting && !showKeyboard && !openPanel && !stopVisible;
     lookAround.hidden = levelMap.hidden = toggleTiles.hidden = !command || !!openPanel;
     lookAround.disabled = disabled;
     levelMap.disabled = disabled;
@@ -787,19 +793,21 @@ function updateControls() {
     terminalKeys.classList.toggle("birth-review-controls", reviewing);
     birthStartOver.hidden = !reviewing;
     terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
-    confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" : aiming ?
-        hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
+    terminalKeys.classList.toggle("target-controls", showTargetControls);
+    confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" :
+        aiming ? "5" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
+    const targetLabel = selecting && !context.attack ? "Select target" : useTarget;
     confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
         confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
-        selecting ? context.attack ? context.verb : "Select target" :
-        aiming ? hasTarget ? useTarget : "Target monster or location" :
+        targeting ? targetLabel :
         editing || counting || optionNumber || resting ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild;
-    confirmKey.disabled = directing || (selecting && !context.canSelect) ||
+    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild ||
+        showTargetControls || (aiming && targetUnavailable);
+    confirmKey.disabled = directing || (targeting && targetUnavailable) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
         history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
@@ -811,15 +819,30 @@ function updateControls() {
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
     previousRoll.disabled = !context.birthStats?.roll?.previous;
-    setActions(aimActions, aiming && !showKeyboard && !openPanel && (context.nearest || hasTarget), disabled);
-    nearest.hidden = !context.nearest;
-    nearest.textContent = `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest`;
-    aimActions.lastElementChild.hidden = !hasTarget;
-    setActions(targetActions, selecting && !showKeyboard && !openPanel, disabled);
+    setActions(targetActions, showTargetControls, disabled);
+    if (targeting) {
+        confirmTarget.textContent = targetLabel;
+        confirmTarget.dataset.key = confirmKey.dataset.key;
+        confirmTarget.disabled = targetUnavailable;
+    }
+    nearest.hidden = !aiming;
+    nearest.disabled = !context.nearest;
+    if (aiming) nearest.textContent = `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest`;
+    previousTarget.hidden = nextTarget.hidden = !selecting;
     previousTarget.disabled = nextTarget.disabled = context.freeAim || context.targetCount < 2;
-    targetMode.textContent = context.freeAim ? "Interesting places" : "Free selection";
-    targetMode.dataset.key = context.freeAim ? "m" : "o";
-    targetMode.disabled = context.freeAim && !context.targetCount;
+    targetMode.hidden = attackTargeting;
+    targetTypes.hidden = !attackTargeting;
+    if (attackTargeting) {
+        targetMonster.setAttribute("aria-pressed", String(!context.freeAim));
+        targetLocation.setAttribute("aria-pressed", String(context.freeAim));
+        targetMonster.disabled = !context.targetCount;
+    } else {
+        targetMode.textContent = aiming ? "Target monster or location" :
+            context.freeAim ? "Interesting places" : "Free selection";
+        targetMode.dataset.key = aiming ? "*" : context.freeAim ? "m" : "o";
+        targetMode.disabled = selecting && context.freeAim && !context.targetCount;
+    }
+    targetInspect.hidden = !selecting || !showTargetControls;
     targetInspect.disabled = !context.canInspect;
     setActions(quantity, counting, disabled);
     setActions(optionDigits, optionNumber, disabled);
@@ -904,7 +927,13 @@ function updatePrompt() {
     if (mode === "save-slots") text = "Choose a save or start a new game.";
     if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
     if (mode === "rest" && !stopAction.hidden) text = "Resting…";
-    if (mode === "target" || (!text && (isTextEntry(mode) || mode === "quantity"))) {
+    if (mode === "target") {
+        text = terminalLine(0);
+        if (!context.attack) {
+            const label = context.freeAim ? "Free selection" : "Interesting places";
+            text = text ? `${label}\n${text}` : label;
+        }
+    } else if (!text && (isTextEntry(mode) || mode === "quantity")) {
         text = terminalLine(0);
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
