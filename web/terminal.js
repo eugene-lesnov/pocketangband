@@ -51,14 +51,8 @@ const terminalKeys = document.querySelector("#terminal-keys");
 const cancelKey = document.querySelector("#cancel-key");
 const confirmKey = document.querySelector("#confirm-key");
 const worldActions = document.querySelector("#world-actions");
-const useItem = document.querySelector("#use-item");
-const cast = document.querySelector("#cast");
-const fire = document.querySelector("#fire");
-const interact = document.querySelector("#interact");
 const playKeys = document.querySelector("#play-keys");
 const playKeyboard = document.querySelector("#play-keyboard");
-const run = document.querySelector("#run");
-const look = document.querySelector("#look");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
 const statActions = document.querySelector("#stat-actions");
@@ -93,14 +87,22 @@ const specialKeys = new Map([
 const gameMenu = [
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
 ];
+const quickCommands = [
+    ["r", "Read a scroll"], ["q", "Quaff a potion"], ["u", "Use a staff", "Z"],
+    ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"], ["i", "Open the pack"],
+    ["m", "Cast a spell"], ["f", "Fire", "t"], ["R", "Rest"],
+];
 const extraCommands = [
+    [".", "Run", ","], ["l", "Look around", "x"], ["U", "Use an item", "X"],
+    ["G", "Learn spells"], ["b", "Browse a book", "P"], ["v", "Throw an item"],
+    ["E", "Eat food"], ["A", "Activate an item"], ["F", "Refuel light"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
     ["*", "Choose a target"], ["[", "Visible monsters"], ["]", "Visible objects"],
     ["h", "Fire at nearest", "Tab"], ["+", "Alter a grid"], ["T", "Tunnel", "CtrlT"],
     ["D", "Disarm or lock"], ["o", "Open"], ["c", "Close door"],
     ["Enter", "All Angband commands"],
 ];
-const panelTitles = { menu: "Menu", commands: "Commands", interact: "Interact", conditions: "Conditions" };
+const panelTitles = { menu: "Menu", commands: "Commands", conditions: "Conditions" };
 const commandFaces = new Map([["CtrlT", "^T"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and MP"], ["!", "HP or MP"]]);
 
@@ -140,7 +142,6 @@ let renderedMenu;
 let menuCursor;
 let openPanel;
 let panelTrigger;
-let actionReason = "";
 let characterTrigger;
 let pendingInput;
 let stopTimer;
@@ -455,13 +456,9 @@ function isTextEntry(state) {
 
 function closeInputPanel() {
     if (openPanel) {
-        if (openPanel === "commands") {
-            showPanel("menu", panelTrigger);
-        } else {
-            const trigger = panelTrigger;
-            showPanel();
-            trigger?.focus({ preventScroll: true });
-        }
+        const trigger = panelTrigger;
+        showPanel();
+        trigger?.focus({ preventScroll: true });
         return true;
     }
     if (!keyboardOpen || isTextEntry(mode)) return false;
@@ -472,7 +469,6 @@ function closeInputPanel() {
 function showPanel(panel, trigger) {
     openPanel = panel;
     panelTrigger = trigger;
-    actionReason = "";
     if (panel) {
         journal.open = false;
         viewOptions.setAttribute("aria-expanded", "false");
@@ -547,7 +543,6 @@ function updateControls() {
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     cancelKey.hidden = more || character;
     setActions(worldActions, playing && !stopVisible, disabled);
-    interact.disabled = interact.hidden;
     setActions(statActions, stats && !showKeyboard && !openPanel, disabled);
     setActions(aimActions, aiming && !showKeyboard && !openPanel && (context.nearest || hasTarget), disabled);
     nearest.hidden = !context.nearest;
@@ -658,7 +653,6 @@ function updatePrompt() {
         if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
     if (mode === "confirm" && context.prompt) text = "";
-    if (mode === "command" && actionReason) text = actionReason;
     inputPrompt.hidden = !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -746,7 +740,6 @@ function stop(message, failed) {
     world = menu = undefined;
     context = {};
     openPanel = panelTrigger = characterTrigger = undefined;
-    actionReason = "";
     clearPendingInput();
     clearExport();
     keyboardOpen = false;
@@ -770,7 +763,6 @@ function handleWorkerMessage({ data }) {
         }
         case "waiting": {
             clearPendingInput();
-            actionReason = "";
             const changed = data.mode !== mode;
             if (changed) {
                 centerPending = true;
@@ -873,7 +865,6 @@ function clearPendingInput() {
 
 function sendInput(input) {
     if (request === undefined || saving || transferring || stopped) return false;
-    actionReason = "";
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
@@ -895,7 +886,7 @@ function sendInput(input) {
 }
 
 let buttonPress;
-const inputButton = "button[data-key], button[data-input], #interact";
+const inputButton = "button[data-key], button[data-input]";
 main.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary) return;
     const button = event.target.closest(inputButton);
@@ -910,12 +901,6 @@ main.addEventListener("click", (event) => {
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
     if (button === cancelKey && closeInputPanel()) return;
-    if (button === interact) {
-        const { nearby } = world.actions;
-        if (nearby.length === 1) sendInput({ type: "key", code: keyCode(nearby[0].key) });
-        if (nearby.length > 1) showPanel("interact", interact);
-        return;
-    }
     if (button === confirmKey && menu) {
         sendInput({ type: "menu-row", code: menuCursor });
         return;
@@ -969,53 +954,34 @@ function keyBadge(label) {
     return badge;
 }
 
-function setActionAvailability(button, reason) {
-    if (reason) {
-        button.setAttribute("aria-disabled", "true");
-        button.setAttribute("aria-label", `${button.textContent}: ${reason}`);
-        button.title = reason;
-    } else {
-        button.removeAttribute("aria-disabled");
-        button.removeAttribute("aria-label");
-        button.removeAttribute("title");
-    }
+function commandKey([key, , alternative], roguelike) {
+    return roguelike && alternative ? alternative : key;
 }
 
-function renderQuickActions(state) {
-    const { magic, roguelike, actions } = state;
-    useItem.dataset.key = roguelike ? "X" : "U";
-    cast.hidden = !magic;
-    fire.hidden = !actions.launcher;
-    fire.dataset.key = roguelike ? "t" : "f";
-    look.dataset.key = roguelike ? "x" : "l";
-    run.dataset.key = roguelike ? "," : ".";
-    setActionAvailability(cast, actions.castReason);
-    setActionAvailability(fire, actions.fireReason);
-    setActionAvailability(run, state.canRun ? null : "You are confused");
-    const { nearby } = actions;
-    interact.textContent = nearby.length === 1 ? nearby[0].label : "Interact";
-    interact.hidden = nearby.length === 0;
+function renderQuickActions({ roguelike }) {
+    const keyset = roguelike ? "roguelike" : "original";
+    if (worldActions.dataset.keyset === keyset) return;
+    worldActions.dataset.keyset = keyset;
+    worldActions.replaceChildren(...quickCommands.map((entry) => {
+        const key = commandKey(entry, roguelike);
+        const label = entry[1];
+        const button = makeKey(key, "", `${label} (${key})`);
+        button.title = label;
+        button.append(keyBadge(key));
+        return button;
+    }));
 }
 
 function renderActionsPanel() {
-    const command = ([key, label, alternative], withKey = false) => {
-        if (world.roguelike && alternative) key = alternative;
+    const commands = openPanel === "menu" ? gameMenu : openPanel === "commands" ? extraCommands : null;
+    if (!commands) return;
+    const rows = commands.map((entry) => {
+        const key = commandKey(entry, world.roguelike);
+        const label = entry[1];
         const button = makeKey(key, label);
-        if (withKey && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
+        if (openPanel === "commands" && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
         return button;
-    };
-    let rows;
-    if (openPanel === "menu") {
-        const commands = makeButton("Commands");
-        commands.onclick = () => showPanel("commands", panelTrigger);
-        rows = [...gameMenu.map((entry) => command(entry)), commands];
-    } else if (openPanel === "commands") {
-        rows = extraCommands.map((entry) => command(entry, true));
-    } else if (openPanel === "interact") {
-        rows = world.actions.nearby.map(({ key, label }) => command([key, label]));
-    } else {
-        return;
-    }
+    });
     actionsScreen.replaceChildren(...rows);
     actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
     actionsScreen.scrollTop = 0;
@@ -1134,9 +1100,14 @@ function renderKeyboard() {
     const utility = [switchLayer, space];
     if (!isTextEntry(mode)) utility.push(makeKey("Tab", "Tab"));
     if (mode === "command") {
+        const commands = makeButton("Cmds", "Commands");
+        commands.setAttribute("aria-controls", "actions-screen");
+        commands.onclick = () => {
+            if (request !== undefined) showPanel("commands", commands);
+        };
         const hide = makeButton("Hide", "Hide keyboard");
         hide.onclick = () => toggleKeyboard();
-        utility.push(makeKey("Escape", "Esc"), makeKey("Enter", "Enter"), hide);
+        utility.push(makeKey("Escape", "Esc"), commands, hide);
     }
     rows.push(utility);
     showKeys(keyboard, rows);
@@ -1179,14 +1150,6 @@ function toggleKeyboard() {
 
 keyboardToggle.addEventListener("click", toggleKeyboard);
 playKeyboard.addEventListener("click", toggleKeyboard);
-
-for (const button of [cast, fire, run]) {
-    button.addEventListener("click", () => {
-        if (request === undefined || button.getAttribute("aria-disabled") !== "true") return;
-        actionReason = button.title + ".";
-        updatePrompt();
-    });
-}
 
 openMenu.addEventListener("click", () => {
     if (mode === "command" && request !== undefined) showPanel("menu", openMenu);

@@ -130,14 +130,7 @@
                     <button type="button" data-key="ArrowDown" aria-label="Down">↓</button>
                     <button class="diagonal" type="button" data-key="3" aria-label="Down right">↘</button>
                 </fieldset>
-                <fieldset id="world-actions" class="command-grid" aria-label="Quick actions" disabled hidden>
-                    <button id="use-item" type="button" data-key="U">Use item</button>
-                    <button id="cast" type="button" data-key="m" hidden>Cast</button>
-                    <button type="button" data-key="i">Pack</button>
-                    <button id="fire" type="button" data-key="f" hidden>Fire</button>
-                    <button type="button" data-key="R">Rest</button>
-                    <button id="interact" type="button" aria-controls="actions-screen">Interact</button>
-                </fieldset>
+                <fieldset id="world-actions" aria-label="Quick actions" disabled hidden></fieldset>
                 <fieldset id="stat-actions" class="key-row" aria-label="Stat allocation" disabled hidden>
                     <button type="button" data-key="r">Reset stats</button>
                 </fieldset>
@@ -169,8 +162,9 @@
             <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>
             <fieldset id="keyboard" class="key-panel" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
             <fieldset id="play-keys" aria-label="Game controls" disabled hidden>
-                <button id="run" type="button" data-key=".">Run</button>
-                <button id="look" type="button" data-key="l">Look</button>
+                <button type="button" data-key="g" title="Pick up" aria-label="Pick up (g)"><kbd>g</kbd></button>
+                <button type="button" data-key="&lt;" title="Ascend" aria-label="Ascend (&lt;)"><kbd>&lt;</kbd></button>
+                <button type="button" data-key="&gt;" title="Descend" aria-label="Descend (&gt;)"><kbd>&gt;</kbd></button>
                 <button id="play-keyboard" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
                 <button id="open-menu" type="button" aria-controls="actions-screen">Menu</button>
             </fieldset>

@@ -8,18 +8,13 @@
 #include "init.h"
 #include "message.h"
 #include "monster.h"
-#include "obj-chest.h"
 #include "obj-desc.h"
 #include "obj-gear.h"
-#include "obj-ignore.h"
-#include "obj-tval.h"
-#include "obj-util.h"
 #include "player.h"
 #include "player-timed.h"
 #include "player-util.h"
 #include "target.h"
 #include "ui-input.h"
-#include "ui-keymap.h"
 #include "ui-map.h"
 #include "ui-output.h"
 #include "ui-prefs.h"
@@ -205,8 +200,7 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool roguelike,
-        bool can_run), {
+        int count, const char *const *lines, const int *repeats, bool roguelike), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -216,103 +210,20 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     }
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
-        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, canRun: !!can_run,
-        conditions: Module['worldConditions'], actions: Module['worldActions'],
+        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
+        conditions: Module['worldConditions'],
     });
 });
 
-EM_JS(void, start_world_status, (const char *cast_reason, bool launcher, const char *fire_reason), {
+EM_JS(void, start_world_status, (void), {
     Module['worldConditions'] = [];
-    Module['worldActions'] = {
-        castReason: cast_reason ? UTF8ToString(cast_reason) : null,
-        launcher: !!launcher, fireReason: fire_reason ? UTF8ToString(fire_reason) : null,
-        nearby: [],
-    };
 });
 
 EM_JS(void, add_world_condition, (const char *label, int priority), {
     Module['worldConditions'].push({ label: UTF8ToString(label), priority });
 });
 
-EM_JS(void, add_nearby_action, (const char *label, int key), {
-    Module['worldActions'].nearby.push({ label: UTF8ToString(label), key: String.fromCodePoint(key) });
-});
-
-static const char *cast_reason(void)
-{
-    if (!player->class->magic.total_spells) return NULL;
-    if (!player_can_cast(player, false)) {
-        if (player->timed[TMD_BLIND]) return "You are blind";
-        if (no_light(player)) return "It is too dark to cast";
-        return "You are confused";
-    }
-
-    for (struct object *obj = player->gear; obj; obj = obj->next)
-        if (obj_can_cast_from(obj)) return NULL;
-    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next)
-        if (obj->known && obj->known->kind == obj->kind &&
-            !ignore_item_ok(player, obj) && obj_can_cast_from(obj)) return NULL;
-    return "No book with a learned spell is available";
-}
-
-static const char *fire_reason(void)
-{
-    for (struct object *obj = player->gear; obj; obj = obj->next)
-        if (obj_can_fire(obj)) return NULL;
-    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next)
-        if (obj->known && obj->known->kind == obj->kind &&
-            !ignore_item_ok(player, obj) && obj_can_fire(obj)) return NULL;
-    return "No suitable ammunition";
-}
-
-static void collect_nearby_actions(void)
-{
-    struct loc here = player->grid;
-    bool open_chest = false, disarm_chest = false, close_door = false;
-    bool tunnel = false;
-
-    if (square_isupstairs(cave, here) && !OPT(player, birth_force_descend))
-        add_nearby_action("Ascend", '<');
-    else if (square_isdownstairs(cave, here))
-        add_nearby_action("Descend", '>');
-    for (struct object *obj = square_object(cave, here); obj; obj = obj->next) {
-        if (obj->known && !ignore_item_ok(player, obj)) {
-            add_nearby_action("Pick up", 'g');
-            break;
-        }
-    }
-
-    for (int dy = -1; dy <= 1; ++dy) {
-        for (int dx = -1; dx <= 1; ++dx) {
-            struct loc grid = loc(here.x + dx, here.y + dy);
-            if (!square_in_bounds(cave, grid) || !square_isknown(cave, grid)) continue;
-            for (struct object *obj = square_object(cave, grid); obj; obj = obj->next) {
-                if (!obj->known || !tval_is_chest(obj) || ignore_item_ok(player, obj) ||
-                    obj->known->kind != obj->kind) continue;
-                if (obj->pval) open_chest = true;
-                if (obj->known->pval > 0 && is_trapped_chest(obj)) disarm_chest = true;
-            }
-            if (dx || dy) {
-                close_door |= square_isopendoor(player->cave, grid);
-                tunnel |= square_isrubble(player->cave, grid) ||
-                    square_hasgoldvein(player->cave, grid);
-            }
-        }
-    }
-
-    if (disarm_chest) add_nearby_action("Disarm", 'D');
-    if (open_chest) add_nearby_action("Open chest", 'o');
-    if (close_door) add_nearby_action("Close door", 'c');
-    if (tunnel) add_nearby_action("Tunnel",
-        OPT(player, rogue_like_commands) ? KTRL('T') : 'T');
-    if (OPT(player, autoexplore_commands)) {
-        if (!square_isupstairs(cave, here) && !OPT(player, birth_force_descend))
-            add_nearby_action("Find upstairs", '<');
-        if (!square_isdownstairs(cave, here)) add_nearby_action("Find downstairs", '>');
-    }
-}
-
-static void publish_world(bool commands)
+static void publish_world(void)
 {
     const term *map = angband_term[MAP_TERM];
     const char *lines[LOG_LIMIT];
@@ -324,8 +235,7 @@ static void publish_world(bool commands)
     bool magic = player->class->magic.total_spells > 0;
     const char *food_grade = "";
 
-    bool launcher = commands && player_can_fire(player, false);
-    start_world_status(commands ? cast_reason() : NULL, launcher, launcher ? fire_reason() : NULL);
+    start_world_status();
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
         struct timed_grade *grade = timed_effects[effect].grade;
@@ -376,7 +286,6 @@ static void publish_world(bool commands)
         add_world_condition(speed, speed_offset < 0 ? 45 : 40);
     }
 
-    if (commands) collect_nearby_actions();
     for (int i = 0; i < count; i++) {
         lines[i] = message_str(i);
         repeats[i] = message_count(i);
@@ -385,7 +294,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands), !player->timed[TMD_CONFUSED]);
+        OPT(player, rogue_like_commands));
 }
 
 static double last_interrupt_poll;
@@ -510,7 +419,7 @@ static ui_event_type wait_for_input(void)
         window_flag[MAP_TERM] == PW_OVERHEAD;
     if (playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_CHARACTER ||
             world_view || (aiming && map_visible)))
-        publish_world(mode == WEB_INPUT_COMMAND);
+        publish_world();
     if (mode == WEB_INPUT_TARGET || (map_visible &&
             (mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION))) {
         x = COL_MAP;

@@ -295,22 +295,17 @@ dt { color: var(--muted); }
 .control-body:not(:has(> fieldset:not([hidden]))) { display: none; }
 .control-body > fieldset { align-self: start; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.direction-pad, .key-row, .command-grid, #play-keys, #terminal-keys { display: grid; gap: 0.25rem; }
+.direction-pad, .key-row, #world-actions, #play-keys, #terminal-keys { display: grid; gap: 0.25rem; }
 .direction-pad { grid-template-columns: repeat(3, 44px); }
 .direction-pad button { padding: 0; font: 1.25rem var(--mono); }
 #direction-center { line-height: 1; }
 #center-caption { display: block; margin-top: 0.1rem; font: 0.625rem system-ui, sans-serif; }
 .direction-pad.cardinal :is(.diagonal, #direction-center), #direction-center:disabled { visibility: hidden; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.command-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#use-item, #stop-action { border-color: #9c7749; }
-#stop-action { align-self: end; min-width: 88px; }
-#cast { grid-area: 1 / 2; }
-#fire { grid-area: 2 / 2; }
-#world-actions [data-key="i"] { grid-area: 2 / 1; }
-#world-actions [data-key="R"] { grid-area: 3 / 1; }
-#interact { grid-area: 3 / 2; }
-#play-keys { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#world-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#stop-action { align-self: end; min-width: 88px; border-color: #9c7749; }
+#play-keys { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+:is(#world-actions, #play-keys) kbd { font: 1.125rem var(--mono); color: var(--accent); }
 #aim-actions, #stat-actions { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys { grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr); }
 #confirm-key { border-color: #9c7749; }
