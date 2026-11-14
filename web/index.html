@@ -30,6 +30,7 @@
                     View
                 </button>
                 <div id="view-controls">
+                    <button id="level-map" type="button" data-key="M" hidden>Level map</button>
                     <button id="toggle-tiles" type="button" aria-pressed="false" disabled hidden>Tiles</button>
                     <div class="zoom" role="group" aria-label="Zoom">
                         <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
@@ -58,7 +59,20 @@
                 <fieldset id="menu-rows" class="menu-rows" aria-label="Choices"></fieldset>
                 <p id="menu-empty" hidden>No items.</p>
             </div>
-            <fieldset id="commands-screen" class="menu-screen menu-rows" aria-label="Commands" disabled hidden></fieldset>
+            <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
+            <section id="character-screen" class="menu-screen" aria-label="Character" hidden>
+                <div class="character-identity">
+                    <h3 id="character-name"></h3>
+                    <p id="character-class"></p>
+                </div>
+                <div class="character-sections" aria-label="Character sections" role="group">
+                    <button type="button" data-character-section="overview" aria-controls="character-content" aria-pressed="true">Overview</button>
+                    <button type="button" data-character-section="defenses" aria-controls="character-content" aria-pressed="false">Defenses</button>
+                    <button type="button" data-character-section="conditions" aria-controls="character-content" aria-pressed="false">Conditions</button>
+                </div>
+                <div id="character-content"></div>
+            </section>
+            <section id="conditions-screen" class="menu-screen" aria-label="Conditions" hidden></section>
             <div id="edit-screen" class="menu-screen" hidden>
                 <p id="edit-value" aria-label="Current value"></p>
             </div>
@@ -78,16 +92,15 @@
         </section>
 
         <section id="hud" aria-label="Character status" hidden>
-            <div class="location">
-                <strong id="character"></strong>
-                <span id="depth"></span>
-            </div>
-            <dl class="stats">
-                <div><dt>HP</dt><dd id="hp"></dd></div>
-                <div><dt>MP</dt><dd id="sp"></dd></div>
-                <div><dt>AC</dt><dd id="ac"></dd></div>
-                <div><dt>Gold</dt><dd id="gold"></dd></div>
-            </dl>
+            <button id="vitals" type="button" aria-label="Conditions">
+                <span class="vital-values">
+                    <span id="hp"></span><span id="sp"></span><span id="depth"></span>
+                </span>
+                <span class="condition-summary">
+                    <span id="active-conditions"></span><span id="extra-conditions" hidden></span>
+                </span>
+            </button>
+            <button id="open-character" type="button">Character</button>
         </section>
 
         <div class="controls">
@@ -105,7 +118,14 @@
                     <button type="button" data-key="ArrowDown" aria-label="Down">↓</button>
                     <button class="diagonal" type="button" data-key="3" aria-label="Down right">↘</button>
                 </fieldset>
-                <fieldset id="world-actions" class="command-grid" aria-label="Quick commands" disabled hidden></fieldset>
+                <fieldset id="world-actions" class="command-grid" aria-label="Quick actions" disabled hidden>
+                    <button id="use-item" type="button" data-key="U">Use item</button>
+                    <button id="cast" type="button" data-key="m" hidden>Cast</button>
+                    <button type="button" data-key="i">Pack</button>
+                    <button id="fire" type="button" data-key="f" hidden>Fire</button>
+                    <button type="button" data-key="R">Rest</button>
+                    <button id="interact" type="button" aria-controls="actions-screen">Interact</button>
+                </fieldset>
                 <fieldset id="stat-actions" class="key-row" aria-label="Stat allocation" disabled hidden>
                     <button type="button" data-key="r">Reset stats</button>
                 </fieldset>
@@ -136,10 +156,16 @@
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
             <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>
             <fieldset id="keyboard" class="key-panel" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
+            <fieldset id="play-keys" aria-label="Game controls" disabled hidden>
+                <button id="run" type="button" data-key=".">Run</button>
+                <button id="look" type="button" data-key="l">Look</button>
+                <button id="play-keyboard" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
+                <button id="open-menu" type="button" aria-controls="actions-screen">Menu</button>
+            </fieldset>
+            <button id="stop-action" type="button" hidden>Stop</button>
             <fieldset id="terminal-keys" aria-label="Angband controls" disabled>
                 <button id="cancel-key" type="button" data-key="Escape" aria-label="Back">Back</button>
-                <button id="keyboard-toggle" type="button" aria-label="Keyboard" aria-controls="keyboard"
-                        aria-expanded="false">ABC</button>
+                <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
                 <button id="confirm-key" type="button" data-key="Enter">Continue</button>
             </fieldset>
         </div>

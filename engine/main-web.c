@@ -8,7 +8,15 @@
 #include "init.h"
 #include "message.h"
 #include "monster.h"
+#include "obj-chest.h"
+#include "obj-desc.h"
+#include "obj-gear.h"
+#include "obj-ignore.h"
+#include "obj-tval.h"
+#include "obj-util.h"
 #include "player.h"
+#include "player-timed.h"
+#include "player-util.h"
 #include "target.h"
 #include "ui-input.h"
 #include "ui-keymap.h"
@@ -41,6 +49,7 @@ static const char *const input_modes[] = {
     [WEB_INPUT_DETAILS] = "details",
     [WEB_INPUT_HISTORY] = "history",
     [WEB_INPUT_BIRTH_STATS] = "birth-stats",
+    [WEB_INPUT_CHARACTER] = "character",
 };
 
 enum web_input_mode web_set_input_mode(enum web_input_mode mode)
@@ -98,6 +107,29 @@ EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
 
 EM_JS(void, web_set_history, (const char *text), {
     Module['inputContext'] = { detail: UTF8ToString(text) };
+});
+
+EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
+        int level, const char *history), {
+    Module['inputContext'] = { character: {
+        name: UTF8ToString(name), race: UTF8ToString(race), className: UTF8ToString(class_name),
+        level, history: UTF8ToString(history), rows: [], defenses: [],
+    } };
+});
+
+EM_JS(void, web_character_row, (int section, const char *label, const char *value), {
+    Module['inputContext'].character.rows.push({
+        section, label: UTF8ToString(label), value: UTF8ToString(value).trim().replace(/ +/g, " "),
+    });
+});
+
+EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int length,
+        const char *value, const char *temporary), {
+    Module['inputContext'].character.defenses.push({
+        group: UTF8ToString(group),
+        label: String.fromCodePoint(...HEAPU32.subarray(label >>> 2, (label >>> 2) + length)).trim(),
+        value: UTF8ToString(value), temporary: temporary ? UTF8ToString(temporary) : "",
+    });
 });
 
 EM_JS(void, web_set_menu, (const struct menu *menu, int cursor, const char *prompt), {
@@ -171,9 +203,10 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
     Module['sendFrame'](frame);
 });
 
-EM_JS(void, send_world, (const char *name, int level, int depth, int gold,
-        int hp, int max_hp, int sp, int max_sp, int ac, int x, int y,
-        int count, const char *const *lines, const int *repeats, int roguelike), {
+EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
+        bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
+        int count, const char *const *lines, const int *repeats, bool roguelike,
+        bool can_run), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -181,9 +214,196 @@ EM_JS(void, send_world, (const char *name, int level, int depth, int gold,
             count: HEAP32[(repeats >>> 2) + i]
         });
     }
-    Module['sendWorld']({ name: UTF8ToString(name), level, depth, gold,
-        hp, maxHp: max_hp, sp, maxSp: max_sp, ac, x, y, log, roguelike: !!roguelike });
+    Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
+        magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
+        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, canRun: !!can_run,
+        conditions: Module['worldConditions'], actions: Module['worldActions'],
+    });
 });
+
+EM_JS(void, start_world_status, (const char *cast_reason, bool launcher, const char *fire_reason), {
+    Module['worldConditions'] = [];
+    Module['worldActions'] = {
+        castReason: cast_reason ? UTF8ToString(cast_reason) : null,
+        launcher: !!launcher, fireReason: fire_reason ? UTF8ToString(fire_reason) : null,
+        nearby: [],
+    };
+});
+
+EM_JS(void, add_world_condition, (const char *label, int priority), {
+    Module['worldConditions'].push({ label: UTF8ToString(label), priority });
+});
+
+EM_JS(void, add_nearby_action, (const char *label, int key), {
+    Module['worldActions'].nearby.push({ label: UTF8ToString(label), key: String.fromCodePoint(key) });
+});
+
+static const char *cast_reason(void)
+{
+    if (!player->class->magic.total_spells) return NULL;
+    if (!player_can_cast(player, false)) {
+        if (player->timed[TMD_BLIND]) return "You are blind";
+        if (no_light(player)) return "It is too dark to cast";
+        return "You are confused";
+    }
+
+    for (struct object *obj = player->gear; obj; obj = obj->next)
+        if (obj_can_cast_from(obj)) return NULL;
+    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next)
+        if (obj->known && obj->known->kind == obj->kind &&
+            !ignore_item_ok(player, obj) && obj_can_cast_from(obj)) return NULL;
+    return "No book with a learned spell is available";
+}
+
+static const char *fire_reason(void)
+{
+    for (struct object *obj = player->gear; obj; obj = obj->next)
+        if (obj_can_fire(obj)) return NULL;
+    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next)
+        if (obj->known && obj->known->kind == obj->kind &&
+            !ignore_item_ok(player, obj) && obj_can_fire(obj)) return NULL;
+    return "No suitable ammunition";
+}
+
+static void collect_nearby_actions(void)
+{
+    struct loc here = player->grid;
+    bool open_chest = false, disarm_chest = false, close_door = false;
+    bool tunnel = false;
+
+    if (square_isupstairs(cave, here) && !OPT(player, birth_force_descend))
+        add_nearby_action("Ascend", '<');
+    else if (square_isdownstairs(cave, here))
+        add_nearby_action("Descend", '>');
+    for (struct object *obj = square_object(cave, here); obj; obj = obj->next) {
+        if (obj->known && !ignore_item_ok(player, obj)) {
+            add_nearby_action("Pick up", 'g');
+            break;
+        }
+    }
+
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            struct loc grid = loc(here.x + dx, here.y + dy);
+            if (!square_in_bounds(cave, grid) || !square_isknown(cave, grid)) continue;
+            for (struct object *obj = square_object(cave, grid); obj; obj = obj->next) {
+                if (!obj->known || !tval_is_chest(obj) || ignore_item_ok(player, obj) ||
+                    obj->known->kind != obj->kind) continue;
+                if (obj->pval) open_chest = true;
+                if (obj->known->pval > 0 && is_trapped_chest(obj)) disarm_chest = true;
+            }
+            if (dx || dy) {
+                close_door |= square_isopendoor(player->cave, grid);
+                tunnel |= square_isrubble(player->cave, grid) ||
+                    square_hasgoldvein(player->cave, grid);
+            }
+        }
+    }
+
+    if (disarm_chest) add_nearby_action("Disarm", 'D');
+    if (open_chest) add_nearby_action("Open chest", 'o');
+    if (close_door) add_nearby_action("Close door", 'c');
+    if (tunnel) add_nearby_action("Tunnel",
+        OPT(player, rogue_like_commands) ? KTRL('T') : 'T');
+    if (OPT(player, autoexplore_commands)) {
+        if (!square_isupstairs(cave, here) && !OPT(player, birth_force_descend))
+            add_nearby_action("Find upstairs", '<');
+        if (!square_isdownstairs(cave, here)) add_nearby_action("Find downstairs", '>');
+    }
+}
+
+static void publish_world(bool commands)
+{
+    const term *map = angband_term[MAP_TERM];
+    const char *lines[LOG_LIMIT];
+    int repeats[LOG_LIMIT];
+    int count = MIN(messages_num(), LOG_LIMIT);
+    char speed[32], light_name[160];
+    struct object *light = equipped_item_by_slot_name(player, "light");
+    int speed_offset = player->state.speed - 110;
+    bool magic = player->class->magic.total_spells > 0;
+    const char *food_grade = "";
+
+    bool launcher = commands && player_can_fire(player, false);
+    start_world_status(commands ? cast_reason() : NULL, launcher, launcher ? fire_reason() : NULL);
+    for (int effect = 0; effect < TMD_MAX; ++effect) {
+        if (!player->timed[effect]) continue;
+        struct timed_grade *grade = timed_effects[effect].grade;
+        while (grade && player->timed[effect] > grade->max) grade = grade->next;
+        if (!grade || !grade->name) continue;
+
+        int priority = 0;
+        switch (effect) {
+            case TMD_PARALYZED: priority = 100; break;
+            case TMD_CONFUSED: priority = 95; break;
+            case TMD_BLIND: priority = 90; break;
+            case TMD_POISONED: priority = 85; break;
+            case TMD_CUT: priority = 80; break;
+            case TMD_STUN: priority = 75; break;
+            case TMD_TERROR:
+            case TMD_IMAGE:
+            case TMD_AFRAID:
+            case TMD_AMNESIA:
+                priority = 70; break;
+            case TMD_FOOD:
+                food_grade = grade->name;
+                if (streq(grade->name, "Fed")) continue;
+                priority = player->timed[effect] <= PY_FOOD_FAINT ? 96 : 50;
+                break;
+        }
+        add_world_condition(grade->name, priority);
+    }
+    if (player->word_recall) add_world_condition("Recall", 55);
+    if (player->deep_descent) add_world_condition("Descent", 55);
+    if (light) {
+        object_desc(light_name, sizeof(light_name), light, ODESC_BASE | ODESC_COMBAT, player);
+        if (!of_has(light->flags, OF_NO_FUEL) && light->timeout > 0 && light->timeout < 50)
+            add_world_condition("Low light fuel", 65);
+    } else {
+        my_strcpy(light_name, "No light source equipped", sizeof(light_name));
+    }
+    if (!player->timed[TMD_BLIND] && no_light(player)) add_world_condition("Darkness", 66);
+
+    my_strcpy(speed, "Normal", sizeof(speed));
+    if (speed_offset) {
+        const char *label = speed_offset > 0 ? "Fast" : "Slow";
+        if (OPT(player, effective_speed)) {
+            int multiplier = 10 * extract_energy[player->state.speed] / extract_energy[110];
+            strnfmt(speed, sizeof(speed), "%s (%d.%dx)", label, multiplier / 10, multiplier % 10);
+        } else {
+            strnfmt(speed, sizeof(speed), "%s (%+d)", label, speed_offset);
+        }
+        add_world_condition(speed, speed_offset < 0 ? 45 : 40);
+    }
+
+    if (commands) collect_nearby_actions();
+    for (int i = 0; i < count; i++) {
+        lines[i] = message_str(i);
+        repeats[i] = message_count(i);
+    }
+    send_world(player->depth, player->chp, player->mhp, player->csp, player->msp,
+        player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
+        food_grade, player->timed[TMD_FOOD] / 100,
+        player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
+        OPT(player, rogue_like_commands), !player->timed[TMD_CONFUSED]);
+}
+
+static double last_interrupt_poll;
+
+EM_JS(bool, take_interrupt, (void), {
+    return Module['takeInterrupt']();
+});
+
+void web_poll_interrupt(void)
+{
+    if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
+    double now = emscripten_get_now();
+    if (now - last_interrupt_poll >= 16) {
+        last_interrupt_poll = now;
+        emscripten_sleep(1);
+    }
+    if (take_interrupt()) Term_keypress(ESCAPE, 0);
+}
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell), {
@@ -221,7 +441,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     if (prompt) context.prompt = UTF8ToString(prompt);
     if (verb) context.verb = UTF8ToString(verb);
     if (player_x >= 0) context.player = { x: player_x, y: player_y };
-    if (modeName === "more") context.worldView = !!world_view;
+    if (modeName === "command" || modeName === "more") context.worldView = !!world_view;
     const action = await Module['waitForInput'](modeName, region, !!playing,
         context, menu);
     switch (action) {
@@ -285,23 +505,12 @@ static ui_event_type wait_for_input(void)
     }
     if (mode == WEB_INPUT_TARGET && !map_visible) mode = WEB_INPUT_DETAILS;
 
-    bool world_view = (mode == WEB_INPUT_COMMAND ||
-        (mode == WEB_INPUT_MORE && map_visible && playing)) && window_flag[MAP_TERM] == PW_OVERHEAD;
-    if (world_view) {
-        const term *map = angband_term[MAP_TERM];
-        const char *lines[LOG_LIMIT];
-        int repeats[LOG_LIMIT];
-        int count = MIN(messages_num(), LOG_LIMIT);
-        for (int i = 0; i < count; i++) {
-            lines[i] = message_str(i);
-            repeats[i] = message_count(i);
-        }
-        send_world(player->full_name, player->lev, player->depth, player->au,
-            player->chp, player->mhp, player->csp, player->msp,
-            player->known_state.ac + player->known_state.to_a,
-            player->grid.x - map->offset_x, player->grid.y - map->offset_y,
-            count, lines, repeats, OPT(player, rogue_like_commands));
-    }
+    bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION;
+    bool world_view = map_visible && playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE) &&
+        window_flag[MAP_TERM] == PW_OVERHEAD;
+    if (playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_CHARACTER ||
+            world_view || (aiming && map_visible)))
+        publish_world(mode == WEB_INPUT_COMMAND);
     if (mode == WEB_INPUT_TARGET || (map_visible &&
             (mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION))) {
         x = COL_MAP;

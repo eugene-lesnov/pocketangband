@@ -18,16 +18,24 @@ const downloadSave = document.querySelector("#download-save");
 const shareSave = document.querySelector("#share-save");
 const viewTitle = document.querySelector("#view-title");
 const viewOptions = document.querySelector("#view-options");
+const levelMap = document.querySelector("#level-map");
 const toggleTiles = document.querySelector("#toggle-tiles");
 const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
-const character = document.querySelector("#character");
+const vitals = document.querySelector("#vitals");
+const openCharacter = document.querySelector("#open-character");
 const depth = document.querySelector("#depth");
 const hp = document.querySelector("#hp");
 const sp = document.querySelector("#sp");
-const ac = document.querySelector("#ac");
-const gold = document.querySelector("#gold");
+const activeConditions = document.querySelector("#active-conditions");
+const extraConditions = document.querySelector("#extra-conditions");
+const conditionsScreen = document.querySelector("#conditions-screen");
+const characterScreen = document.querySelector("#character-screen");
+const characterName = document.querySelector("#character-name");
+const characterClass = document.querySelector("#character-class");
+const characterContent = document.querySelector("#character-content");
+const characterTabs = [...characterScreen.querySelectorAll("[data-character-section]")];
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
 const previousMessage = document.querySelector("#previous-message");
@@ -39,6 +47,16 @@ const terminalKeys = document.querySelector("#terminal-keys");
 const cancelKey = document.querySelector("#cancel-key");
 const confirmKey = document.querySelector("#confirm-key");
 const worldActions = document.querySelector("#world-actions");
+const useItem = document.querySelector("#use-item");
+const cast = document.querySelector("#cast");
+const fire = document.querySelector("#fire");
+const interact = document.querySelector("#interact");
+const playKeys = document.querySelector("#play-keys");
+const playKeyboard = document.querySelector("#play-keyboard");
+const run = document.querySelector("#run");
+const look = document.querySelector("#look");
+const openMenu = document.querySelector("#open-menu");
+const stopAction = document.querySelector("#stop-action");
 const statActions = document.querySelector("#stat-actions");
 const aimActions = document.querySelector("#aim-actions");
 const nearest = document.querySelector("#nearest");
@@ -57,7 +75,7 @@ const menuSections = document.querySelector("#menu-sections");
 const menuRows = document.querySelector("#menu-rows");
 const menuEmpty = document.querySelector("#menu-empty");
 const menuActions = document.querySelector("#menu-actions");
-const commandsScreen = document.querySelector("#commands-screen");
+const actionsScreen = document.querySelector("#actions-screen");
 const quantity = document.querySelector("#quantity");
 const rest = document.querySelector("#rest");
 const keyboard = document.querySelector("#keyboard");
@@ -68,28 +86,19 @@ const specialKeys = new Map([
     ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83], ["CtrlT", 20],
 ]);
 
-const commandGroups = [
-    ["Explore", [
-        ["<", "Ascend stairs"], [">", "Descend stairs"], ["g", "Pick up"], ["R", "Rest"],
-        ["l", "Look around", "x"], ["*", "Choose a target"], ["M", "Level map"],
-        ["o", "Open"], ["c", "Close"], ["D", "Disarm"], ["T", "Tunnel", "CtrlT"],
-    ]],
-    ["Items and combat", [
-        ["i", "Inventory"], ["e", "Equipment"], ["U", "Use an item", "X"], ["w", "Wear or wield"],
-        ["t", "Take off", "T"], ["|", "Quiver"], ["f", "Fire", "t"], ["m", "Cast"],
-        ["v", "Throw"], ["h", "Fire at nearest", "Tab"],
-    ]],
-    ["Game", [
-        ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
-        ["=", "Options"], ["?", "Help"], ["Enter", "All Angband commands"],
-    ]],
+const gameMenu = [
+    ["Save", "Save"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
 ];
-const commandByKey = new Map(commandGroups.flatMap(([, commands]) => commands.map((command) =>
-    [command[0], command])));
-const quickCommands = ["<", ">", "g", "i", "e", "U", "f", "m", "R"].map((key) => commandByKey.get(key));
-const commandFaces = new Map([["CtrlT", "^T"], ["Tab", "⇥"]]);
+const extraCommands = [
+    ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
+    ["*", "Choose a target"], ["[", "Visible monsters"], ["]", "Visible objects"],
+    ["h", "Fire at nearest", "Tab"], ["+", "Alter a grid"], ["T", "Tunnel", "CtrlT"],
+    ["D", "Disarm or lock"], ["o", "Open"], ["c", "Close door"],
+    ["Enter", "All Angband commands"],
+];
+const panelTitles = { menu: "Menu", commands: "Commands", interact: "Interact", conditions: "Conditions" };
+const commandFaces = new Map([["CtrlT", "^T"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and MP"], ["!", "HP or MP"]]);
-const keyboardHeight = 230;
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const views = {
@@ -124,9 +133,13 @@ let context = {};
 let menu;
 let renderedMenu;
 let menuCursor;
-let commandsOpen = false;
-let keyboardOnly = false;
-let commandKeyset;
+let openPanel;
+let panelTrigger;
+let actionReason = "";
+let characterSection = "overview";
+let characterTrigger;
+let pendingInput;
+let stopTimer;
 let saving = false;
 let transferring = false;
 let preparedFile;
@@ -136,7 +149,7 @@ let backgroundSaveRequested = false;
 let drawPending = false;
 let centerPending = false;
 let keyboardOpen = false;
-let symbols = false;
+let keyboardLayer = 0;
 let shifted = false;
 
 function render(view, frame, region = {}) {
@@ -289,12 +302,22 @@ function setZoom(index) {
 }
 
 function renderWorld(state) {
-    character.textContent = `${state.name} · Lv. ${state.level}`;
-    depth.textContent = state.depth ? `Depth ${state.depth}` : "Town";
-    hp.textContent = `${state.hp}/${state.maxHp}`;
-    sp.textContent = `${state.sp}/${state.maxSp}`;
-    ac.textContent = state.ac;
-    gold.textContent = state.gold;
+    const depthLabel = state.depth ? `${state.depth * 50}′` : "Town";
+    depth.textContent = depthLabel;
+    hp.textContent = `HP ${state.hp}/${state.maxHp}`;
+    hp.classList.toggle("low", state.lowHp);
+    sp.textContent = `MP ${state.sp}/${state.maxSp}`;
+    sp.hidden = !state.magic;
+    const alerts = [...state.conditions].sort((left, right) => right.priority - left.priority);
+    const labels = alerts.slice(0, 2).map(({ label }) => label);
+    if (labels.length === 2 && labels.join(" · ").length > 25) labels.pop();
+    const more = alerts.length - labels.length;
+    activeConditions.textContent = labels.join(" · ");
+    extraConditions.hidden = more <= 0;
+    extraConditions.textContent = `+${more}`;
+    vitals.setAttribute("aria-label", [hp.textContent, state.magic && sp.textContent,
+        state.depth ? `Depth ${state.depth * 50} feet` : "Town", ...labels,
+        more > 0 && `${more} more conditions`, "View conditions"].filter(Boolean).join(", "));
 
     const lines = state.log.flatMap(({ text, count }) => {
         const line = text.trim();
@@ -312,6 +335,82 @@ function renderWorld(state) {
     messages.scrollTop = messages.scrollHeight;
 }
 
+function characterRows(rows) {
+    const list = document.createElement("dl");
+    list.className = "character-rows";
+    for (const { label, value, temporary } of rows) {
+        const row = document.createElement("div");
+        const term = document.createElement("dt");
+        const description = document.createElement("dd");
+        term.textContent = label;
+        description.textContent = value;
+        if (temporary) {
+            const effect = document.createElement("small");
+            effect.textContent = `${temporary} (temporary)`;
+            description.append(effect);
+        }
+        row.append(term, description);
+        list.append(row);
+    }
+    return list;
+}
+
+function appendCharacterGroup(container, title, rows) {
+    const heading = document.createElement("h3");
+    heading.textContent = title;
+    container.append(heading, characterRows(rows));
+}
+
+function renderConditions(container) {
+    const state = world;
+    const rows = [
+        { label: "Nourishment", value: [state.foodGrade, `${state.food}%`].filter(Boolean).join(" · ") },
+        { label: "Speed", value: state.speed },
+        { label: "Light source", value: state.light },
+    ];
+    container.replaceChildren(characterRows(rows));
+    const effects = state.conditions.filter(({ label }) => label !== state.speed && label !== state.foodGrade)
+        .map(({ label }) => ({ label, value: "Active" }));
+    if (effects.length) appendCharacterGroup(container, "Active effects", effects);
+}
+
+function renderCharacter() {
+    const sheet = context.character;
+    if (!sheet) return;
+    characterName.textContent = sheet.name;
+    characterName.hidden = !sheet.name;
+    characterClass.textContent = `${sheet.race} ${sheet.className} · Level ${sheet.level}`;
+    for (const button of characterTabs)
+        button.setAttribute("aria-pressed", String(button.dataset.characterSection === characterSection));
+
+    if (characterSection === "conditions") {
+        renderConditions(characterContent);
+        return;
+    }
+    characterContent.replaceChildren();
+    if (characterSection === "defenses") {
+        for (const [group, title] of [["resistances", "Resistances"],
+            ["abilities", "Abilities"], ["hindrances", "Hindrances"]]) {
+            appendCharacterGroup(characterContent, title, sheet.defenses.filter((row) => row.group === group));
+        }
+        return;
+    }
+    characterContent.append(characterRows([
+        { label: "HP", value: `${world.hp}/${world.maxHp}` },
+        ...(world.magic ? [{ label: "MP", value: `${world.sp}/${world.maxSp}` }] : []),
+        ...sheet.rows.filter((row) => row.section === 2 && row.label !== "Level"),
+    ]));
+    for (const [section, title] of [[0, "Attributes"], [3, "Combat"], [4, "Skills"], [1, "Background"]]) {
+        appendCharacterGroup(characterContent, title, sheet.rows.filter((row) => row.section === section));
+    }
+    if (sheet.history) {
+        const history = document.createElement("p");
+        history.className = "character-history";
+        history.textContent = sheet.history;
+        characterContent.append(history);
+    }
+}
+
 function isMenu() {
     return mode === "menu" || mode === "save-slots";
 }
@@ -321,11 +420,37 @@ function isTextEntry(state) {
 }
 
 function closeInputPanel() {
-    if (!commandsOpen && (!keyboardOpen || isTextEntry(mode))) return false;
-    commandsOpen = keyboardOpen = keyboardOnly = false;
+    if (openPanel) {
+        if (openPanel === "commands") {
+            showPanel("menu", panelTrigger);
+        } else {
+            const trigger = panelTrigger;
+            showPanel();
+            trigger?.focus({ preventScroll: true });
+        }
+        return true;
+    }
+    if (!keyboardOpen || isTextEntry(mode)) return false;
+    toggleKeyboard();
+    return true;
+}
+
+function showPanel(panel, trigger) {
+    openPanel = panel;
+    panelTrigger = trigger;
+    actionReason = "";
+    if (panel) {
+        journal.open = false;
+        viewOptions.setAttribute("aria-expanded", "false");
+        renderActionsPanel();
+        if (panel === "conditions") renderConditions(conditionsScreen);
+    }
     updateView();
     updateControls();
-    return true;
+    if (panel) {
+        const firstAction = panel === "conditions" ? cancelKey : actionsScreen.querySelector("button");
+        firstAction.focus({ preventScroll: true });
+    }
 }
 
 function updateControls() {
@@ -343,60 +468,72 @@ function updateControls() {
     const more = mode === "more";
     const overview = mode === "overview";
     const details = mode === "details";
+    const character = mode === "character";
+    const canEditCharacter = character && !disabled;
     const hasTarget = aiming && context.current;
-    const canOpenKeyboard = !counting && !resting && !confirming && !history && !more && !overview && !details;
-    const showKeyboard = keyboardOpen && !commandsOpen && canOpenKeyboard;
-    toggleTiles.hidden = !command || commandsOpen;
+    const canOpenKeyboard = !counting && !resting && !confirming && !history &&
+        !more && !overview && !details && !openPanel;
+    const showKeyboard = keyboardOpen && canOpenKeyboard;
+    const playing = command && !openPanel && !showKeyboard;
+    const stopVisible = !stopAction.hidden;
+    levelMap.hidden = toggleTiles.hidden = !command || !!openPanel;
+    levelMap.disabled = disabled;
     toggleTiles.disabled = disabled || !tilesReady;
     toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
+    openCharacter.disabled = !command || disabled;
+    vitals.disabled = disabled || !(selecting || aiming || directing || command);
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
     const playPad = command || selecting || aiming || directing;
-    const padVisible = !commandsOpen && !keyboardOnly &&
-        (playPad || stats || (isMenu() && !menu && !showKeyboard));
+    const padVisible = !openPanel && !showKeyboard && !stopVisible &&
+        (playPad || stats || (isMenu() && !menu));
     setActions(directionPad, padVisible, disabled);
     directionPad.classList.toggle("cardinal", mode === "save-slots" || stats);
     directionCenter.disabled = !command && !(directing && context.center);
     centerCaption.textContent = directing ? "Here" : "Wait";
     directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Wait one turn");
-    setActions(terminalKeys, true, disabled);
+    setActions(playKeys, playing && !stopVisible, disabled);
+    setActions(terminalKeys, !playing && !stopVisible && !(command && showKeyboard), disabled);
     confirmKey.dataset.key = confirming || history ? "y" : selecting ? "t" : aiming ?
-        hasTarget ? "5" : "*" : details ? "Escape" : "Enter";
+        hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
-    confirmKey.textContent = command ? commandsOpen ? "All commands" : "Commands" :
-        confirming ? "Yes" : history ? "Keep history" : selecting ? context.attack ? context.verb : "Select target" :
+    confirmKey.textContent = confirming ? "Yes" : history ? "Keep history" :
+        selecting ? context.attack ? context.verb : "Select target" :
         aiming ? hasTarget ? useTarget : "Choose target" :
         editing || counting || resting || stats ? "Done" : isMenu() ? "Select" :
-        overview || details ? "Close" : "Continue";
+        overview || details || character ? "Close" : "Continue";
+    confirmKey.hidden = !!openPanel;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
-    cancelKey.textContent = confirming ? "No" : history ? "Edit history" : commandsOpen || (showKeyboard && !editing) ?
+    cancelKey.textContent = confirming ? "No" : history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
         "Back" : selecting || aiming || directing || editing || counting || resting ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    cancelKey.disabled = more || (command && !commandsOpen && !keyboardOpen);
-    setActions(worldActions, command && !commandsOpen && !keyboardOnly, disabled);
-    setActions(statActions, stats && !showKeyboard, disabled);
-    setActions(aimActions, aiming && !keyboardOnly && (context.nearest || hasTarget), disabled);
+    cancelKey.hidden = more || character;
+    setActions(worldActions, playing && !stopVisible, disabled);
+    interact.disabled = interact.hidden;
+    setActions(statActions, stats && !showKeyboard && !openPanel, disabled);
+    setActions(aimActions, aiming && !showKeyboard && !openPanel && (context.nearest || hasTarget), disabled);
     nearest.hidden = !context.nearest;
     nearest.textContent = `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest`;
     aimActions.lastElementChild.hidden = !hasTarget;
-    setActions(targetActions, selecting && !keyboardOnly, disabled);
+    setActions(targetActions, selecting && !showKeyboard && !openPanel, disabled);
     previousTarget.disabled = nextTarget.disabled = context.freeAim || context.targetCount < 2;
     targetMode.textContent = context.freeAim ? "Targets" : "Free aim";
     targetMode.dataset.key = context.freeAim ? "m" : "o";
     targetMode.disabled = context.freeAim && !context.targetCount;
     targetInspect.disabled = !context.canInspect;
     setActions(quantity, counting, disabled);
-    setActions(rest, resting, disabled);
-    setActions(keyboard, showKeyboard, disabled);
-    main.classList.toggle("keyboard-open", showKeyboard && !keyboardOnly);
-    keyboardToggle.disabled = !canOpenKeyboard || commandsOpen;
+    setActions(rest, resting && !stopVisible, disabled);
+    setActions(keyboard, showKeyboard && !stopVisible, disabled);
+    keyboardToggle.hidden = !canOpenKeyboard;
+    keyboardToggle.textContent = showKeyboard ? "Hide" : "Keys";
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
-    setActions(commandsScreen, commandsOpen, disabled);
+    setActions(actionsScreen, !!openPanel && openPanel !== "conditions", disabled);
+    for (const button of characterTabs) button.disabled = !canEditCharacter;
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
     saveTransfer.hidden = mode !== "save-slots";
@@ -481,13 +618,15 @@ function updatePrompt() {
     if (mode === "direction") text = "Choose a direction.";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
     if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
+    if (mode === "rest" && !stopAction.hidden) text = "Resting…";
     if (mode === "target" || mode === "more" ||
         (!text && (isTextEntry(mode) || mode === "quantity"))) {
         text = terminalLine(0);
         if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
     if (mode === "confirm" && context.prompt) text = "";
-    inputPrompt.hidden = !text || commandsOpen;
+    if (mode === "command" && actionReason) text = actionReason;
+    inputPrompt.hidden = !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     journal.hidden = hud.hidden || !inputPrompt.hidden || saveNotice;
@@ -498,12 +637,15 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     world = state;
     views.target.crop = region;
-    const map = mode === "command" || (mode === "more" && context.worldView);
+    const map = (mode === "command" || mode === "more") && context.worldView;
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
     activeView = aiming && region ? views.target : world && map ? views.map : views.terminal;
-    const editing = context.value !== undefined && !commandsOpen;
+    const editing = context.value !== undefined && !openPanel;
     const question = mode === "confirm" && context.prompt;
     const showDetails = context.detail !== undefined;
+    const showCharacter = mode === "character" && !!context.character;
+    characterScreen.hidden = !showCharacter;
+    conditionsScreen.hidden = openPanel !== "conditions";
     detailsScreen.hidden = !showDetails;
     if (showDetails && detailsScreen.textContent !== context.detail) {
         detailsScreen.textContent = context.detail;
@@ -536,24 +678,25 @@ function updateView(state = world, region = views.target.crop) {
         }
     }
     for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || !!menu || commandsOpen || editing || !!question || showDetails;
+        view !== activeView || !!menu || !!openPanel || editing || !!question || showDetails || showCharacter;
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
     const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
     main.classList.toggle("in-world", showMap);
+    main.classList.toggle("in-game-panel", !!openPanel || showCharacter);
     hud.hidden = !showMap || !world;
     viewOptions.hidden = !showMap;
     if (!showMap) viewOptions.setAttribute("aria-expanded", "false");
-    const title = mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
+    const title = showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : "Text entry" : activeView.title;
     const activeSection = menu?.sections?.find((section) => section.active);
-    viewTitle.textContent = commandsOpen ? "Commands" : mode === "save-slots" ? "Save slots" : menu?.store?.name ??
-        activeSection?.label ?? (menu ? "Choices" : mode === "details" ? context.prompt || title : title);
-    zoomOut.hidden = zoomIn.hidden = !!menu || commandsOpen || editing || !!question || showDetails;
+    viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
+        menu?.store?.name ?? activeSection?.label ?? (menu ? "Choices" : mode === "details" ? context.prompt || title : title));
+    zoomOut.hidden = zoomIn.hidden = !!menu || !!openPanel || editing || !!question || showDetails || showCharacter;
     if (previous !== activeView) {
         if (activeView === views.target) activeView.zoom = views.map.zoom;
         setZoom(activeView.zoom);
@@ -569,9 +712,11 @@ function stop(message, failed) {
     request = mode = undefined;
     world = menu = undefined;
     context = {};
-    commandsOpen = false;
+    openPanel = panelTrigger = characterTrigger = undefined;
+    actionReason = "";
+    clearPendingInput();
     clearExport();
-    keyboardOpen = keyboardOnly = false;
+    keyboardOpen = false;
     updateControls();
     updateView(undefined, undefined);
     status.textContent = message;
@@ -591,6 +736,8 @@ function handleWorkerMessage({ data }) {
             break;
         }
         case "waiting": {
+            clearPendingInput();
+            actionReason = "";
             const changed = data.mode !== mode;
             if (changed) {
                 centerPending = true;
@@ -598,10 +745,10 @@ function handleWorkerMessage({ data }) {
                     clearExport();
                     transferStatus.hidden = true;
                 }
-                keyboardOpen = keyboardOnly = false;
-                commandsOpen = false;
+                keyboardOpen = false;
+                openPanel = panelTrigger = undefined;
                 if (isTextEntry(data.mode)) {
-                    symbols = false;
+                    keyboardLayer = 0;
                     shifted = data.mode === "name";
                     keyboardOpen = true;
                 }
@@ -611,17 +758,29 @@ function handleWorkerMessage({ data }) {
             context = data.context;
             menu = data.menu;
             if (changed && isTextEntry(mode)) renderKeyboard();
-            if (data.world) renderCommands(data.world.roguelike);
             launch.hidden = true;
             main.classList.remove("starting");
             updateView(mode === "command" ? data.world ?? null : data.world ?? world, data.region ?? null);
+            if (mode === "command" && world) renderQuickActions(world);
+            if (mode === "character") renderCharacter();
             if (changed && (mode === "confirm" || mode === "quantity" || mode === "rest" || isTextEntry(mode))) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (changed && mode === "character") {
+                characterScreen.scrollTop = 0;
+                characterTabs.find((button) => button.dataset.characterSection === characterSection)
+                    ?.focus({ preventScroll: true });
+            }
+            if (mode === "command" && characterTrigger) {
+                characterTrigger.focus({ preventScroll: true });
+                characterTrigger = undefined;
+                characterSection = "overview";
+            }
             break;
         }
         case "saving":
+            clearPendingInput();
             saving = true;
             updateControls();
             saveStatus.textContent = "Saving game…";
@@ -673,12 +832,29 @@ function keyCode(key) {
     return specialKeys.get(key) ?? ([...key].length === 1 ? key.codePointAt(0) : 0);
 }
 
+function clearPendingInput() {
+    clearTimeout(stopTimer);
+    pendingInput = undefined;
+    stopAction.hidden = true;
+    stopAction.disabled = false;
+}
+
 function sendInput(input) {
     if (request === undefined || saving || transferring || stopped) return false;
+    actionReason = "";
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
     worker.postMessage({ ...input, request });
+    if ((mode === "command" || !hud.hidden || mode === "rest" || (mode === "menu" && !menu?.store)) &&
+        ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
+        pendingInput = request;
+        stopTimer = setTimeout(() => {
+            stopAction.hidden = false;
+            updateControls();
+            updatePrompt();
+        }, 150);
+    }
     request = undefined;
     toggleTiles.disabled = true;
     transferActions.disabled = true;
@@ -687,7 +863,7 @@ function sendInput(input) {
 }
 
 let buttonPress;
-const inputButton = "button[data-key], button[data-input]";
+const inputButton = "button[data-key], button[data-input], #interact";
 main.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary) return;
     const button = event.target.closest(inputButton);
@@ -698,16 +874,14 @@ main.addEventListener("pointercancel", () => { buttonPress = undefined; });
 
 main.addEventListener("click", (event) => {
     const button = event.target.closest(inputButton);
-    if (!button || button.matches(":disabled") || (event.detail !== 0 &&
+    if (!button || button.matches(":disabled, [aria-disabled=true]") || (event.detail !== 0 &&
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
     if (button === cancelKey && closeInputPanel()) return;
-    if (button === confirmKey && mode === "command" && !commandsOpen) {
-        commandsOpen = true;
-        keyboardOpen = keyboardOnly = false;
-        commandsScreen.scrollTop = 0;
-        updateView();
-        updateControls();
+    if (button === interact) {
+        const { nearby } = world.actions;
+        if (nearby.length === 1) sendInput({ type: "key", code: keyCode(nearby[0].key) });
+        if (nearby.length > 1) showPanel("interact", interact);
         return;
     }
     if (button === confirmKey && menu) {
@@ -729,12 +903,8 @@ main.addEventListener("click", (event) => {
     }
     if (input.type === "store-action") input.row = menuCursor;
     if (!sendInput(input)) return;
-    if (commandsOpen) {
-        commandsOpen = false;
-        updateView();
-        updateControls();
-    }
-    if (keyboard.contains(button) && shifted && /^[A-Z]$/.test(key) && !symbols) {
+    if (openPanel) showPanel();
+    if (keyboard.contains(button) && shifted && /^[A-Z]$/.test(key) && keyboardLayer === 0) {
         shifted = false;
         renderKeyboard();
     }
@@ -767,27 +937,56 @@ function keyBadge(label) {
     return badge;
 }
 
-function renderCommands(roguelike) {
-    if (commandKeyset === roguelike) return;
-    commandKeyset = roguelike;
-    const commandKey = ([key, , alternative]) => roguelike && alternative ? alternative : key;
-    const face = (key) => commandFaces.get(key) ?? key;
-    worldActions.replaceChildren(...quickCommands.map((command) => {
-        const key = commandKey(command);
-        const button = makeKey(key, face(key), command[1]);
-        button.title = command[1];
+function setActionAvailability(button, reason) {
+    if (reason) {
+        button.setAttribute("aria-disabled", "true");
+        button.setAttribute("aria-label", `${button.textContent}: ${reason}`);
+        button.title = reason;
+    } else {
+        button.removeAttribute("aria-disabled");
+        button.removeAttribute("aria-label");
+        button.removeAttribute("title");
+    }
+}
+
+function renderQuickActions(state) {
+    const { magic, roguelike, actions } = state;
+    useItem.dataset.key = roguelike ? "X" : "U";
+    cast.hidden = !magic;
+    fire.hidden = !actions.launcher;
+    fire.dataset.key = roguelike ? "t" : "f";
+    look.dataset.key = roguelike ? "x" : "l";
+    run.dataset.key = roguelike ? "," : ".";
+    setActionAvailability(cast, actions.castReason);
+    setActionAvailability(fire, actions.fireReason);
+    setActionAvailability(run, state.canRun ? null : "You are confused");
+    const { nearby } = actions;
+    interact.textContent = nearby.length === 1 ? nearby[0].label : "Interact";
+    interact.hidden = nearby.length === 0;
+}
+
+function renderActionsPanel() {
+    const command = ([key, label, alternative], withKey = false) => {
+        if (world.roguelike && alternative) key = alternative;
+        const button = makeKey(key, label);
+        if (withKey && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
         return button;
-    }));
-    commandsScreen.replaceChildren(...commandGroups.flatMap(([title, commands]) => {
-        const heading = document.createElement("h3");
-        heading.textContent = title;
-        return [heading, ...commands.map((command) => {
-            const key = commandKey(command);
-            const button = makeKey(key, command[1]);
-            if (!["Enter", "Save", "SaveAndQuit"].includes(key)) button.prepend(keyBadge(face(key)));
-            return button;
-        })];
-    }));
+    };
+    let rows;
+    if (openPanel === "menu") {
+        const commands = makeButton("Commands");
+        commands.onclick = () => showPanel("commands", panelTrigger);
+        rows = [...gameMenu.map((entry) => command(entry)), commands];
+    } else if (openPanel === "commands") {
+        rows = extraCommands.map((entry) => command(entry, true));
+    } else if (openPanel === "interact") {
+        rows = world.actions.nearby.map(({ key, label }) => command([key, label]));
+    } else {
+        return;
+    }
+    actionsScreen.replaceChildren(...rows);
+    actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
+    actionsScreen.scrollTop = 0;
 }
 
 function renderMenu(state) {
@@ -866,33 +1065,49 @@ function showKeys(panel, keys) {
 }
 
 function renderKeyboard() {
-    const lines = symbols ? ["1234567890", "-=,.;:/?!@#", "$%&*()[]{}\\", "'\"<>+_~`^|"] :
-        ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
-    const rows = lines.map((line) => [...line].map((key) => makeKey(!symbols && shifted ? key.toUpperCase() : key)));
+    const layers = [
+        ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
+        ["1234567890", "-=,.;:<>/?", "!@#$%&*()"],
+        ["[]{}\\|`", "'\"+_~^", ""],
+    ];
+    const rows = layers[keyboardLayer].map((line) =>
+        [...line].map((key) => makeKey(keyboardLayer === 0 && shifted ? key.toUpperCase() : key)));
     if (mode === "name") rows.unshift([makeKey("*", "Random name"),
         makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
         makeKey("ArrowRight", "→", "Move text cursor right")]);
-    if (mode === "terminal" || (isMenu() && !menu)) rows.unshift([
+    if (mode === "terminal" || mode === "birth-stats" || (isMenu() && !menu)) rows.unshift([
         makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
         makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
     ]);
-    const switchLayer = makeButton(symbols ? "ABC" : "123", symbols ? "Letters" : "Numbers and symbols");
+    const nextLayer = (keyboardLayer + 1) % layers.length;
+    const switchLayer = makeButton(["ABC", "123", "#+="][nextLayer],
+        ["Letters", "Numbers", "More symbols"][nextLayer]);
     switchLayer.onclick = () => {
-        symbols = !symbols;
+        keyboardLayer = nextLayer;
         renderKeyboard();
+        keyboard.querySelector(".keyboard-row:last-child button").focus({ preventScroll: true });
     };
     const shift = makeButton("⇧", "Uppercase for next letter");
     shift.setAttribute("aria-pressed", String(shifted));
     shift.onclick = () => {
         shifted = !shifted;
         renderKeyboard();
+        keyboard.querySelector("[aria-pressed]").focus({ preventScroll: true });
     };
-    rows.push([switchLayer, ...(!symbols ? [shift] : []),
-        ...(!isTextEntry(mode) ? [makeKey("Tab", "Tab")] : []),
-        makeKey(" ", "Space"), makeKey("Backspace", "⌫", "Delete character")]);
+    if (keyboardLayer === 0) rows.at(-1).unshift(shift);
+    rows.at(-1).push(makeKey("Backspace", "⌫", "Delete character"));
+    const space = makeKey(" ", "Space");
+    space.className = "space-key";
+    const utility = [switchLayer, space];
+    if (!isTextEntry(mode)) utility.push(makeKey("Tab", "Tab"));
+    if (mode === "command") {
+        const hide = makeButton("Hide", "Hide keyboard");
+        hide.onclick = () => toggleKeyboard();
+        utility.push(makeKey("Escape", "Esc"), makeKey("Enter", "Enter"), hide);
+    }
+    rows.push(utility);
     showKeys(keyboard, rows);
-    keyboard.classList.toggle("symbols", symbols);
 }
 
 const digits = () => [
@@ -909,17 +1124,69 @@ showKeys(rest, [
     [makeKey("Backspace", "⌫", "Delete digit")],
 ]);
 
-keyboardToggle.addEventListener("click", () => {
+function toggleKeyboard() {
     keyboardOpen = !keyboardOpen;
-    keyboardOnly = keyboardOpen && activeView !== views.terminal &&
-        activeView.viewport.clientHeight < keyboardHeight;
-    if (keyboardOpen && !isTextEntry(mode)) {
-        symbols = shifted = false;
+    if (keyboardOpen) {
+        if (!isTextEntry(mode)) {
+            keyboardLayer = 0;
+            shifted = false;
+        }
+        journal.open = false;
+        viewOptions.setAttribute("aria-expanded", "false");
         renderKeyboard();
     }
     updateControls();
     centerPending = true;
     draw();
+    if (mode === "command") {
+        (keyboardOpen ? keyboard.querySelector("button") : playKeyboard)?.focus({ preventScroll: true });
+    } else if (mode === "target" || mode === "aim" || mode === "direction") {
+        (keyboardOpen ? keyboard.querySelector("button") : keyboardToggle)?.focus({ preventScroll: true });
+    }
+}
+
+keyboardToggle.addEventListener("click", toggleKeyboard);
+playKeyboard.addEventListener("click", toggleKeyboard);
+
+for (const button of [cast, fire, run]) {
+    button.addEventListener("click", () => {
+        if (request === undefined || button.getAttribute("aria-disabled") !== "true") return;
+        actionReason = button.title + ".";
+        updatePrompt();
+    });
+}
+
+openMenu.addEventListener("click", () => {
+    if (mode === "command" && request !== undefined) showPanel("menu", openMenu);
+});
+openCharacter.addEventListener("click", () => {
+    if (sendInput({ type: "key", code: keyCode("C") })) {
+        characterSection = "overview";
+        characterTrigger = openCharacter;
+    }
+});
+vitals.addEventListener("click", () => {
+    if (request === undefined) return;
+    if (mode === "command") {
+        if (sendInput({ type: "key", code: keyCode("C") })) {
+            characterSection = "conditions";
+            characterTrigger = vitals;
+        }
+    } else {
+        showPanel("conditions", vitals);
+    }
+});
+for (const button of characterTabs) {
+    button.addEventListener("click", () => {
+        characterSection = button.dataset.characterSection;
+        renderCharacter();
+        characterScreen.scrollTop = 0;
+    });
+}
+stopAction.addEventListener("click", () => {
+    if (pendingInput === undefined) return;
+    worker.postMessage({ type: "interrupt", request: pendingInput });
+    stopAction.disabled = true;
 });
 
 for (const view of [views.terminal, views.target]) {
@@ -969,14 +1236,6 @@ const mapResize = new ResizeObserver(() => {
 });
 mapResize.observe(views.map.viewport);
 mapResize.observe(views.target.viewport);
-window.addEventListener("resize", () => {
-    if (keyboardOpen && activeView !== views.terminal) {
-        keyboardOnly = activeView.viewport.clientHeight < keyboardHeight;
-        updateControls();
-    }
-    centerPending = true;
-    draw();
-});
 
 function requestBackgroundSave() {
     if (!worker || stopped || backgroundSaveRequested) return;
@@ -995,6 +1254,11 @@ window.addEventListener("pageshow", () => {
 
 document.addEventListener("keydown", (event) => {
     if (mode === undefined || saving || transferring || event.isComposing || event.altKey) return;
+    if (event.key === "Escape" && pendingInput !== undefined && !stopAction.hidden) {
+        stopAction.click();
+        event.preventDefault();
+        return;
+    }
     if (event.key === "Escape" && journal.open) {
         journal.open = false;
         journal.querySelector("summary").focus();
@@ -1012,7 +1276,7 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (journal.open && journal.contains(event.target)) return;
-    if (commandsOpen && !event.target?.closest?.("button")) return;
+    if (openPanel) return;
     if (event.ctrlKey || event.metaKey) {
         if (mode === "command" && !event.shiftKey && event.key.toLowerCase() === "s") {
             event.preventDefault();
@@ -1024,7 +1288,6 @@ document.addEventListener("keydown", (event) => {
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
 
     if (event.key === "Tab") return;
-    if (commandsOpen) return;
     if (menu && event.key === "Enter") {
         event.preventDefault();
         if (menu.rows.some((row) => row.index === menuCursor && row.enabled)) {

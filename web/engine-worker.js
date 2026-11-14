@@ -7,6 +7,8 @@ let request = 0;
 let lastError;
 let backgroundSavePending = false;
 let saveToImport;
+let interruptPending = false;
+let runningRequest;
 
 function wakeInput(action) {
     const { wake } = waiting;
@@ -30,6 +32,12 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "toggle-tiles") {
         if (waiting?.mode === "command" && data.request === waiting.request) wakeInput(data.type);
+        return;
+    }
+    if (data.type === "interrupt") {
+        if (!waiting && runningRequest !== undefined && data.request === runningRequest) {
+            interruptPending = true;
+        }
         return;
     }
     if (data.type === "import-save" || data.type === "export-save") {
@@ -68,6 +76,7 @@ self.addEventListener("message", ({ data }) => {
         return;
     }
     input.push(data);
+    runningRequest = waiting?.playing ? waiting.request : undefined;
     if (waiting) wakeInput();
 });
 
@@ -102,7 +111,14 @@ async function play(lock) {
         takeInput() {
             return input.shift();
         },
+        takeInterrupt() {
+            const pending = interruptPending;
+            interruptPending = false;
+            return pending;
+        },
         waitForInput(mode, region, playing, context, menu) {
+            interruptPending = false;
+            runningRequest = undefined;
             if (!playing) backgroundSavePending = false;
             if (mode === "command" && backgroundSavePending) {
                 backgroundSavePending = false;

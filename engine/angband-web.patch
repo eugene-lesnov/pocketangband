@@ -26,7 +26,7 @@ diff --git a/src/main.c b/src/main.c
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
-@@ -522,6 +522,11 @@ void textui_process_command(void)
+@@ -522,6 +522,11 @@
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -38,7 +38,25 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		case EVT_RESIZE: do_cmd_redraw(); return;
  		case EVT_MOUSE: textui_process_click(e); return;
  		case EVT_BUTTON:
-@@ -758,6 +763,48 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -627,10 +632,16 @@
+ void check_for_player_interrupt(game_event_type type, game_event_data *data,
+ 								void *user)
+ {
++#ifdef __EMSCRIPTEN__
++	web_poll_interrupt();
++	bool check_rest = player_is_resting(player);
++#else
++	bool check_rest = player_is_resting(player) && !(turn & 0x7F);
++#endif
+ 	/* Check for "player abort" */
+ 	if (player->upkeep->running ||
+ 	    cmd_get_nrepeats() > 0 ||
+-	    (player_is_resting(player) && !(turn & 0x7F))) {
++	    check_rest) {
+ 		ui_event e;
+ 
+ 		/* Do not wait */
+@@ -758,6 +769,48 @@
  	mem_free(entries);
  }
  
@@ -87,17 +105,19 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +812,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -765,10 +818,16 @@
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
 - * game.  Otherwise, it will be false.
+- */
+-static void select_savefile(bool retry, bool *new_game)
+-{
 + * game.  Otherwise, it will be false when a save was selected.  Returns
 + * false after importing a save, when the menu needs to be rebuilt.
-  */
--static void select_savefile(bool retry, bool *new_game)
++ */
 +static bool select_savefile(bool retry, bool *new_game)
- {
++{
 +#ifdef __EMSCRIPTEN__
 +	const int notify = EVT_WEB_IMPORT | EVT_WEB_EXPORT;
 +#else
@@ -106,7 +126,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +928,26 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -875,11 +934,26 @@
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -134,7 +154,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +964,7 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -896,6 +970,7 @@
  	if (selection.type == EVT_ESCAPE) {
  		quit(NULL);
  	}
@@ -142,7 +162,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  }
  
  /**
-@@ -920,7 +989,9 @@ void play_game(enum game_mode_type mode)
+@@ -920,7 +995,9 @@
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -153,7 +173,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -1010,6 +1081,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1010,6 +1087,19 @@
  	return result;
  }
  
@@ -173,7 +193,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1130,25 @@ bool save_game_checked(void)
+@@ -1046,11 +1136,25 @@
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -200,10 +220,11 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1162,6 @@ bool save_game_checked(void)
+@@ -1063,23 +1167,6 @@
+ 
  	/* Allow suspend again */
  	signals_handle_tstp();
- 
+-
 -	/* Save the window prefs */
 -	path_build(path, sizeof(path), ANGBAND_DIR_USER, "window.prf");
 -	if (!prefs_save(path, option_dump, "Dump window settings"))
@@ -220,11 +241,10 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 -
 -	/* Refresh */
 -	Term_fresh();
--
+ 
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
- 
-@@ -1132,7 +1213,7 @@ void close_game(bool prompt_failed_save)
+@@ -1132,7 +1219,7 @@
  		death_screen();
  
  		/* Save dead player */
@@ -233,7 +253,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!prompt_failed_save
  					|| !get_check("Saving failed.  Try again? ")) {
  				prompting = false;
-@@ -1149,6 +1230,7 @@ void close_game(bool prompt_failed_save)
+@@ -1149,6 +1236,7 @@
  			}
  		}
  
@@ -241,7 +261,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1239,7 @@ void close_game(bool prompt_failed_save)
+@@ -1157,6 +1245,7 @@
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -573,17 +593,18 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,36 @@
+@@ -23,6 +23,42 @@
+ #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
- 
++
 +#ifdef __EMSCRIPTEN__
 +enum web_input_mode {
 +	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
 +	WEB_INPUT_TEXT, WEB_INPUT_QUANTITY, WEB_INPUT_CONFIRM, WEB_INPUT_AIM,
 +	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS, WEB_INPUT_DIRECTION, WEB_INPUT_MORE,
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
-+	WEB_INPUT_BIRTH_STATS
++	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -597,6 +618,12 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	bool can_inspect, bool attack);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
++void web_set_character(const char *name, const char *race, const char *class_name,
++	int level, const char *history);
++void web_character_row(int section, const char *label, const char *value);
++void web_character_defense(const char *group, const wchar_t *label, int length,
++	const char *value, const char *temporary);
++void web_poll_interrupt(void);
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
 +void web_set_menu_sections(int current, int available);
 +void web_set_store(const char *name, bool home);
@@ -606,14 +633,13 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_menu_action(int key, const char *label);
 +void web_toggle_tiles(void);
 +#endif
-+
+ 
  /**
   * Holds a generic command.  If hook is not NULL, that function
-  * will be called.  Otherwise, if cmd is not CMD_NULL, that command
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
-@@ -769,6 +769,10 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -769,6 +769,10 @@
  {
  	ui_event in = EVENT_EMPTY;
  	bool no_act = (menu->flags & MN_NO_ACTION) ? true : false;
@@ -624,7 +650,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  	assert(menu->active.width != 0 && menu->active.page_rows != 0);
  
-@@ -782,7 +786,49 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -782,7 +786,51 @@
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
@@ -667,14 +693,16 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +				continue;
 +			if (!no_act && menu_handle_action(menu, &in))
 +				continue;
-+			if (in.type == EVT_WEB_MENU_SECTION)
++			if (in.type == EVT_WEB_MENU_SECTION) {
 +				out.type = EVT_SWITCH;
++				out.key.code = in.key.code;
++			}
 +		} else
 +#endif
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -1052,10 +1098,29 @@ static const menu_iter dynamic_iter = {
+@@ -1052,10 +1100,29 @@
  	NULL	/* resize */
  };
  
@@ -1292,3 +1320,209 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  }
  
  
+diff --git a/src/ui-player.c b/src/ui-player.c
+--- a/src/ui-player.c
++++ b/src/ui-player.c
+@@ -916,6 +916,105 @@
+ 	}
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static const char *web_property_value(int value, bool known, bool resistance)
++{
++	if (value == UI_ENTRY_UNKNOWN_VALUE)
++		return "Unknown";
++	if (value == 0 || value == UI_ENTRY_VALUE_NOT_PRESENT)
++		return known ? "None" : "Unknown";
++	if (resistance) {
++		if (value == UI_ENTRY_RESIST0_RES_VUL)
++			return "Resistance and vulnerability";
++		if (value >= 3)
++			return "Immune";
++		if (value < 0)
++			return "Vulnerable";
++		return "Resistant";
++	}
++	return "Active";
++}
++
++static void web_character_defenses(void)
++{
++	const char *groups[] = { "resistances", "abilities", "hindrances" };
++	const char *categories[] = { "CHAR_SCREEN1", NULL };
++	int count = player->body.count;
++	int *values = mem_alloc((count + 1) * sizeof(*values));
++	int *aux = mem_alloc((count + 1) * sizeof(*aux));
++	struct cached_object_data **gear = mem_zalloc(count * sizeof(*gear));
++	struct cached_player_data *innate = NULL;
++
++	for (size_t i = 0; i < N_ELEMENTS(groups); ++i) {
++		categories[1] = groups[i];
++		struct ui_entry_iterator *iter = initialize_ui_entry_iterator(
++			check_for_two_categories, categories, groups[i]);
++		struct ui_entry *entry;
++		while ((entry = advance_ui_entry_iterator(iter))) {
++			struct ui_entry_combiner_funcs combiner;
++			int index = ui_entry_renderer_query_combiner(get_ui_entry_renderer_index(entry));
++			if (ui_entry_combiner_get_funcs(index, &combiner)) continue;
++
++			for (int slot = 0; slot < count; ++slot)
++				compute_ui_entry_values_for_object(entry, slot_object(player, slot),
++					player, &gear[slot], &values[slot], &aux[slot]);
++			compute_ui_entry_values_for_player(entry, player, &innate,
++				&values[count], &aux[count]);
++
++			int value, temporary;
++			combiner.vec_func(count + 1, values, aux, &value, &temporary);
++			bool known = is_ui_entry_for_known_rune(entry, player);
++			bool resistance = i == 0;
++			const char *effect = NULL;
++			if (temporary != 0 && temporary != UI_ENTRY_VALUE_NOT_PRESENT &&
++				temporary != UI_ENTRY_UNKNOWN_VALUE)
++				effect = web_property_value(temporary, true, resistance);
++
++			wchar_t label[64];
++			get_ui_entry_label(entry, N_ELEMENTS(label), false, label);
++			web_character_defense(groups[i], label, wcslen(label),
++				web_property_value(value, known, resistance), effect);
++		}
++		release_ui_entry_iterator(iter);
++	}
++
++	if (innate) release_cached_player_data(innate);
++	for (int slot = 0; slot < count; ++slot)
++		if (gear[slot]) release_cached_object_data(gear[slot]);
++	mem_free(gear);
++	mem_free(aux);
++	mem_free(values);
++}
++
++static void web_character_sheet(void)
++{
++	web_set_character(player->full_name, player->race->name,
++		player->class->name, player->lev, player->history);
++
++	for (size_t i = 1; i < N_ELEMENTS(panels); ++i) {
++		struct panel *panel = panels[i].panel();
++		for (size_t j = 0; j < panel->len; ++j) {
++			struct panel_line *line = &panel->lines[j];
++			if (line->label && *line->value &&
++					(!streq(line->label, "Overweight") || weight_remaining(player) < 0))
++				web_character_row(i, line->label, line->value);
++		}
++		panel_free(panel);
++	}
++	for (int stat = 0; stat < STAT_MAX; ++stat) {
++		char current[8], best[8], value[32], label[4];
++		cnv_stat(player->state.stat_use[stat], current, sizeof(current));
++		cnv_stat(player->state.stat_top[stat], best, sizeof(best));
++		strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
++		strnfmt(value, sizeof(value), "%s", current);
++		if (player->state.stat_use[stat] < player->state.stat_top[stat])
++			strnfmt(value, sizeof(value), "%s / %s", current, best);
++		web_character_row(0, label, value);
++	}
++	web_character_defenses();
++}
++#endif
++
+ 
+ /**
+  * Write a character dump
+@@ -1238,7 +1337,14 @@
+ 		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
+ 
+ 		/* Query */
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CHARACTER);
++		web_character_sheet();
++#endif
+ 		ke = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 
+ 		if ((ke.type == EVT_KBRD)||(ke.type == EVT_BUTTON)) {
+ 			switch (ke.key.code) {
+diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
+--- a/src/ui-knowledge.c
++++ b/src/ui-knowledge.c
+@@ -3915,10 +3915,15 @@
+ 	struct object *obj = NULL;
+ 	int ret = 3;
+ 
++#ifdef __EMSCRIPTEN__
++	const char *empty_message = NULL;
++#else
++	const char *empty_message = "Error in do_cmd_inven(), please report.";
+ 	if (player->upkeep->inven[0] == NULL) {
+ 		msg("You have nothing in your inventory.");
+ 		return;
+ 	}
++#endif
+ 
+ 	/* Start in "inventory" mode */
+ 	player->upkeep->command_wrk = (USE_INVEN);
+@@ -3929,8 +3934,7 @@
+ 		screen_save();
+ 
+ 		/* Get an item to use a context command on (Display the inventory) */
+-		if (get_item(&obj, "Select Item:",
+-				"Error in do_cmd_inven(), please report.",
++		if (get_item(&obj, "Select Item:", empty_message,
+ 				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
+ 			/* Load screen */
+ 			screen_load();
+diff --git a/src/ui-spell.c b/src/ui-spell.c
+--- a/src/ui-spell.c
++++ b/src/ui-spell.c
+@@ -27,6 +27,7 @@
+ #include "object.h"
+ #include "player-calcs.h"
+ #include "player-spell.h"
++#include "ui-input.h"
+ #include "ui-menu.h"
+ #include "ui-output.h"
+ #include "ui-spell.h"
+@@ -215,6 +216,26 @@
+ 	NULL	/* no resize hook */
+ };
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_spell_choices(struct menu *m)
++{
++	struct spell_menu_data *d = menu_priv(m);
++	if (d->show_description) return;
++	web_set_menu(m, m->cursor, NULL);
++	for (int i = 0; i < d->n_spells; ++i) {
++		int index = d->spells[i];
++		const struct class_spell *spell = spell_by_index(player, index);
++		if (!spell) continue;
++		char detail[80];
++		strnfmt(detail, sizeof(detail), "Level %d · %d MP · %d%% fail",
++			spell->slevel, spell->smana, spell_chance(index));
++		web_add_menu_row(i, spell->slevel >= 99 ? "(illegible)" : spell->name,
++			spell->slevel >= 99 ? NULL : detail, NULL, m->selections[i],
++			spell_menu_valid(m, i));
++	}
++}
++#endif
++
+ /**
+  * Create and initialise a spell menu, given an object and a validity hook
+  */
+@@ -287,7 +308,14 @@
+ 	my_strcap(buf);
+ 	prt(buf, 0, 0);
+ 
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_spell_choices;
++	const char *previous = web_set_prompt(buf);
++#endif
+ 	menu_select(m, 0, true);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous);
++#endif
+ 	screen_load();
+ 
+ 	return d->selected_spell;
