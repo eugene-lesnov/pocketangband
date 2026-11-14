@@ -234,7 +234,7 @@ EM_JS(void, web_set_options_title, (const char *title), {
 EM_JS(void, set_menu_sections, (int current, int available, int equipment,
         int inventory, int floor, int quiver, int throwing), {
     const sections = [[inventory, "Inventory"], [equipment, "Equipment"],
-        [quiver, "Quiver"], [floor, "Floor"], [throwing, "Throwing"]];
+        [quiver, "Quiver"], [floor, "Floor"], [throwing, "Throwing items"]];
     Module['inputMenu'].sections = sections.filter(([id]) => available & id)
         .map(([id, label]) => ({ id, label, active: id === current }));
 });

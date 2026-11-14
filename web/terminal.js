@@ -117,27 +117,27 @@ const specialKeys = new Map([
 ]);
 
 const gameMenu = [
-    ["Save", "Save"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
-    ["Q", "Retire character"],
+    ["Save", "Save and don't quit"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
+    ["Q", "Retire character and quit"],
 ];
 const quickCommands = [
     ["r", "Read a scroll"], ["q", "Quaff a potion"], ["u", "Use a staff", "Z"],
-    ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"], ["i", "Open the pack"],
-    ["m", "Cast a spell"], ["f", "Fire", "t"], ["R", "Rest"],
+    ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"], ["i", "Inventory"],
+    ["m", "Cast a spell"], ["f", "Fire your missile weapon", "t"], ["R", "Rest"],
 ];
 const extraCommands = [
-    [".", "Run", ","], ["l", "Look around", "x"], ["U", "Use an item", "X"],
-    ["G", "Learn spells"], ["b", "Browse a book", "P"], ["v", "Throw an item"],
-    ["E", "Eat food"], ["A", "Activate an item"], ["F", "Refuel light"],
+    [".", "Start running", ","], ["l", "Look around", "x"], ["U", "Use an item", "X"],
+    ["G", "Gain new spells"], ["b", "Browse a book", "P"], ["v", "Throw an item"],
+    ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
-    ["*", "Choose a target"], ["[", "Visible monsters"], ["]", "Visible objects"],
-    ["h", "Fire at nearest", "Tab"], ["+", "Alter a grid"], ["T", "Tunnel", "CtrlT"],
-    ["D", "Disarm or lock"], ["o", "Open"], ["c", "Close door"],
+    ["*", "Target monster or location"], ["[", "Display visible monster list"], ["]", "Display visible item list"],
+    ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
+    ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
     ["Enter", "All Angband commands"],
 ];
 const panelTitles = { menu: "Menu", commands: "Commands", conditions: "Conditions" };
 const commandFaces = new Map([["CtrlT", "^T"]]);
-const restLabels = new Map([["&", "As needed"], ["*", "HP and MP"], ["!", "HP or MP"]]);
+const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const defaultAsciiZoom = scales.indexOf(1.5);
@@ -383,7 +383,7 @@ function renderWorld(state) {
     depth.textContent = depthLabel;
     hp.textContent = `HP ${state.hp}/${state.maxHp}`;
     hp.classList.toggle("low", state.lowHp);
-    sp.textContent = `MP ${state.sp}/${state.maxSp}`;
+    sp.textContent = `SP ${state.sp}/${state.maxSp}`;
     sp.hidden = !state.magic;
     const alerts = [...state.conditions].sort((left, right) => right.priority - left.priority);
     const labels = alerts.slice(0, 2).map(({ label }) => label);
@@ -471,7 +471,7 @@ function renderResultsList({ title, sections }) {
             const empty = document.createElement("p");
             empty.className = "results-empty";
             empty.textContent = title === "Hall of Fame" ? "No scores recorded." :
-                title === "Messages" ? "No messages." : title === "Character history" ?
+                title === "Messages" ? "No messages." : title === "Player history" ?
                     "No history recorded." : title === "Examine items" ? "Nothing to examine." : "Empty";
             nodes.push(empty);
             continue;
@@ -587,7 +587,7 @@ function renderCharacter() {
     const rowsFor = (section) => sheet.rows.filter((row) => row.section === section);
     const vitals = [
         { label: "HP", value: `${sheet.hp}/${sheet.maxHp}` },
-        ...(reviewing || sheet.magic ? [{ label: reviewing ? "SP" : "MP", value: `${sheet.sp}/${sheet.maxSp}` }] : []),
+        ...(reviewing || sheet.magic ? [{ label: "SP", value: `${sheet.sp}/${sheet.maxSp}` }] : []),
     ];
     if (reviewing) renderBirthAttributes(rowsFor(0));
     else characterAttributes.replaceChildren(characterRows(rowsFor(0)));
@@ -604,7 +604,7 @@ function renderCharacter() {
         ...combat.filter(({ label }) => label === "Armor"),
         { label: "Gold", value: progress.get("Gold") },
         ...(reviewing ? background.filter(({ label }) => label === "Title") :
-            [{ label: hasNextLevel ? "XP toward next level" : "Experience",
+            [{ label: hasNextLevel ? "Cur Exp / Adv Exp" : "Cur Exp",
                 value: hasNextLevel ? `${experience} / ${nextLevel}` : experience }]),
     ]));
     if (!reviewing) renderConditions(characterConditions);
@@ -624,16 +624,14 @@ function renderCharacter() {
 
     characterProgressLabel.textContent = reviewing ? "Background, progress & history" : "Progress & history";
     characterProgress.replaceChildren(characterRows([
-        ...(reviewing ? [
-            { label: "Cur Exp", value: experience },
-            { label: "Max Exp", value: progress.get("Max Exp") },
-            { label: "Adv Exp", value: nextLevel },
-        ] : [{ label: "Highest XP", value: progress.get("Max Exp") }]),
-        { label: reviewing ? "Max Depth" : "Deepest level", value: progress.get("Max Depth") },
+        ...(reviewing ? [{ label: "Cur Exp", value: experience }] : []),
+        { label: "Max Exp", value: progress.get("Max Exp") },
+        ...(reviewing ? [{ label: "Adv Exp", value: nextLevel }] : []),
+        { label: "Max Depth", value: progress.get("Max Depth") },
         { label: "Burden", value: progress.get("Burden") },
         ...(progress.has("Overweight") ? [{ label: "Overweight", value: progress.get("Overweight") }] : []),
     ]));
-    appendCharacterGroup(characterProgress, reviewing ? "Turns used:" : "Turn counts",
+    appendCharacterGroup(characterProgress, "Turns used:",
         background.filter(({ label }) => turnCounters.includes(label)));
     appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) =>
         label !== "Title" && !turnCounters.includes(label)));
@@ -712,7 +710,7 @@ function updateControls() {
     const character = mode === "character";
     const outcome = mode === "menu" && !!context.outcome;
     const victory = mode === "victory";
-    const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Spoilers";
+    const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Create spoilers";
     const retiring = mode === "retire";
     const hasTarget = aiming && context.current;
     const canOpenKeyboard = !counting && !optionNumber && !splash && !resting && !confirming && !history &&
@@ -735,8 +733,8 @@ function updateControls() {
     setActions(directionPad, padVisible, disabled);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionCenter.disabled = !command && !(directing && context.center);
-    centerCaption.textContent = directing ? "Here" : "Wait";
-    directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Wait one turn");
+    centerCaption.textContent = directing ? "Here" : "Stand still";
+    directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Stand still");
     setActions(playKeys, playing && !stopVisible, disabled);
     setActions(terminalKeys, !playing && !stopVisible && !outcome && !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
@@ -753,11 +751,11 @@ function updateControls() {
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
-    confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character" :
-        confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
+    confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
+        confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
         selecting ? context.attack ? context.verb : "Select target" :
-        aiming ? hasTarget ? useTarget : "Choose target" :
-        editing || counting || optionNumber || resting || stats ? "Done" : isMenu() ? "Select" :
+        aiming ? hasTarget ? useTarget : "Target monster or location" :
+        editing || counting || optionNumber || resting ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
     confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options || birthChoiceMenu || resultChild;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
@@ -777,7 +775,7 @@ function updateControls() {
     aimActions.lastElementChild.hidden = !hasTarget;
     setActions(targetActions, selecting && !showKeyboard && !openPanel, disabled);
     previousTarget.disabled = nextTarget.disabled = context.freeAim || context.targetCount < 2;
-    targetMode.textContent = context.freeAim ? "Targets" : "Free aim";
+    targetMode.textContent = context.freeAim ? "Interesting places" : "Free selection";
     targetMode.dataset.key = context.freeAim ? "m" : "o";
     targetMode.disabled = context.freeAim && !context.targetCount;
     targetInspect.disabled = !context.canInspect;
@@ -969,9 +967,9 @@ function updateView(state = world, region = views.target.crop) {
         context.resultsList?.title ?? context.resultsFile?.title ??
         (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
         mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
-        mode === "overview" ? "Level map" : mode === "details" ? "Details" :
-        mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
-        mode === "birth-roll" ? "Roll stats" :
+        mode === "overview" ? levelMap.textContent : mode === "details" ? "Details" :
+        mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
+        mode === "birth-roll" ? "Standard roller" :
         context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title);
@@ -1324,7 +1322,7 @@ function renderBirthStats(stats, changed) {
     const focusedRow = !changed && birthStatRows.contains(focused) ? focused.closest("button") : null;
     birthStatsScreen.classList.toggle("rolled-stats", !!roll);
     birthIdentity.textContent = `${stats.race} / ${stats.className}`;
-    birthPoints.textContent = roll ? `HP ${roll.hp} · MP ${roll.mana}` : `Points left: ${stats.remaining}`;
+    birthPoints.textContent = roll ? `HP ${roll.hp} · SP ${roll.mana}` : `Points left: ${stats.remaining}`;
     resetStats.hidden = !!roll;
     birthRollHistory.hidden = !roll?.history;
     birthRollHistory.textContent = roll?.history ?? "";
@@ -1391,7 +1389,8 @@ function renderMenu(state) {
     if (differentList) birthSelection = undefined;
     else if (state.birth?.preview && state.cursor !== previous.cursor) birthSelection = state.cursor;
     menuCursor = birthSelection ?? state.cursor;
-    const summary = state.birth?.summary || (state.store && !state.store.home ? `Gold: ${state.store.gold} au` : "");
+    const summary = state.birth?.summary || (state.store && !state.store.home ?
+        `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.hidden = !summary;
     menuSummary.textContent = summary;
     menuSections.hidden = !state.sections?.length;
@@ -1530,7 +1529,7 @@ showKeys(optionDigits, [
         makeKey("Backspace", "⌫", "Delete digit")],
 ]);
 showKeys(rest, [
-    [makeKey("&", "As needed"), makeKey("*", "HP and MP"), makeKey("!", "HP or MP")],
+    Array.from(restLabels, ([key, label]) => makeKey(key, label)),
     ...digits(),
     [makeKey("Backspace", "⌫", "Delete digit")],
 ]);

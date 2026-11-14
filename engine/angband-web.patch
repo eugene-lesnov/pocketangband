@@ -1268,7 +1268,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +				OPT(player, birth_no_selling) ? "Give" : "Sell");
 +		}
 +		if (m->count)
-+			web_menu_action('l', "Inspect");
++			web_menu_action('l', "Examine");
 +	}
 +}
 +#endif
@@ -1937,7 +1937,17 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  #include "ui-menu.h"
  #include "ui-output.h"
  #include "ui-spell.h"
-@@ -215,6 +216,34 @@
+@@ -43,6 +44,9 @@ struct spell_menu_data {
+ 	bool (*is_valid)(const struct player *p, int spell_index);
+ 	bool show_description;
+ 
++#ifdef __EMSCRIPTEN__
++	char web_title[80];
++#endif
+ 	int selected_spell;
+ };
+ 
+@@ -215,6 +219,34 @@
  	NULL	/* no resize hook */
  };
  
@@ -1947,7 +1957,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +	struct spell_menu_data *d = menu_priv(m);
 +	bool letter_menu = d->browse || d->show_description;
 +	if (letter_menu)
-+		web_set_letter_menu(d->browse ? "Browse book" : "Choose spell");
++		web_set_letter_menu(d->web_title);
 +	else
 +		web_set_menu(m, m->cursor, NULL);
 +	for (int i = 0; i < d->n_spells; ++i) {
@@ -1960,7 +1970,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +			continue;
 +		}
 +		char detail[80];
-+		strnfmt(detail, sizeof(detail), "Level %d · %d MP · %d%% fail",
++		strnfmt(detail, sizeof(detail), "Lv %d · Mana %d · Fail %d%%",
 +			spell->slevel, spell->smana, spell_chance(index));
 +		web_add_menu_row(i, spell->slevel >= 99 ? "(illegible)" : spell->name,
 +			spell->slevel >= 99 ? NULL : detail, NULL, m->selections[i],
@@ -1972,11 +1982,13 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -287,7 +316,14 @@
+@@ -287,7 +319,16 @@
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
 +#ifdef __EMSCRIPTEN__
++	strnfmt(d->web_title, sizeof(d->web_title), "%s which %s?", verb, noun);
++	my_strcap(d->web_title);
 +	m->web_render = web_render_spell_choices;
 +	const char *previous = web_set_prompt(buf);
 +#endif
@@ -1987,11 +1999,12 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	screen_load();
  
  	return d->selected_spell;
-@@ -306,6 +342,9 @@
+@@ -306,6 +347,10 @@
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;
 +#ifdef __EMSCRIPTEN__
++	strnfmt(d->web_title, sizeof(d->web_title), "Browsing %ss", noun);
 +	m->web_render = web_render_spell_choices;
 +#endif
  	menu_select(m, 0, true);
@@ -2074,8 +2087,8 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +		web_add_option_toggle(pos, option_desc(oid), options[oid], enabled);
 +	}
 +	if (m->context_hook) {
-+		web_menu_action('s', "Save as defaults");
-+		web_menu_action('r', "Restore defaults");
++		web_menu_action('s', "Save as default options");
++		web_menu_action('r', "Restore from saved defaults");
 +		web_menu_action('x', "Reset to factory defaults");
 +	}
 +}
@@ -2092,7 +2105,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +	m->web_render = web_render_option_toggles;
 +	m->web_select_once = true;
 +	if (page == OP_BIRTH && m->flags == MN_NO_TAGS)
-+		m->title = "Birth options (read-only)";
++		m->title = "Birth (difficulty) options (read-only)";
 +#endif
  	menu_layout(m, &SCREEN_REGION);
  
@@ -2137,7 +2150,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Ask for a numeric value */
 -	if (askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers)) {
-+	if (edit_option_number(tmp, sizeof(tmp), "Base delay (0–255 ms)")) {
++	if (edit_option_number(tmp, sizeof(tmp), "Base delay factor (0–255 ms)")) {
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
@@ -2164,7 +2177,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Ask the user for a string */
 -	res = askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers);
-+	res = edit_option_number(tmp, sizeof(tmp), "Low HP warning (0–9, in steps of 10%)");
++	res = edit_option_number(tmp, sizeof(tmp), "Hitpoint warning (0–9, in steps of 10%)");
  
  	/* Process input */
  	if (res) {
@@ -2317,7 +2330,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +		if (player->upkeep->quiver[i])
 +			web_results_item(player->upkeep->quiver[i], NULL);
 +	}
-+	web_add_results_section("Home");
++	web_add_results_section("Home Inventory");
 +	for (struct object *obj = home->stock; obj; obj = obj->next) {
 +		web_results_item(obj, NULL);
 +	}
@@ -2466,7 +2479,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +#ifdef __EMSCRIPTEN__
 +	struct history_info *history;
 +	size_t count = history_get_list(player, &history);
-+	web_set_results_list("Character history");
++	web_set_results_list("Player history");
 +	for (size_t i = 0; i < count; i++) {
 +		const struct history_info *entry = &history[i];
 +		char detail[80];
@@ -2490,16 +2503,16 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +	const char *filename;
 +	bool (*generate)(const char *filename);
 +} spoiler_choices[] = {
-+	{ "Basic items", "obj-desc.spo", spoil_obj_desc },
-+	{ "Artifacts", "artifact.spo", spoil_artifact },
-+	{ "Monsters (brief)", "mon-desc.spo", spoil_mon_desc },
-+	{ "Monsters (full)", "mon-info.spo", spoil_mon_info },
++	{ "Brief Object Info", "obj-desc.spo", spoil_obj_desc },
++	{ "Brief Artifact Info", "artifact.spo", spoil_artifact },
++	{ "Brief Monster Info", "mon-desc.spo", spoil_mon_desc },
++	{ "Full Monster Info", "mon-info.spo", spoil_mon_info },
 +};
 +
 +static void web_render_spoilers(struct menu *menu)
 +{
 +	web_set_menu(menu, menu->cursor, NULL);
-+	web_set_menu_title("Spoilers");
++	web_set_menu_title("Create spoilers");
 +	for (size_t i = 0; i < N_ELEMENTS(spoiler_choices); i++) {
 +		web_add_menu_row(i, spoiler_choices[i].label, spoiler_choices[i].filename,
 +			NULL, I2A(i), true);
@@ -2556,8 +2569,8 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +	{ 0, 'i', "Character",      death_info },
 +	{ 0, 'g', "Possessions",    death_possessions },
 +	{ 0, 'm', "Messages",       death_messages },
-+	{ 0, 'f', "Character dump", death_file },
-+	{ 0, 'v', "Hall of Fame",   death_scores },
++	{ 0, 'f', "File dump",      death_file },
++	{ 0, 'v', "View scores",    death_scores },
 +#else
  	{ 0, 'i', "Information",   death_info      },
  	{ 0, 'm', "Messages",      death_messages  },
@@ -2568,7 +2581,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  	{ 0, 'h', "History",       death_history   },
  	{ 0, 's', "Spoilers",      death_spoilers  },
 +#ifdef __EMSCRIPTEN__
-+	{ 0, 'n', "New game",      NULL            },
++	{ 0, 'n', "New Game",      NULL            },
 +	{ 0, 'q', "Save slots",    NULL            },
 +#else
  	{ 0, 'n', "New Game",      death_new_game  },
