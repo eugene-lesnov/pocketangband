@@ -63,8 +63,7 @@ a { color: var(--muted); font-size: 0.75rem; }
 #download-progress { width: 100%; accent-color: var(--accent); }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
-#save-transfer { display: grid; gap: 0.25rem; }
-#save-transfer-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#save-management { display: grid; gap: 0.25rem; }
 #hud {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -594,7 +593,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .options-menu .menu-rows [aria-pressed="true"] .price { color: #cbe7a4; }
 .options-menu .menu-rows [aria-pressed="false"] .price { color: var(--muted); }
 .options-menu .menu-rows button:not([aria-pressed]) .price { white-space: normal; text-align: end; }
-button, #download-save, #download-result {
+button, #download-result {
     min-height: 44px;
     padding: 0 0.2rem;
     border: 1px solid var(--border);
@@ -604,12 +603,11 @@ button, #download-save, #download-result {
     font: 500 0.8125rem system-ui, sans-serif;
     touch-action: manipulation;
 }
-#download-save, #download-result {
+#download-result {
     display: grid;
     place-items: center;
     text-decoration: none;
 }
-#share-save[hidden] + #download-save { grid-column: 1 / -1; }
 button:enabled { cursor: pointer; }
 button:enabled:active { background: #4c3820; }
 button:disabled, button[aria-disabled="true"] { opacity: 0.5; }

@@ -7,16 +7,9 @@ const status = document.querySelector("#status");
 const progress = document.querySelector("#download-progress");
 const retry = document.querySelector("#retry");
 const saveStatus = document.querySelector("#save-status");
-const saveTransfer = document.querySelector("#save-transfer");
-const transferActions = document.querySelector("#save-transfer-actions");
-const importSave = document.querySelector("#import-save");
-const exportSave = document.querySelector("#export-save");
+const saveManagement = document.querySelector("#save-management");
 const deleteSave = document.querySelector("#delete-save");
-const importFile = document.querySelector("#import-file");
-const transferStatus = document.querySelector("#transfer-status");
-const exportFile = document.querySelector("#export-file");
-const downloadSave = document.querySelector("#download-save");
-const shareSave = document.querySelector("#share-save");
+const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
 const viewOptions = document.querySelector("#view-options");
 const levelMap = document.querySelector("#level-map");
@@ -179,8 +172,7 @@ let characterTrigger;
 let pendingInput;
 let stopTimer;
 let saving = false;
-let transferring = false;
-let preparedFile;
+let deletingSave = false;
 let resultURL;
 let outcomeSaveFailed = false;
 let stopped = false;
@@ -688,7 +680,7 @@ function showPanel(panel, trigger) {
 }
 
 function updateControls() {
-    const disabled = request === undefined || saving || transferring || stopped;
+    const disabled = request === undefined || saving || deletingSave || stopped;
     const command = mode === "command";
     const selecting = mode === "target";
     const aiming = mode === "aim";
@@ -791,73 +783,24 @@ function updateControls() {
     setActions(actionsScreen, !!openPanel && openPanel !== "conditions", disabled);
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
-    saveTransfer.hidden = mode !== "save-slots";
-    transferActions.disabled = disabled;
-    deleteSave.disabled = !(menuCursor > 0);
+    saveManagement.hidden = mode !== "save-slots";
+    deleteSave.disabled = disabled || !(menuCursor > 0);
 }
 
-function showTransferStatus(message, failed = false) {
-    transferStatus.textContent = message;
-    transferStatus.classList.toggle("error", failed);
-    transferStatus.hidden = false;
+function showDeleteSaveStatus(message, failed = false) {
+    deleteSaveStatus.textContent = message;
+    deleteSaveStatus.classList.toggle("error", failed);
+    deleteSaveStatus.hidden = false;
 }
 
-function clearExport() {
-    if (preparedFile) {
-        const url = downloadSave.getAttribute("href");
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        preparedFile = undefined;
-    }
-    downloadSave.removeAttribute("href");
-    exportFile.hidden = true;
-}
-
-function prepareExport(slot, data) {
-    const filename = `Angband-${slot.replace(/[^a-z0-9_-]+/gi, "-")}.sav`;
-    preparedFile = new File([data], filename, { type: "application/octet-stream" });
-    downloadSave.href = URL.createObjectURL(preparedFile);
-    downloadSave.download = filename;
-    const canShare = navigator.canShare?.({ files: [preparedFile] });
-    shareSave.hidden = !canShare;
-    shareSave.disabled = false;
-    exportFile.hidden = false;
-    showTransferStatus(`Save file ready for ${slot}.`);
-}
-
-function requestSaveTransfer(type, file) {
-    if (mode !== "save-slots" || transferring || request === undefined) return;
-    if (type === "delete-save" && !(menuCursor > 0)) return;
-    clearExport();
+deleteSave.addEventListener("click", () => {
+    if (mode !== "save-slots" || deleteSave.disabled || request === undefined) return;
     const selectedRequest = request;
     request = undefined;
-    transferring = true;
-    if (type === "delete-save") transferStatus.hidden = true;
-    else showTransferStatus(type === "import-save" ? "Importing save…" : "Preparing save file…");
+    deletingSave = true;
+    deleteSaveStatus.hidden = true;
     updateControls();
-    worker.postMessage({ type, request: selectedRequest, file, cursor: menuCursor });
-}
-
-importSave.addEventListener("click", () => importFile.click());
-importFile.addEventListener("change", () => {
-    const file = importFile.files[0];
-    importFile.value = "";
-    if (file) requestSaveTransfer("import-save", file);
-});
-exportSave.addEventListener("click", () => requestSaveTransfer("export-save"));
-deleteSave.addEventListener("click", () => requestSaveTransfer("delete-save"));
-shareSave.addEventListener("click", async () => {
-    const file = preparedFile;
-    if (!file) return;
-    shareSave.disabled = true;
-    try {
-        await navigator.share({ files: [file] });
-    } catch (error) {
-        if (error.name !== "AbortError" && file === preparedFile) {
-            showTransferStatus("Could not share the save. Use Download file.", true);
-        }
-    } finally {
-        if (file === preparedFile) shareSave.disabled = false;
-    }
+    worker.postMessage({ type: "delete-save", request: selectedRequest, cursor: menuCursor });
 });
 
 function setActions(group, visible, disabled) {
@@ -999,7 +942,6 @@ function stop(message, failed) {
     context = {};
     openPanel = panelTrigger = characterTrigger = undefined;
     clearPendingInput();
-    clearExport();
     clearResultFile();
     keyboardOpen = false;
     updateControls();
@@ -1029,8 +971,7 @@ function handleWorkerMessage({ data }) {
             if (changed) {
                 centerPending = true;
                 if (mode === "save-slots") {
-                    clearExport();
-                    transferStatus.hidden = true;
+                    deleteSaveStatus.hidden = true;
                 }
                 keyboardOpen = false;
                 openPanel = panelTrigger = undefined;
@@ -1052,7 +993,7 @@ function handleWorkerMessage({ data }) {
                 letterChoices.replaceChildren(...context.letterMenu.choices.map(({ key, name }) =>
                     makeKey(key, key, `${name} (${key})`)));
             }
-            transferring = false;
+            deletingSave = false;
             if (changed && isTextEntry(mode)) renderKeyboard();
             launch.hidden = true;
             main.classList.remove("starting");
@@ -1127,32 +1068,16 @@ function handleWorkerMessage({ data }) {
             updateView(null, null);
             updateControls();
             break;
-        case "save-imported":
-            transferring = false;
-            updateControls();
-            showTransferStatus(`Imported into ${data.slot}.`);
-            break;
         case "save-deleted":
-            transferring = false;
+            deletingSave = false;
             updateControls();
-            showTransferStatus(`Deleted ${data.slot}.`);
+            showDeleteSaveStatus(`Deleted ${data.slot}.`);
             break;
-        case "save-exported":
-            transferring = false;
-            updateControls();
-            try {
-                prepareExport(data.slot, data.data);
-            } catch (error) {
-                console.error(error);
-                clearExport();
-                showTransferStatus("Could not export the save.", true);
-            }
-            break;
-        case "save-transfer-error":
-            transferring = false;
+        case "save-delete-error":
+            deletingSave = false;
             if (data.request !== undefined) request = data.request;
             updateControls();
-            showTransferStatus(data.message, true);
+            showDeleteSaveStatus(data.message, true);
             break;
         case "exit":
             stop(data.code === 0 ? "Angband has closed." :
@@ -1176,7 +1101,7 @@ function clearPendingInput() {
 }
 
 function sendInput(input) {
-    if (request === undefined || saving || transferring || stopped) return false;
+    if (request === undefined || saving || deletingSave || stopped) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
@@ -1193,7 +1118,7 @@ function sendInput(input) {
     }
     request = undefined;
     toggleTiles.disabled = true;
-    transferActions.disabled = true;
+    deleteSave.disabled = true;
     updatePrompt();
     return true;
 }
@@ -1714,7 +1639,7 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-    if (mode === undefined || saving || transferring || event.isComposing || event.altKey) return;
+    if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
     if (event.key === "Escape" && pendingInput !== undefined && !stopAction.hidden) {
         stopAction.click();
         event.preventDefault();

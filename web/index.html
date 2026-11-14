@@ -200,18 +200,9 @@
             </fieldset>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
             <fieldset id="letter-choices" class="key-panel" aria-label="Letter choices" disabled hidden></fieldset>
-            <section id="save-transfer" aria-label="Save files" hidden>
-                <fieldset id="save-transfer-actions" class="key-row" aria-label="Manage saves" disabled>
-                    <button id="import-save" type="button">Import save</button>
-                    <button id="export-save" type="button">Export selected save</button>
-                    <button id="delete-save" type="button" disabled>Delete selected save</button>
-                </fieldset>
-                <input id="import-file" type="file" aria-label="Angband save file" hidden>
-                <p id="transfer-status" class="status" role="status" hidden></p>
-                <div id="export-file" class="key-row" hidden>
-                    <button id="share-save" type="button" hidden>Share file…</button>
-                    <a id="download-save" target="_blank" rel="noopener">Download file</a>
-                </div>
+            <section id="save-management" aria-label="Manage saves" hidden>
+                <button id="delete-save" type="button" disabled>Delete selected save</button>
+                <p id="delete-save-status" class="status" role="status" hidden></p>
             </section>
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
             <fieldset id="option-digits" class="key-panel" aria-label="Enter a number" disabled hidden></fieldset>

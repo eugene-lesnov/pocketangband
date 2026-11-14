@@ -94,14 +94,11 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +769,65 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -758,6 +769,39 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
  	mem_free(entries);
  }
  
 +#ifdef __EMSCRIPTEN__
-+extern bool web_stage_save_import(const char *staged);
-+extern bool web_finish_save_import(const char *staged, const char *path);
-+extern void web_export_save_file(const char *path);
 +extern bool web_delete_save_file(const char *path, const char *panic);
 +
 +static void web_find_free_slot(char *path, size_t len)
@@ -115,29 +112,6 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +		path_build(path, len, ANGBAND_DIR_SAVE, name);
 +		savefile_get_panic_name(panic, sizeof(panic), path);
 +	} while (file_exists(path) || file_exists(panic));
-+}
-+
-+static bool web_import_save(void)
-+{
-+	const char *staged = "/tmp/pocketband-import";
-+	char path[sizeof(savefile)] = "";
-+	bool imported = false;
-+
-+	if (web_stage_save_import(staged)) {
-+		if (savefile_check_import(staged)) {
-+			web_find_free_slot(path, sizeof(path));
-+		}
-+		imported = web_finish_save_import(staged, path[0] ? path : NULL);
-+	}
-+	file_delete(staged);
-+	return imported;
-+}
-+
-+static void web_export_save(const char *name)
-+{
-+	char path[sizeof(savefile)];
-+	if (name) path_build(path, sizeof(path), ANGBAND_DIR_SAVE, name);
-+	web_export_save_file(name ? path : NULL);
 +}
 +
 +static bool web_delete_save(const char *name)
@@ -160,26 +134,26 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +835,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -765,10 +809,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
 - * game.  Otherwise, it will be false.
 + * game.  Otherwise, it will be false when a save was selected.  Returns
-+ * false after importing or deleting a save, when the menu needs to be rebuilt.
++ * false after deleting a save, when the menu needs to be rebuilt.
   */
 -static void select_savefile(bool retry, bool *new_game)
 +static bool select_savefile(bool retry, bool *new_game)
  {
 +#ifdef __EMSCRIPTEN__
-+	const int notify = EVT_WEB_IMPORT | EVT_WEB_EXPORT | EVT_WEB_DELETE;
++	const int notify = EVT_WEB_DELETE;
 +#else
 +	const int notify = 0;
 +#endif
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +951,29 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -875,11 +925,23 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -187,15 +161,9 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +	while (true) {
 +		selection = menu_select(m, notify, false);
 +#ifdef __EMSCRIPTEN__
-+		if (selection.type == EVT_WEB_IMPORT) {
-+			if (!web_import_save()) continue;
-+		} else if (selection.type == EVT_WEB_EXPORT) {
-+			web_export_save(m->cursor >= 0 ? names[m->cursor] : NULL);
-+			continue;
-+		} else if (selection.type == EVT_WEB_DELETE) {
-+			if (m->cursor < 0 || m->cursor >= count ||
-+					!web_delete_save(names[m->cursor])) continue;
-+		}
++		if (selection.type == EVT_WEB_DELETE &&
++				(m->cursor < 0 || m->cursor >= count ||
++				 !web_delete_save(names[m->cursor]))) continue;
 +#endif
 +		break;
 +	}
@@ -210,7 +178,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +990,7 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -896,6 +958,7 @@ static void select_savefile(bool retry, bool *new_game)
  	if (selection.type == EVT_ESCAPE) {
  		quit(NULL);
  	}
@@ -218,7 +186,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  }
  
  /**
-@@ -910,6 +1005,12 @@ void play_game(enum game_mode_type mode)
+@@ -910,6 +973,12 @@ void play_game(enum game_mode_type mode)
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -231,7 +199,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -920,7 +1021,9 @@ void play_game(enum game_mode_type mode)
+@@ -920,7 +989,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -242,7 +210,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -946,6 +1049,14 @@ void play_game(enum game_mode_type mode)
+@@ -946,6 +1017,14 @@ void play_game(enum game_mode_type mode)
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -257,7 +225,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1010,6 +1121,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1010,6 +1089,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -277,7 +245,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1170,25 @@ bool save_game_checked(void)
+@@ -1046,11 +1138,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -304,7 +272,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1202,6 @@ bool save_game_checked(void)
+@@ -1064,23 +1170,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -328,7 +296,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1094,10 +1215,8 @@ bool save_game_checked(void)
+@@ -1094,10 +1183,8 @@ bool save_game_checked(void)
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -341,7 +309,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1129,17 +1248,26 @@ void close_game(bool prompt_failed_save)
+@@ -1129,17 +1216,26 @@ void close_game(bool prompt_failed_save)
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -369,7 +337,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1149,6 +1277,7 @@ void close_game(bool prompt_failed_save)
+@@ -1149,6 +1245,7 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -377,7 +345,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1286,7 @@ void close_game(bool prompt_failed_save)
+@@ -1157,6 +1254,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -388,7 +356,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,21 @@
+@@ -36,7 +36,19 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -396,8 +364,6 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_SWITCH	= 0x0080,	/* Menu switch */
 +#ifdef __EMSCRIPTEN__
 +	EVT_WEB_SAVE	= 0x0200,
-+	EVT_WEB_IMPORT	= 0x0400,
-+	EVT_WEB_EXPORT	= 0x0800,
 +	EVT_WEB_TILES	= 0x1000,
 +	EVT_WEB_MENU_ROW = 0x2000,
 +	EVT_WEB_MENU_SECTION = 0x4000,
@@ -411,7 +377,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  } ui_event_type;
  
  
-@@ -196,6 +210,14 @@
+@@ -196,6 +208,14 @@
  	uint8_t mods;
  };
  
@@ -426,7 +392,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +243,9 @@
+@@ -221,6 +241,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -1069,7 +1035,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  	ui_event in = EVENT_EMPTY;
  	bool no_act = (menu->flags & MN_NO_ACTION) ? true : false;
 +#ifdef __EMSCRIPTEN__
-+	bool save_slots = notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT | EVT_WEB_DELETE);
++	bool save_slots = notify & EVT_WEB_DELETE;
 +	bool web_rows = menu->web_render || (save_slots && menu->row_funcs == &menu_iter_strings);
 +#endif
  
@@ -1424,101 +1390,6 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  			/* Restrict cursor to inbounds */
  			x = MAX(0, MIN(x, cave->width - 1));
-diff --git a/src/savefile.c b/src/savefile.c
---- a/src/savefile.c
-+++ b/src/savefile.c
-@@ -88,6 +88,10 @@ struct blockheader {
- 	char name[16];
- 	uint32_t version;
- 	uint32_t size;
-+#ifdef __EMSCRIPTEN__
-+	uint32_t payload_size;
-+	uint32_t checksum;
-+#endif
- };
- 
- struct blockinfo {
-@@ -491,6 +495,10 @@ static errr next_blockheader(ang_file *f, struct blockheader *b) {
- 	my_strcpy(b->name, (char *)&savefile_head, sizeof b->name);
- 	b->version = RECONSTRUCT_U32B(16);
- 	b->size = RECONSTRUCT_U32B(20);
-+#ifdef __EMSCRIPTEN__
-+	b->payload_size = b->size;
-+	b->checksum = RECONSTRUCT_U32B(24);
-+#endif
- 
- 	/* Pad to 4 bytes */
- 	if (b->size % 4)
-@@ -499,6 +507,55 @@ static errr next_blockheader(ang_file *f, struct blockheader *b) {
- 	return 0;
- }
- 
-+#ifdef __EMSCRIPTEN__
-+static bool check_import_blocks(ang_file *file)
-+{
-+	struct blockheader block;
-+	uint8_t bytes[4096];
-+
-+	if (!check_header(file)) return false;
-+
-+	for (size_t i = 0; i < N_ELEMENTS(savers); i++) {
-+		if (next_blockheader(file, &block) != 0 ||
-+				!streq(block.name, savers[i].name) ||
-+				block.version != savers[i].version ||
-+				block.size < block.payload_size) return false;
-+
-+		bool description = i == 0;
-+		if (description && !block.payload_size) return false;
-+
-+		uint32_t checksum = 0;
-+		uint32_t payload_left = block.payload_size;
-+		for (uint32_t left = block.size; left > 0;) {
-+			size_t count = MIN(left, sizeof(bytes));
-+			size_t payload_count = MIN(payload_left, count);
-+			if (file_read(file, (char *)bytes, count) != (int)count) {
-+				return false;
-+			}
-+			if (description && payload_count && payload_left == payload_count &&
-+					bytes[payload_count - 1] != 0) return false;
-+			for (size_t j = 0; j < payload_count; j++) {
-+				checksum += bytes[j];
-+			}
-+			payload_left -= payload_count;
-+			left -= count;
-+		}
-+		if (checksum != block.checksum) return false;
-+	}
-+
-+	return next_blockheader(file, &block) == 1;
-+}
-+
-+bool savefile_check_import(const char *path)
-+{
-+	ang_file *file = file_open(path, MODE_READ, FTYPE_TEXT);
-+	if (!file) return false;
-+	bool valid = check_import_blocks(file);
-+	file_close(file);
-+	return valid;
-+}
-+#endif
-+
- /**
-  * Find the right loader for this block, return it
-  */
-diff --git a/src/savefile.h b/src/savefile.h
---- a/src/savefile.h
-+++ b/src/savefile.h
-@@ -37,6 +37,10 @@ extern bool character_saved;
-  */
- bool savefile_save(const char *path);
- 
-+#ifdef __EMSCRIPTEN__
-+bool savefile_check_import(const char *path);
-+#endif
-+
- /**
-  * Load the savefile given.  Returns true on succcess, false otherwise.
-  */
 diff --git a/src/cmd-core.c b/src/cmd-core.c
 --- a/src/cmd-core.c
 +++ b/src/cmd-core.c

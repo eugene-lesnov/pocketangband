@@ -19,7 +19,6 @@
 #include "ui-map.h"
 #include "ui-output.h"
 #include "ui-prefs.h"
-#include <fcntl.h>
 #include <emscripten.h>
 
 enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2 };
@@ -470,7 +469,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
         const char *prompt, const char *verb, int player_x, int player_y, int gold, int world_view,
-        int save_event, int import_event, int export_event, int delete_event, int tiles_event), {
+        int save_event, int delete_event, int tiles_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
     const context = modeName === "target" ? { ...Module['targetOptions'] } :
@@ -486,8 +485,6 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
         context, menu);
     switch (action) {
         case "background-save": return save_event;
-        case "import-save": return import_event;
-        case "export-save": return export_event;
         case "delete-save": return delete_event;
         case "toggle-tiles": return tiles_event;
         default: return 0;
@@ -510,33 +507,6 @@ bool web_persist_profile(bool saved)
 EM_ASYNC_JS(bool, web_sync_profile, (void), {
     return await Module['syncProfile']();
 });
-
-EM_ASYNC_JS(int, stage_save_import, (const char *path), {
-    return await Module['stageSaveImport'](UTF8ToString(path));
-});
-
-bool web_stage_save_import(const char *path)
-{
-    return stage_save_import(path);
-}
-
-EM_ASYNC_JS(int, finish_save_import, (const char *staged, const char *path, int flags), {
-    return await Module['finishSaveImport'](UTF8ToString(staged), path ? UTF8ToString(path) : null, flags);
-});
-
-bool web_finish_save_import(const char *staged, const char *path)
-{
-    return finish_save_import(staged, path, O_WRONLY | O_CREAT | O_EXCL);
-}
-
-EM_JS(void, export_save_file, (const char *path), {
-    Module['exportSaveFile'](path ? UTF8ToString(path) : null);
-});
-
-void web_export_save_file(const char *path)
-{
-    export_save_file(path);
-}
 
 EM_ASYNC_JS(int, delete_save_file, (const char *path, const char *panic), {
     return await Module['deleteSaveFile'](UTF8ToString(path), panic ? UTF8ToString(panic) : null);
@@ -584,7 +554,7 @@ static ui_event_type wait_for_input(void)
     return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view,
-        EVT_WEB_SAVE, EVT_WEB_IMPORT, EVT_WEB_EXPORT, EVT_WEB_DELETE, EVT_WEB_TILES);
+        EVT_WEB_SAVE, EVT_WEB_DELETE, EVT_WEB_TILES);
 }
 
 static errr queue_input(void)

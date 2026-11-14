@@ -1,12 +1,10 @@
 import createAngband from "./angband.js";
 
-const maxSaveSize = 64 * 1024 * 1024;
 const profileDirectory = "/profile";
 const input = [];
 let waiting;
 let request = 0;
 let backgroundSavePending = false;
-let saveToImport;
 let interruptPending = false;
 let runningRequest;
 
@@ -16,8 +14,8 @@ function wakeInput(action) {
     wake(action);
 }
 
-function transferError(message, request) {
-    self.postMessage({ type: "save-transfer-error", message, request });
+function deleteSaveError(message, request) {
+    self.postMessage({ type: "save-delete-error", message, request });
 }
 
 self.addEventListener("message", ({ data }) => {
@@ -40,13 +38,12 @@ self.addEventListener("message", ({ data }) => {
         }
         return;
     }
-    if (["import-save", "export-save", "delete-save"].includes(data.type)) {
+    if (data.type === "delete-save") {
         if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
-            (data.type === "delete-save" && (!(data.cursor > 0) || data.cursor !== waiting.menu?.cursor))) {
-            transferError("The save slot selection changed. Try again.", waiting?.request);
+            !(data.cursor > 0) || data.cursor !== waiting.menu?.cursor) {
+            deleteSaveError("The save slot selection changed. Try again.", waiting?.request);
             return;
         }
-        if (data.type === "import-save") saveToImport = data.file;
         wakeInput(data.type);
         return;
     }
@@ -163,75 +160,6 @@ async function play(afterRun) {
         flushInput() {
             input.length = 0;
         },
-        async stageSaveImport(path) {
-            const file = saveToImport;
-            saveToImport = undefined;
-            if (!(file instanceof File) || file.size === 0) {
-                transferError("Choose an Angband save file.");
-                return 0;
-            }
-            if (file.size > maxSaveSize) {
-                transferError("The save file exceeds 64 MiB.");
-                return 0;
-            }
-            try {
-                game.FS.writeFile(path, new Uint8Array(await file.arrayBuffer()), { canOwn: true });
-                return 1;
-            } catch (error) {
-                console.error(error);
-                transferError("Could not read the save file.");
-                return 0;
-            }
-        },
-        async finishSaveImport(staged, path, flags) {
-            if (!path) {
-                transferError("The file is damaged or incompatible with this version of Angband.");
-                return 0;
-            }
-            const fs = game.FS;
-            let created = false;
-            try {
-                const bytes = fs.readFile(staged);
-                const stream = fs.open(path, flags, 0o600);
-                created = true;
-                try {
-                    if (fs.write(stream, bytes, 0, bytes.length, 0, true) !== bytes.length) {
-                        throw new Error("Incomplete save file write.");
-                    }
-                } finally {
-                    fs.close(stream);
-                }
-                await syncProfile(fs, false);
-            } catch (error) {
-                console.error(error);
-                if (created) {
-                    try {
-                        fs.unlink(path);
-                    } catch (cleanupError) {
-                        self.postMessage({ type: "error", message: "Could not roll back the import. Reopen the save slots." });
-                        console.error(cleanupError);
-                        return 0;
-                    }
-                }
-                transferError("Could not store the imported save.");
-                return 0;
-            }
-            self.postMessage({ type: "save-imported", slot: path.split("/").pop() });
-            return 1;
-        },
-        exportSaveFile(path) {
-            if (!path) {
-                transferError("Highlight a saved character to export.");
-                return;
-            }
-            try {
-                const data = game.FS.readFile(path);
-                self.postMessage({ type: "save-exported", slot: path.split("/").pop(), data }, [data.buffer]);
-            } catch (error) {
-                console.error(error);
-                transferError("Could not read the selected save.");
-            }
-        },
         readResultsFile(path) {
             try {
                 return game.FS.readFile(path);
@@ -255,7 +183,7 @@ async function play(afterRun) {
                 await deleteProfileFiles(game.IDBFS, keys);
             } catch (error) {
                 console.error(error);
-                transferError("Could not delete the selected save.");
+                deleteSaveError("Could not delete the selected save.");
                 return 0;
             }
             try {
