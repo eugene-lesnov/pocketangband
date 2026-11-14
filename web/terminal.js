@@ -393,8 +393,8 @@ function renderWorld(state) {
     hp.classList.toggle("low", state.lowHp);
     sp.textContent = `SP ${state.sp}/${state.maxSp}`;
     sp.hidden = !state.magic;
-    const speedLabel = `Speed ${state.speed}`;
-    speed.textContent = state.speed === "Normal" ? speedLabel : state.speed;
+    speed.hidden = state.speed === "Normal";
+    speed.textContent = speed.hidden ? "" : state.speed;
     for (const [index, { label, value }] of state.stats.entries()) {
         let stat = hudStats.children[index];
         if (!stat) {
@@ -417,7 +417,7 @@ function renderWorld(state) {
     extraConditions.textContent = `+${more}`;
     const action = mode === "command" ? "Open Character" : "View conditions";
     vitals.setAttribute("aria-label", [action, hp.textContent, state.magic && sp.textContent,
-        state.depth ? `Depth ${state.depth * 50} feet` : "Town", speedLabel,
+        !speed.hidden && `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
         ...state.stats.map(({ label, value }) => `${label} ${value}`), ...labels,
         more > 0 && `${more} more conditions`].filter(Boolean).join(", "));
 
