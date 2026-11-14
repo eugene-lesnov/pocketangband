@@ -1918,7 +1918,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	struct object_menu_data *choices = menu_priv(menu);
 +
 +	web_set_menu(menu, menu->cursor, prompt);
-+	if (item_cmd == CMD_CAST || item_cmd == CMD_FIRE ||
++	if (item_cmd == CMD_CAST || item_cmd == CMD_FIRE || item_cmd == CMD_USE ||
 +			item_cmd == CMD_USE_WAND || item_cmd == CMD_USE_ROD || item_cmd == CMD_USE_STAFF)
 +		web_set_menu_on_map();
 +	web_set_menu_sections(current, web_item_sections() | current);

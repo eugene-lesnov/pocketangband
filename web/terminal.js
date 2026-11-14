@@ -119,17 +119,19 @@ const keyboardToggle = document.querySelector("#keyboard-toggle");
 
 const specialKeys = new Map([
     ["Enter", 13], ["Backspace", 8], ["Escape", 27], ["Save", 19], ["SaveAndQuit", 24], ["Tab", 9],
-    ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83], ["CtrlT", 20],
+    ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83],
+    ["CtrlT", 20], ["Ctrl+V", 22],
 ]);
 const gameMenu = [
     ["=", "Options"], ["?", "Help"],
     ["Q", "Retire character and quit"],
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
 ];
+const useCommand = ["U", "Use an item", "X", "Use"];
 const quickCommands = [
-    ["r", "Read a scroll", null, "Scroll"], ["q", "Quaff a potion", null, "Potion"],
-    ["u", "Use a staff", "Z", "Staff"], ["a", "Aim a wand", "z", "Wand"],
-    ["z", "Zap a rod", "a", "Rod"], ["i", "Display inventory listing", null, "Pack"],
+    ["r", "Read a scroll", null, "Scroll"], ["q", "Quaff a potion", null, "Potion"], useCommand,
+    ["n", "Repeat previous command", "Ctrl+V", "Repeat"], ["d", "Drop an item", null, "Drop"],
+    ["i", "Display inventory listing", null, "Pack"],
 ];
 const spellCommands = {
     look: ["l", "Look around", "x", "Look"],
@@ -143,7 +145,8 @@ const restCommand = ["R", "Rest for a while", null, "Rest"];
 const runCommand = [".", "Start running", ","];
 const stealCommand = ["s", "Steal from a monster"];
 const extraCommands = [
-    runCommand, spellCommands.look, ["U", "Use an item", "X"],
+    runCommand, spellCommands.look, useCommand,
+    ["u", "Use a staff", "Z"], ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"],
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
@@ -152,7 +155,7 @@ const extraCommands = [
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
 ];
 const panelTitles = { menu: "Menu", commands: "Commands" };
-const commandFaces = new Map([["CtrlT", "^T"]]);
+const commandFaces = new Map([["CtrlT", "^T"], ["Ctrl+V", "^V"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
@@ -1365,7 +1368,7 @@ function renderQuickActions({ roguelike, quickActions }) {
         button.setAttribute("aria-label", hint ? `${label} (${key}). ${hint}` : `${label} (${key})`);
         const [name, badge, notice] = button.children;
         name.textContent = face;
-        badge.textContent = key;
+        badge.textContent = commandFaces.get(key) ?? key;
         badge.hidden = !!hint;
         notice.textContent = hint;
         notice.hidden = !hint;
