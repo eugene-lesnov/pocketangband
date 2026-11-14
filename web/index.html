@@ -60,19 +60,31 @@
                 <p id="menu-empty" hidden>No items.</p>
             </div>
             <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
-            <section id="character-screen" class="menu-screen" aria-label="Character" hidden>
+            <section id="character-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
                 <div class="character-identity">
                     <h3 id="character-name"></h3>
                     <p id="character-class"></p>
                 </div>
-                <div class="character-sections" aria-label="Character sections" role="group">
-                    <button type="button" data-character-section="overview" aria-controls="character-content" aria-pressed="true">Overview</button>
-                    <button type="button" data-character-section="defenses" aria-controls="character-content" aria-pressed="false">Defenses</button>
-                    <button type="button" data-character-section="conditions" aria-controls="character-content" aria-pressed="false">Conditions</button>
-                </div>
-                <div id="character-content"></div>
+                <div id="character-summary"></div>
+                <section id="character-attributes" aria-label="Attributes"></section>
+                <section aria-labelledby="character-conditions-title">
+                    <h3 id="character-conditions-title">Conditions</h3>
+                    <div id="character-conditions"></div>
+                </section>
+                <details class="character-detail">
+                    <summary>Combat &amp; skills</summary>
+                    <div id="character-combat"></div>
+                </details>
+                <details class="character-detail">
+                    <summary>Defenses</summary>
+                    <div id="character-defenses"></div>
+                </details>
+                <details class="character-detail">
+                    <summary>Progress &amp; history</summary>
+                    <div id="character-progress"></div>
+                </details>
             </section>
-            <section id="conditions-screen" class="menu-screen" aria-label="Conditions" hidden></section>
+            <section id="conditions-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden></section>
             <div id="edit-screen" class="menu-screen" hidden>
                 <p id="edit-value" aria-label="Current value"></p>
             </div>
@@ -92,7 +104,7 @@
         </section>
 
         <section id="hud" aria-label="Character status" hidden>
-            <button id="vitals" type="button" aria-label="Conditions">
+            <button id="vitals" type="button" aria-label="Conditions" aria-controls="conditions-screen">
                 <span class="vital-values">
                     <span id="hp"></span><span id="sp"></span><span id="depth"></span>
                 </span>

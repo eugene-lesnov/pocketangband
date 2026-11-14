@@ -34,8 +34,12 @@ const conditionsScreen = document.querySelector("#conditions-screen");
 const characterScreen = document.querySelector("#character-screen");
 const characterName = document.querySelector("#character-name");
 const characterClass = document.querySelector("#character-class");
-const characterContent = document.querySelector("#character-content");
-const characterTabs = [...characterScreen.querySelectorAll("[data-character-section]")];
+const characterSummary = document.querySelector("#character-summary");
+const characterAttributes = document.querySelector("#character-attributes");
+const characterConditions = document.querySelector("#character-conditions");
+const characterCombat = document.querySelector("#character-combat");
+const characterDefenses = document.querySelector("#character-defenses");
+const characterProgress = document.querySelector("#character-progress");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
 const previousMessage = document.querySelector("#previous-message");
@@ -137,7 +141,6 @@ let menuCursor;
 let openPanel;
 let panelTrigger;
 let actionReason = "";
-let characterSection = "overview";
 let characterTrigger;
 let pendingInput;
 let stopTimer;
@@ -357,6 +360,7 @@ function characterRows(rows) {
 }
 
 function appendCharacterGroup(container, title, rows) {
+    if (!rows.length) return;
     const heading = document.createElement("h3");
     heading.textContent = title;
     container.append(heading, characterRows(rows));
@@ -370,45 +374,74 @@ function renderConditions(container) {
         { label: "Light source", value: state.light },
     ];
     container.replaceChildren(characterRows(rows));
-    const effects = state.conditions.filter(({ label }) => label !== state.speed && label !== state.foodGrade)
-        .map(({ label }) => ({ label, value: "Active" }));
-    if (effects.length) appendCharacterGroup(container, "Active effects", effects);
+    const effects = state.conditions
+        .filter(({ label }) => label !== state.speed && label !== state.foodGrade)
+        .sort((left, right) => right.priority - left.priority);
+    if (effects.length) {
+        const list = document.createElement("ul");
+        list.className = "character-effects";
+        list.setAttribute("aria-label", "Active effects");
+        for (const { label } of effects) {
+            const item = document.createElement("li");
+            item.textContent = label;
+            list.append(item);
+        }
+        container.append(list);
+    }
 }
 
 function renderCharacter() {
     const sheet = context.character;
-    if (!sheet) return;
+    if (!sheet || !world) return;
     characterName.textContent = sheet.name;
     characterName.hidden = !sheet.name;
     characterClass.textContent = `${sheet.race} ${sheet.className} · Level ${sheet.level}`;
-    for (const button of characterTabs)
-        button.setAttribute("aria-pressed", String(button.dataset.characterSection === characterSection));
 
-    if (characterSection === "conditions") {
-        renderConditions(characterContent);
-        return;
-    }
-    characterContent.replaceChildren();
-    if (characterSection === "defenses") {
-        for (const [group, title] of [["resistances", "Resistances"],
-            ["abilities", "Abilities"], ["hindrances", "Hindrances"]]) {
-            appendCharacterGroup(characterContent, title, sheet.defenses.filter((row) => row.group === group));
-        }
-        return;
-    }
-    characterContent.append(characterRows([
+    const rowsFor = (section) => sheet.rows.filter((row) => row.section === section);
+    const progress = new Map(rowsFor(2).map(({ label, value }) => [label, value]));
+    const combat = rowsFor(3);
+    const experience = progress.get("Cur Exp");
+    const nextLevel = progress.get("Adv Exp");
+    const hasNextLevel = /^\d+$/.test(nextLevel ?? "");
+    characterSummary.replaceChildren(characterRows([
         { label: "HP", value: `${world.hp}/${world.maxHp}` },
         ...(world.magic ? [{ label: "MP", value: `${world.sp}/${world.maxSp}` }] : []),
-        ...sheet.rows.filter((row) => row.section === 2 && row.label !== "Level"),
+        ...combat.filter(({ label }) => label === "Armor"),
+        { label: "Gold", value: progress.get("Gold") },
+        { label: hasNextLevel ? "XP toward next level" : "Experience",
+            value: hasNextLevel ? `${experience} / ${nextLevel}` : experience },
     ]));
-    for (const [section, title] of [[0, "Attributes"], [3, "Combat"], [4, "Skills"], [1, "Background"]]) {
-        appendCharacterGroup(characterContent, title, sheet.rows.filter((row) => row.section === section));
+    characterAttributes.replaceChildren(characterRows(rowsFor(0)));
+    renderConditions(characterConditions);
+
+    characterCombat.replaceChildren();
+    const meleeHit = combat.findIndex(({ label }) => label === "To-hit");
+    const attackRows = combat.map((row, index) => row.label === "To-hit" ?
+        { ...row, label: index === meleeHit ? "Melee to-hit" : "Ranged to-hit" } : row);
+    appendCharacterGroup(characterCombat, "Combat", attackRows.filter(({ label }) => label !== "Armor"));
+    appendCharacterGroup(characterCombat, "Skills", rowsFor(4));
+
+    characterDefenses.replaceChildren();
+    for (const [group, title] of [["resistances", "Resistances"],
+        ["abilities", "Abilities"], ["hindrances", "Hindrances"]]) {
+        appendCharacterGroup(characterDefenses, title, sheet.defenses.filter((row) => row.group === group));
     }
+
+    characterProgress.replaceChildren(characterRows([
+        { label: "Highest XP", value: progress.get("Max Exp") },
+        { label: "Deepest level", value: progress.get("Max Depth") },
+        { label: "Burden", value: progress.get("Burden") },
+        ...(progress.has("Overweight") ? [{ label: "Overweight", value: progress.get("Overweight") }] : []),
+    ]));
+    const background = rowsFor(1);
+    const turnCounters = ["Game", "Standard", "Resting"];
+    appendCharacterGroup(characterProgress, "Turn counts", background.filter(({ label }) => turnCounters.includes(label)));
+    appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) => !turnCounters.includes(label)));
     if (sheet.history) {
         const history = document.createElement("p");
         history.className = "character-history";
         history.textContent = sheet.history;
-        characterContent.append(history);
+        characterProgress.append(history);
     }
 }
 
@@ -449,7 +482,8 @@ function showPanel(panel, trigger) {
     updateView();
     updateControls();
     if (panel) {
-        const firstAction = panel === "conditions" ? cancelKey : actionsScreen.querySelector("button");
+        const firstAction = panel === "conditions" ? conditionsScreen : actionsScreen.querySelector("button");
+        if (panel === "conditions") conditionsScreen.scrollTop = 0;
         firstAction.focus({ preventScroll: true });
     }
 }
@@ -470,7 +504,6 @@ function updateControls() {
     const overview = mode === "overview";
     const details = mode === "details";
     const character = mode === "character";
-    const canEditCharacter = character && !disabled;
     const hasTarget = aiming && context.current;
     const canOpenKeyboard = !counting && !resting && !confirming && !history &&
         !more && !overview && !details && !openPanel;
@@ -534,7 +567,6 @@ function updateControls() {
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
     setActions(actionsScreen, !!openPanel && openPanel !== "conditions", disabled);
-    for (const button of characterTabs) button.disabled = !canEditCharacter;
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
     saveTransfer.hidden = mode !== "save-slots";
@@ -769,14 +801,13 @@ function handleWorkerMessage({ data }) {
             }
             updateControls();
             if (changed && mode === "character") {
+                for (const detail of characterScreen.querySelectorAll(".character-detail")) detail.open = false;
                 characterScreen.scrollTop = 0;
-                characterTabs.find((button) => button.dataset.characterSection === characterSection)
-                    ?.focus({ preventScroll: true });
+                if (!characterScreen.hidden) characterScreen.focus({ preventScroll: true });
             }
             if (mode === "command" && characterTrigger) {
                 characterTrigger.focus({ preventScroll: true });
                 characterTrigger = undefined;
-                characterSection = "overview";
             }
             break;
         }
@@ -1162,28 +1193,12 @@ openMenu.addEventListener("click", () => {
 });
 openCharacter.addEventListener("click", () => {
     if (sendInput({ type: "key", code: keyCode("C") })) {
-        characterSection = "overview";
         characterTrigger = openCharacter;
     }
 });
 vitals.addEventListener("click", () => {
-    if (request === undefined) return;
-    if (mode === "command") {
-        if (sendInput({ type: "key", code: keyCode("C") })) {
-            characterSection = "conditions";
-            characterTrigger = vitals;
-        }
-    } else {
-        showPanel("conditions", vitals);
-    }
+    if (request !== undefined) showPanel("conditions", vitals);
 });
-for (const button of characterTabs) {
-    button.addEventListener("click", () => {
-        characterSection = button.dataset.characterSection;
-        renderCharacter();
-        characterScreen.scrollTop = 0;
-    });
-}
 stopAction.addEventListener("click", () => {
     if (pendingInput === undefined) return;
     worker.postMessage({ type: "interrupt", request: pendingInput });
@@ -1287,6 +1302,8 @@ document.addEventListener("keydown", (event) => {
     }
     if ((event.key === "Enter" || event.key === " ") &&
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
+    if (mode === "character" && characterScreen.contains(event.target) &&
+        [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 
     if (event.key === "Tab") return;
     if (menu && event.key === "Enter") {
