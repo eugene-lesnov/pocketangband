@@ -240,6 +240,10 @@ EM_JS(void, web_set_menu_title, (const char *title), {
     Module['inputMenu'].title = UTF8ToString(title);
 });
 
+EM_JS(void, web_set_menu_on_map, (void), {
+    Module['inputMenu'].onMap = true;
+});
+
 EM_JS(void, web_set_options_title, (const char *title), {
     Module['inputMenu'].options = UTF8ToString(title);
 });

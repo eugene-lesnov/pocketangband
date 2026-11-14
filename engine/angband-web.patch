@@ -1141,7 +1141,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,72 @@
+@@ -24,6 +24,73 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1195,6 +1195,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_poll_interrupt(void);
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
 +void web_set_menu_title(const char *title);
++void web_set_menu_on_map(void);
 +void web_set_options_title(const char *title);
 +void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
 +bool web_sync_profile(void);
@@ -1900,7 +1901,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -1002,6 +1002,64 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+@@ -1002,6 +1002,67 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
  	return false;
  }
  
@@ -1917,6 +1918,9 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	struct object_menu_data *choices = menu_priv(menu);
 +
 +	web_set_menu(menu, menu->cursor, prompt);
++	if (item_cmd == CMD_CAST || item_cmd == CMD_FIRE ||
++			item_cmd == CMD_USE_WAND || item_cmd == CMD_USE_ROD || item_cmd == CMD_USE_STAFF)
++		web_set_menu_on_map();
 +	web_set_menu_sections(current, web_item_sections() | current);
 +	for (int i = 0; i < menu->count; i++) {
 +		struct object *obj = choices[i].object;
@@ -1965,7 +1969,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1217,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1159,6 +1220,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
@@ -1975,7 +1979,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1283,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1222,6 +1286,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -1990,6 +1994,21 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
+@@ -1457,6 +1529,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+ 	throwing_num = scan_items(throwing_list, throwing_max, player,
+ 		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
+ 
++#ifdef __EMSCRIPTEN__
++	if (cmd == CMD_CAST && allow_inven != allow_floor &&
++			(allow_inven ? i1 == i2 : f1 == f2)) {
++		struct object *book = allow_inven ? player->upkeep->inven[i1] : floor_list[f1];
++		int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
++		*choice = get_item_allow(book, cmd_lookup_key(cmd, keymap), cmd, false) ? book : NULL;
++	} else
++#endif
+ 	/* Require at least one legal choice */
+ 	if (allow_inven || allow_equip || allow_quiver || allow_floor) {
+ 		/* Use throwing menu if at all possible */
 diff --git a/src/ui-output.c b/src/ui-output.c
 --- a/src/ui-output.c
 +++ b/src/ui-output.c
@@ -2392,7 +2411,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  
  static const menu_iter spell_menu_iter = {
  	NULL,	/* get_tag = NULL, just use lowercase selections */
-@@ -215,6 +234,53 @@ static const menu_iter spell_menu_iter =
+@@ -215,6 +234,54 @@ static const menu_iter spell_menu_iter =
  	NULL	/* no resize hook */
  };
  
@@ -2407,9 +2426,12 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +static void web_render_spell_choices(struct menu *m)
 +{
 +	struct spell_menu_data *d = menu_priv(m);
++	bool casting = d->is_valid == spell_okay_to_cast;
++
 +	web_set_menu(m, m->cursor, NULL);
 +	web_set_menu_title(d->web_title);
-+	web_menu_action('?', d->show_description ? "Hide description" : "Show description");
++	if (casting) web_set_menu_on_map();
++	else web_menu_action('?', d->show_description ? "Hide description" : "Show description");
 +	for (int i = 0; i < d->n_spells; ++i) {
 +		int index = d->spells[i];
 +		const struct class_spell *spell = spell_by_index(player, index);
@@ -2426,10 +2448,8 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +		}
 +		web_add_menu_row(i, legible ? spell->name : "(illegible)",
 +			legible ? detail : NULL, NULL, m->selections[i], valid);
-+	}
-+	if (d->show_description && m->cursor >= 0 && m->cursor < d->n_spells) {
-+		int index = d->spells[m->cursor];
-+		if (spell_okay_to_browse(player, index)) {
++		if (!casting && d->show_description && i == m->cursor &&
++				spell_okay_to_browse(player, index)) {
 +			void (*previous_hook)(uint8_t, const char *) = text_out_hook;
 +			web_spell_text = textblock_new();
 +			text_out_hook = web_spell_text_out;
@@ -2446,7 +2466,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -249,7 +315,11 @@ static struct menu *spell_menu_new(const
+@@ -249,7 +316,11 @@ static struct menu *spell_menu_new(const
  	m->header = "Name                             Lv Mana Fail Info";
  	m->flags = MN_CASELESS_TAGS | MN_KEYMAP_ESC;
  	m->selections = all_letters_nohjkl;
@@ -2458,7 +2478,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	m->cmd_keys = "?";
  
  	/* Set size */
-@@ -287,6 +357,10 @@ static int spell_menu_select(struct menu
+@@ -287,6 +358,10 @@ static int spell_menu_select(struct menu
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
@@ -2469,7 +2489,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	menu_select(m, 0, true);
  	screen_load();
  
-@@ -306,6 +380,9 @@ static void spell_menu_browse(struct men
+@@ -306,6 +381,9 @@ static void spell_menu_browse(struct men
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;

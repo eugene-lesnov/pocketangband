@@ -98,6 +98,9 @@ const menuRows = document.querySelector("#menu-rows");
 const menuEmpty = document.querySelector("#menu-empty");
 const menuActions = document.querySelector("#menu-actions");
 const menuDescription = document.querySelector("#menu-description");
+const mapPicker = document.querySelector("#map-picker");
+const mapPickerTitle = document.querySelector("#map-picker-title");
+const mapPickerCancel = document.querySelector("#map-picker-cancel");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
@@ -727,6 +730,12 @@ function showPanel(panel, trigger) {
 
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped;
+    const pickingOnMap = Boolean(menu?.onMap);
+    if (pickingOnMap && mapPicker.hidden && !playKeys.hidden) {
+        mapPicker.style.setProperty("--map-picker-height", `${playKeys.parentElement.getBoundingClientRect().height}px`);
+    }
+    mapPicker.hidden = !pickingOnMap;
+    mapPickerCancel.disabled = disabled;
     const command = mode === "command";
     const runDirection = mode === "run-direction";
     const selecting = mode === "target";
@@ -753,7 +762,7 @@ function updateControls() {
     const targeting = aiming || selecting;
     const attackTargeting = selecting && context.attack;
     const targetUnavailable = aiming ? !context.current : !context.canSelect;
-    const canOpenKeyboard = !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
+    const canOpenKeyboard = !pickingOnMap && !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
         !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
@@ -785,7 +794,7 @@ function updateControls() {
     if (runAction.textContent !== runLabel) runAction.textContent = runLabel;
     if (running) delete runAction.dataset.key;
     else runAction.dataset.key = runDirection ? "Escape" : commandKey(runCommand, world?.roguelike);
-    setActions(terminalKeys, !showRunControls && !playing && !stopVisible && !outcome &&
+    setActions(terminalKeys, !pickingOnMap && !showRunControls && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
@@ -922,6 +931,7 @@ continueMessage.addEventListener("click", () => acknowledgeMessage(keyCode("Ente
 function updatePrompt() {
     if (!messagePause.hidden) return;
     let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
+    if (menu?.onMap) text = "";
     if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running) text = "Running…";
@@ -951,7 +961,7 @@ function updateView(state = world, region = views.target.crop) {
     world = state;
     views.target.crop = region;
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
-    activeView = aiming && region ? views.target : world && context.worldView ? views.map : views.terminal;
+    activeView = aiming && region ? views.target : world && (context.worldView || menu?.onMap) ? views.map : views.terminal;
     const editing = context.value !== undefined && !openPanel;
     const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
     const showDetails = context.detail !== undefined;
@@ -1003,7 +1013,7 @@ function updateView(state = world, region = views.target.crop) {
         }
     }
     for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || !!menu || !!openPanel || editing || !!question || showDetails || showCharacter ||
+        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || editing || !!question || showDetails || showCharacter ||
         showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
@@ -1091,11 +1101,14 @@ function handleWorkerMessage({ data }) {
             const restoreRunFocus = document.activeElement === runAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
-            const changed = data.mode !== mode || data.menu?.birth?.title !== menu?.birth?.title ||
+            const changed = data.mode !== mode || data.menu?.onMap !== menu?.onMap ||
+                data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
             if (mode === "results-file") clearResultFile();
             if (changed) {
-                centerPending = true;
+                const stayingOnMap = (menu?.onMap || data.menu?.onMap) &&
+                    (mode === "command" || menu?.onMap) && (data.mode === "command" || data.menu?.onMap);
+                if (!stayingOnMap) centerPending = true;
                 if (mode === "save-slots") {
                     deleteSaveStatus.hidden = true;
                 }
@@ -1136,11 +1149,11 @@ function handleWorkerMessage({ data }) {
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
-            if (changed && mode === "menu" && (context.outcome || menu?.title)) {
+            if (changed && mode === "menu" && (context.outcome || menu?.title || menu?.onMap)) {
                 const selected = menuRows.querySelector('[aria-current="true"]') ??
                     outcomeActions.querySelector('[aria-current="true"]:not([disabled])');
                 (selected ?? menuRows).focus({ preventScroll: true });
-                if (selected && menuRows.contains(selected) && menu.cursor > 0) {
+                if (selected && menuRows.contains(selected) && menuCursor > 0) {
                     selected.scrollIntoView({ block: "nearest" });
                 }
             }
@@ -1449,6 +1462,12 @@ function renderBirthStats(stats, changed) {
 
 function renderMenu(state) {
     menuScreen.hidden = !state;
+    if (state?.onMap) {
+        if (menuScreen.parentElement !== mapPicker) mapPicker.append(menuScreen);
+        mapPickerTitle.textContent = state.title || state.prompt;
+    } else if (menuScreen.parentElement === mapPicker) {
+        menuDescription.before(menuScreen);
+    }
     const description = state?.description ?? "";
     menuDescription.hidden = !description;
     if (menuDescription.textContent !== description) {
@@ -1484,7 +1503,7 @@ function renderMenu(state) {
         `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.hidden = !summary;
     menuSummary.textContent = summary;
-    menuSections.hidden = !state.sections?.length;
+    menuSections.hidden = (state.sections?.length ?? 0) <= (state.onMap ? 1 : 0);
     menuSections.replaceChildren(...(state.sections ?? []).map((section) => {
         const button = makeInput("menu-section", section.id, section.label);
         button.disabled = section.active;
@@ -1505,7 +1524,7 @@ function renderMenu(state) {
             button.setAttribute("aria-pressed", String(row.checked));
             button.classList.toggle("read-only", !row.enabled);
         }
-        if (row.index === menuCursor && row.enabled && (!state.birth?.preview || birthSelection !== undefined)) {
+        if (row.index === menuCursor && !button.disabled && (!state.birth?.preview || birthSelection !== undefined)) {
             current = button;
             button.setAttribute("aria-current", "true");
         }
@@ -1541,7 +1560,7 @@ function renderMenu(state) {
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
         const button = state.birth?.preview && state.cursor !== previous.cursor ? current :
-            [...choices, ...endings].find((row) => row.dataset.value === focusedCode);
+            [...menuRows.querySelectorAll("button[data-input]"), ...endings].find((row) => row.dataset.value === focusedCode);
         if (button?.matches(":enabled")) button.focus({ preventScroll: true });
     }
 }
