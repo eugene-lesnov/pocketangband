@@ -114,7 +114,7 @@
                 </div>
                 <div id="character-summary"></div>
                 <section id="character-attributes" aria-label="Attributes"></section>
-                <section aria-labelledby="character-conditions-title">
+                <section id="character-conditions-section" aria-labelledby="character-conditions-title">
                     <h3 id="character-conditions-title">Conditions</h3>
                     <div id="character-conditions"></div>
                 </section>
@@ -122,12 +122,12 @@
                     <summary>Combat &amp; skills</summary>
                     <div id="character-combat"></div>
                 </details>
-                <details class="character-detail">
+                <details id="character-defenses-section" class="character-detail">
                     <summary>Defenses</summary>
                     <div id="character-defenses"></div>
                 </details>
                 <details class="character-detail">
-                    <summary>Progress &amp; history</summary>
+                    <summary id="character-progress-label">Progress &amp; history</summary>
                     <div id="character-progress"></div>
                 </details>
             </section>
@@ -228,6 +228,7 @@
             <fieldset id="terminal-keys" aria-label="Angband controls" disabled>
                 <button id="cancel-key" type="button" data-key="Escape" aria-label="Back">Back</button>
                 <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
+                <button id="birth-start-over" type="button" data-key="s" hidden>Start over</button>
                 <button id="confirm-key" type="button" data-key="Enter">Continue</button>
             </fieldset>
             <fieldset id="outcome-actions" class="key-row" aria-label="After this run" disabled hidden></fieldset>

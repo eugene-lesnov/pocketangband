@@ -712,7 +712,32 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
-@@ -1676,8 +1806,13 @@ int textui_do_birth(void)
+@@ -1566,16 +1696,20 @@ static enum birth_stage get_history_command(void)
+  * ------------------------------------------------------------------------ */
+ static enum birth_stage get_confirm_command(void)
+ {
+-	const char *prompt = "['ESC' to step back, 'S' to start over, or any other key to continue]";
+ 	struct keypress ke;
+ 
+ 	enum birth_stage next = BIRTH_RESET;
+ 
+-	/* Prompt for it */
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_BIRTH_REVIEW);
++	web_character_sheet(true);
++	ke = inkey();
++	web_set_input_mode(previous);
++#else
++	const char *prompt = "['ESC' to step back, 'S' to start over, or any other key to continue]";
+ 	prt(prompt, Term->hgt - 1, Term->wid / 2 - strlen(prompt) / 2);
+-
+-	/* Get a key */
+ 	ke = inkey();
++#endif
+ 	
+ 	/* Start over */
+ 	if (ke.code == 'S' || ke.code == 's') {
+@@ -1676,8 +1810,13 @@ int textui_do_birth(void)
  
  				next = menu_question(current_stage, menu, command);
  
@@ -968,7 +993,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,65 @@
+@@ -24,6 +24,67 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -980,7 +1005,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
 +	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER,
 +	WEB_INPUT_BIRTH_ROLL, WEB_INPUT_VICTORY, WEB_INPUT_RESULTS_LIST,
-+	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE
++	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE, WEB_INPUT_BIRTH_REVIEW
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -1011,8 +1036,10 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_add_birth_stat(const char *label, int base, const char *value, int cost,
 +	bool can_decrease, bool can_increase);
 +void web_set_character(const char *name, const char *race, const char *class_name,
-+	int level, const char *history);
++	int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic);
 +void web_character_row(int section, const char *label, const char *value);
++void web_character_stat_breakdown(const char *base, int race_bonus, int class_bonus,
++	int equipment_bonus, const char *best);
 +void web_character_defense(const char *group, const wchar_t *label, int length,
 +	const char *value, const char *temporary);
 +void web_poll_interrupt(void);
@@ -1738,7 +1765,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
 diff --git a/src/ui-player.c b/src/ui-player.c
 --- a/src/ui-player.c
 +++ b/src/ui-player.c
-@@ -916,6 +916,105 @@ void display_player(int mode)
+@@ -916,6 +916,116 @@ void display_player(int mode)
  	}
  }
  
@@ -1812,18 +1839,23 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +	mem_free(values);
 +}
 +
-+void web_character_sheet(void)
++void web_character_sheet(bool preview)
 +{
 +	web_set_character(player->full_name, player->race->name,
-+		player->class->name, player->lev, player->history);
++		player->class->name, player->lev, player->history, player->chp,
++		player->mhp, player->csp, player->msp, player->class->magic.total_spells > 0);
 +
++	if (preview) web_character_row(1, "Title", show_title());
 +	for (size_t i = 1; i < N_ELEMENTS(panels); ++i) {
 +		struct panel *panel = panels[i].panel();
 +		for (size_t j = 0; j < panel->len; ++j) {
 +			struct panel_line *line = &panel->lines[j];
-+			if (line->label && *line->value &&
-+					(!streq(line->label, "Overweight") || weight_remaining(player) < 0))
++			if (!line->label || !*line->value) continue;
++			if (preview && streq(line->label, "Gold")) {
++				web_character_row(i, line->label, format("%d", z_info->start_gold));
++			} else if (preview || !streq(line->label, "Overweight") || weight_remaining(player) < 0) {
 +				web_character_row(i, line->label, line->value);
++			}
 +		}
 +		panel_free(panel);
 +	}
@@ -1836,21 +1868,27 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +		if (player->state.stat_use[stat] < player->state.stat_top[stat])
 +			strnfmt(value, sizeof(value), "%s / %s", current, best);
 +		web_character_row(0, label, value);
++		if (preview) {
++			char base[8];
++			cnv_stat(player->stat_max[stat], base, sizeof(base));
++			web_character_stat_breakdown(base, player->race->r_adj[stat],
++				player->class->c_adj[stat], player->state.stat_add[stat], best);
++		}
 +	}
-+	web_character_defenses();
++	if (!preview) web_character_defenses();
 +}
 +#endif
 +
  
  /**
   * Write a character dump
-@@ -1238,7 +1337,14 @@ void do_cmd_change_name(void)
+@@ -1238,7 +1348,14 @@ void do_cmd_change_name(void)
  		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
  
  		/* Query */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CHARACTER);
-+		web_character_sheet();
++		web_character_sheet(false);
 +#endif
  		ke = inkey_ex();
 +#ifdef __EMSCRIPTEN__
@@ -2327,7 +2365,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CHARACTER);
 +	do {
-+		web_character_sheet();
++		web_character_sheet(false);
 +	} while (inkey().code != ESCAPE);
 +	web_set_input_mode(previous);
 +#else
@@ -2615,7 +2653,7 @@ diff --git a/src/ui-player.h b/src/ui-player.h
  void do_cmd_change_name(void);
  
 +#ifdef __EMSCRIPTEN__
-+void web_character_sheet(void);
++void web_character_sheet(bool preview);
 +#endif
 +
  #endif /* !UI_PLAYER_H */

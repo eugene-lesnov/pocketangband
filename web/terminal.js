@@ -38,10 +38,12 @@ const characterName = document.querySelector("#character-name");
 const characterClass = document.querySelector("#character-class");
 const characterSummary = document.querySelector("#character-summary");
 const characterAttributes = document.querySelector("#character-attributes");
+const birthStartOver = document.querySelector("#birth-start-over");
 const characterConditions = document.querySelector("#character-conditions");
 const characterCombat = document.querySelector("#character-combat");
 const characterDefenses = document.querySelector("#character-defenses");
 const characterProgress = document.querySelector("#character-progress");
+const characterProgressLabel = document.querySelector("#character-progress-label");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
 const previousMessage = document.querySelector("#previous-message");
@@ -543,33 +545,73 @@ function renderConditions(container) {
     }
 }
 
+function renderBirthAttributes(rows) {
+    const table = document.createElement("table");
+    table.className = "birth-attributes";
+    const header = table.createTHead().insertRow();
+    for (const [label, description] of [
+        ["", "Stat"], ["Self", "Base stat"], ["RB", "Race bonus"],
+        ["CB", "Class bonus"], ["EB", "Equipment bonus"], ["Best", "Best"],
+    ]) {
+        const cell = document.createElement("th");
+        cell.scope = "col";
+        cell.textContent = label;
+        cell.setAttribute("aria-label", description);
+        cell.title = description;
+        header.append(cell);
+    }
+    const body = table.createTBody();
+    const bonus = (value) => value < 0 ? String(value) : `+${value}`;
+    for (const { label, breakdown } of rows) {
+        const row = body.insertRow();
+        const name = document.createElement("th");
+        name.scope = "row";
+        name.textContent = `${label}:`;
+        row.append(name);
+        const { base, raceBonus, classBonus, equipmentBonus, best } = breakdown;
+        for (const value of [base, bonus(raceBonus), bonus(classBonus), bonus(equipmentBonus), best]) {
+            row.insertCell().textContent = value;
+        }
+    }
+    characterAttributes.replaceChildren(table);
+}
+
 function renderCharacter() {
     const sheet = context.character;
-    if (!sheet || !world) return;
+    const reviewing = mode === "birth-review";
+    if (!sheet || (!reviewing && !world)) return;
     characterName.textContent = sheet.name;
     characterName.hidden = !sheet.name;
     characterClass.textContent = `${sheet.race} ${sheet.className} · Level ${sheet.level}`;
 
     const rowsFor = (section) => sheet.rows.filter((row) => row.section === section);
+    const vitals = [
+        { label: "HP", value: `${sheet.hp}/${sheet.maxHp}` },
+        ...(reviewing || sheet.magic ? [{ label: reviewing ? "SP" : "MP", value: `${sheet.sp}/${sheet.maxSp}` }] : []),
+    ];
+    if (reviewing) renderBirthAttributes(rowsFor(0));
+    else characterAttributes.replaceChildren(characterRows(rowsFor(0)));
+
     const progress = new Map(rowsFor(2).map(({ label, value }) => [label, value]));
     const combat = rowsFor(3);
     const experience = progress.get("Cur Exp");
     const nextLevel = progress.get("Adv Exp");
     const hasNextLevel = /^\d+$/.test(nextLevel ?? "");
+    const background = rowsFor(1);
+    const turnCounters = ["Game", "Standard", "Resting"];
     characterSummary.replaceChildren(characterRows([
-        { label: "HP", value: `${world.hp}/${world.maxHp}` },
-        ...(world.magic ? [{ label: "MP", value: `${world.sp}/${world.maxSp}` }] : []),
+        ...vitals,
         ...combat.filter(({ label }) => label === "Armor"),
         { label: "Gold", value: progress.get("Gold") },
-        { label: hasNextLevel ? "XP toward next level" : "Experience",
-            value: hasNextLevel ? `${experience} / ${nextLevel}` : experience },
+        ...(reviewing ? background.filter(({ label }) => label === "Title") :
+            [{ label: hasNextLevel ? "XP toward next level" : "Experience",
+                value: hasNextLevel ? `${experience} / ${nextLevel}` : experience }]),
     ]));
-    characterAttributes.replaceChildren(characterRows(rowsFor(0)));
-    renderConditions(characterConditions);
+    if (!reviewing) renderConditions(characterConditions);
 
     characterCombat.replaceChildren();
     const meleeHit = combat.findIndex(({ label }) => label === "To-hit");
-    const attackRows = combat.map((row, index) => row.label === "To-hit" ?
+    const attackRows = combat.map((row, index) => !reviewing && row.label === "To-hit" ?
         { ...row, label: index === meleeHit ? "Melee to-hit" : "Ranged to-hit" } : row);
     appendCharacterGroup(characterCombat, "Combat", attackRows.filter(({ label }) => label !== "Armor"));
     appendCharacterGroup(characterCombat, "Skills", rowsFor(4));
@@ -580,17 +622,27 @@ function renderCharacter() {
         appendCharacterGroup(characterDefenses, title, sheet.defenses.filter((row) => row.group === group));
     }
 
+    characterProgressLabel.textContent = reviewing ? "Background, progress & history" : "Progress & history";
     characterProgress.replaceChildren(characterRows([
-        { label: "Highest XP", value: progress.get("Max Exp") },
-        { label: "Deepest level", value: progress.get("Max Depth") },
+        ...(reviewing ? [
+            { label: "Cur Exp", value: experience },
+            { label: "Max Exp", value: progress.get("Max Exp") },
+            { label: "Adv Exp", value: nextLevel },
+        ] : [{ label: "Highest XP", value: progress.get("Max Exp") }]),
+        { label: reviewing ? "Max Depth" : "Deepest level", value: progress.get("Max Depth") },
         { label: "Burden", value: progress.get("Burden") },
         ...(progress.has("Overweight") ? [{ label: "Overweight", value: progress.get("Overweight") }] : []),
     ]));
-    const background = rowsFor(1);
-    const turnCounters = ["Game", "Standard", "Resting"];
-    appendCharacterGroup(characterProgress, "Turn counts", background.filter(({ label }) => turnCounters.includes(label)));
-    appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) => !turnCounters.includes(label)));
+    appendCharacterGroup(characterProgress, reviewing ? "Turns used:" : "Turn counts",
+        background.filter(({ label }) => turnCounters.includes(label)));
+    appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) =>
+        label !== "Title" && !turnCounters.includes(label)));
     if (sheet.history) {
+        if (reviewing) {
+            const heading = document.createElement("h3");
+            heading.textContent = "History";
+            characterProgress.append(heading);
+        }
         const history = document.createElement("p");
         history.className = "character-history";
         history.textContent = sheet.history;
@@ -650,6 +702,7 @@ function updateControls() {
     const confirming = mode === "confirm";
     const history = mode === "history";
     const rolling = mode === "birth-roll";
+    const reviewing = mode === "birth-review";
     const stats = mode === "birth-stats" || rolling;
     const birthChoiceMenu = !!menu?.birth;
     const letterMenu = !!context.letterMenu;
@@ -664,7 +717,7 @@ function updateControls() {
     const hasTarget = aiming && context.current;
     const canOpenKeyboard = !counting && !optionNumber && !splash && !resting && !confirming && !history &&
         !more && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
-        !outcome && !victory && !resultChild && !retiring;
+        !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
     const stopVisible = !stopAction.hidden;
@@ -691,6 +744,8 @@ function updateControls() {
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
+    terminalKeys.classList.toggle("birth-review-controls", reviewing);
+    birthStartOver.hidden = !reviewing;
     terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
     setActions(letterChoices, letterMenu && !showKeyboard, disabled);
     confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" : aiming ?
@@ -698,7 +753,8 @@ function updateControls() {
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
-    confirmKey.textContent = retiring ? "Retire character" : confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
+    confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character" :
+        confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
         selecting ? context.attack ? context.verb : "Select target" :
         aiming ? hasTarget ? useTarget : "Choose target" :
         editing || counting || optionNumber || resting || stats ? "Done" : isMenu() ? "Select" :
@@ -846,7 +902,8 @@ function updateView(state = world, region = views.target.crop) {
     const editing = context.value !== undefined && !openPanel;
     const question = (mode === "confirm" || mode === "retire") && context.prompt;
     const showDetails = context.detail !== undefined;
-    const showCharacter = mode === "character" && !!context.character;
+    const reviewing = mode === "birth-review";
+    const showCharacter = (mode === "character" || reviewing) && !!context.character;
     const showSplash = mode === "splash";
     const showVictory = mode === "victory";
     const showOutcome = mode === "menu" && !!context.outcome;
@@ -859,6 +916,7 @@ function updateView(state = world, region = views.target.crop) {
     birthStatsScreen.hidden = !showBirthStats;
     if (showSplash) angbandVersion.textContent = context.version;
     characterScreen.hidden = !showCharacter;
+    characterScreen.classList.toggle("birth-review", reviewing);
     conditionsScreen.hidden = openPanel !== "conditions";
     detailsScreen.hidden = !showDetails;
     if (showDetails && detailsScreen.textContent !== context.detail) {
@@ -909,7 +967,8 @@ function updateView(state = world, region = views.target.crop) {
     if (!showMap) viewOptions.setAttribute("aria-expanded", "false");
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
         context.resultsList?.title ?? context.resultsFile?.title ??
-        (showSplash ? "Angband" : showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
+        (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
+        mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
         mode === "birth-roll" ? "Roll stats" :
@@ -1004,7 +1063,7 @@ function handleWorkerMessage({ data }) {
             if (context.resultsList) renderResultsList(context.resultsList);
             if (context.resultsFile) renderResultFile(context.resultsFile);
             if (mode === "command" && world) renderQuickActions(world);
-            if (mode === "character") renderCharacter();
+            if (mode === "character" || mode === "birth-review") renderCharacter();
             if (changed && (mode === "confirm" || mode === "quantity" || mode === "rest" || isTextEntry(mode))) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
@@ -1021,8 +1080,10 @@ function handleWorkerMessage({ data }) {
                 }
             }
             if (changed && context.letterMenu) layoutLetterChoices(letterChoices.clientWidth);
-            if (changed && mode === "character") {
-                for (const detail of characterScreen.querySelectorAll(".character-detail")) detail.open = false;
+            if (changed && (mode === "character" || mode === "birth-review")) {
+                for (const detail of characterScreen.querySelectorAll(".character-detail")) {
+                    detail.open = mode === "birth-review" && detail.id !== "character-defenses-section";
+                }
                 characterScreen.scrollTop = 0;
                 if (!characterScreen.hidden) characterScreen.focus({ preventScroll: true });
             }
@@ -1633,6 +1694,7 @@ document.addEventListener("keydown", (event) => {
     if ((event.key === "Enter" || event.key === " ") &&
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
     if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape") return;
+    if (mode === "birth-review" && !["Enter", "Escape", "s", "S"].includes(event.key)) return;
     if (mode === "character" && characterScreen.contains(event.target) &&
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 

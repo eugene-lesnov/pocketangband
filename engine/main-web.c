@@ -46,6 +46,7 @@ static const char *const input_modes[] = {
     [WEB_INPUT_HISTORY] = "history",
     [WEB_INPUT_BIRTH_STATS] = "birth-stats",
     [WEB_INPUT_BIRTH_ROLL] = "birth-roll",
+    [WEB_INPUT_BIRTH_REVIEW] = "birth-review",
     [WEB_INPUT_CHARACTER] = "character",
     [WEB_INPUT_SPLASH] = "splash",
     [WEB_INPUT_OPTION_NUMBER] = "option-number",
@@ -187,10 +188,11 @@ EM_JS(void, web_set_results_file, (const char *title, const char *path, const ch
 });
 
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
-        int level, const char *history), {
+        int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic), {
     Module['inputContext'] = { character: {
         name: UTF8ToString(name), race: UTF8ToString(race), className: UTF8ToString(class_name),
-        level, history: UTF8ToString(history), rows: [], defenses: [],
+        level, history: UTF8ToString(history), hp, maxHp: max_hp, sp, maxSp: max_sp,
+        magic: !!magic, rows: [], defenses: [],
     } };
 });
 
@@ -198,6 +200,13 @@ EM_JS(void, web_character_row, (int section, const char *label, const char *valu
     Module['inputContext'].character.rows.push({
         section, label: UTF8ToString(label), value: UTF8ToString(value).trim().replace(/ +/g, " "),
     });
+});
+
+EM_JS(void, web_character_stat_breakdown, (const char *base, int race_bonus, int class_bonus,
+        int equipment_bonus, const char *best), {
+    const row = Module['inputContext'].character.rows.at(-1);
+    row.breakdown = { base: UTF8ToString(base).trim(), raceBonus: race_bonus, classBonus: class_bonus,
+        equipmentBonus: equipment_bonus, best: UTF8ToString(best).trim() };
 });
 
 EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int length,
