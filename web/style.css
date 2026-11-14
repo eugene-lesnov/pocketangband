@@ -290,6 +290,7 @@ dt { color: var(--muted); }
 #journal summary::-webkit-details-marker { display: none; }
 #journal:not([open]) #messages { display: none; }
 #journal[open] #recent-messages { visibility: hidden; }
+#journal:has(#latest-message:not(:empty)) #journal-label { display: none; }
 #recent-messages span {
     display: block;
     min-height: 1lh;
@@ -297,9 +298,9 @@ dt { color: var(--muted); }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-#previous-message, #journal-label { color: var(--muted); }
-#journal-label::after { content: " ▴"; }
-#journal[open] #journal-label::after { content: " ▾"; }
+#previous-message, #journal-indicator { color: var(--muted); }
+#journal-indicator::after { content: " ▴"; }
+#journal[open] #journal-indicator::after { content: " ▾"; }
 #messages {
     position: absolute;
     z-index: 1;
