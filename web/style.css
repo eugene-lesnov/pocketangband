@@ -520,6 +520,13 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     font-size: 0.875rem;
 }
 .birth-stat.current { background: #332a1d; }
+.rolled-stats .birth-stat { grid-template-columns: minmax(0, 1fr) 3.75rem; min-height: 44px; }
+#birth-roll-history {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
 .birth-stat small { display: block; color: var(--muted); }
 .birth-stat button { padding: 0; font-size: 1.125rem; }
 .birth-stat-value { text-align: center; font-variant-numeric: tabular-nums; }

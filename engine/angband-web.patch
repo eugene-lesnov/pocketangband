@@ -393,7 +393,7 @@ diff --git a/src/player-birth.c b/src/player-birth.c
 diff --git a/src/ui-birth.c b/src/ui-birth.c
 --- a/src/ui-birth.c
 +++ b/src/ui-birth.c
-@@ -120,6 +120,10 @@
+@@ -120,6 +120,10 @@ static enum birth_stage textui_birth_qui
  			next = BIRTH_RACE_CHOICE;
  		} else if (ke.code == KTRL('X')) {
  			quit(NULL);
@@ -404,7 +404,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		} else if ( !arg_force_name && (ke.code == 'C' || ke.code == 'c')) {
  			next = BIRTH_NAME_CHOICE;
  		} else if (ke.code == '=') {
-@@ -249,12 +253,14 @@
+@@ -249,12 +253,14 @@ static void race_help(int i, void *db, c
  
  	if (!r) return;
  
@@ -425,7 +425,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	for (j = 0; j < len; j++) {  
  		const char *name = stat_names_reduced[j];
-@@ -313,12 +319,14 @@
+@@ -313,12 +319,14 @@ static void class_help(int i, void *db,
  
  	if (!c) return;
  
@@ -446,7 +446,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	for (j = 0; j < len; j++) {  
  		const char *name = stat_names_reduced[j];
-@@ -391,6 +399,50 @@
+@@ -391,6 +399,50 @@ static void class_help(int i, void *db,
  	text_out_indent = 0;
  }
  
@@ -497,7 +497,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  /**
   * Display and handle user interaction with a context menu appropriate for the
   * current stage.  That way actions available with certain keys are also
-@@ -501,11 +553,13 @@
+@@ -501,11 +553,13 @@ static void init_birth_menu(struct menu
  	/* Initialise a basic menu */
  	menu_init(menu, MN_SKIN_SCROLL, &birth_iter);
  
@@ -514,7 +514,34 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Copy across the game's suggested initial selection, etc. */
  	menu->cursor = initial_choice;
-@@ -1026,6 +1080,29 @@
+@@ -865,6 +919,10 @@ static enum birth_stage menu_question(en
+  * ------------------------------------------------------------------------
+  * The rolling bit of the roller.
+  * ------------------------------------------------------------------------ */
++#ifdef __EMSCRIPTEN__
++static void publish_birth_stats(int cursor);
++#endif
++
+ static enum birth_stage roller_command(bool first_call)
+ {
+ 	enum {
+@@ -906,7 +964,15 @@ static enum birth_stage roller_command(b
+ 	 * events to look like keystrokes.
+ 	 */
+ 	while (1) {
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_BIRTH_ROLL);
++		publish_birth_stats(-1);
++		web_set_birth_roll(prev_roll, player->mhp, player->msp, player->history);
++#endif
+ 		in = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
+ 			break;
+ 		}
+@@ -1026,6 +1092,32 @@ static enum birth_stage roller_command(b
   */
  static int buysell[STAT_MAX];
  
@@ -531,12 +558,15 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 +		[STAT_DEX] = "Dexterity",
 +		[STAT_CON] = "Constitution",
 +	};
-+	web_set_birth_stats(player->race->name, player->class->name, birth_points_left, cursor);
++	bool allocating = cursor >= 0;
++	web_set_birth_stats(player->race->name, player->class->name,
++		allocating ? birth_points_left : 0, cursor);
 +	for (int i = 0; i < STAT_MAX; i++) {
 +		char value[8];
 +		cnv_stat(player->state.stat_top[i], value, sizeof(value));
-+		web_add_birth_stat(labels[i], player->stat_birth[i], value, birth_next_cost[i],
-+			(buysell[i] & 1) != 0, (buysell[i] & 2) != 0);
++		web_add_birth_stat(labels[i], player->stat_birth[i], value,
++			allocating ? birth_next_cost[i] : 0,
++			allocating && (buysell[i] & 1), allocating && (buysell[i] & 2));
 +	}
 +}
 +#endif
@@ -544,7 +574,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  /**
   * This is called whenever a stat changes.  We take the easy road, and just
   * redisplay them all using the standard function.
-@@ -1062,6 +1139,11 @@
+@@ -1062,6 +1154,11 @@ static void point_based_points(game_even
  	const int *inc = data->birthpoints.inc_points;
  	int remaining = data->birthpoints.remaining;
  
@@ -556,7 +586,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	/* Display the costs header */
  	put_str("Cost", COSTS_ROW - 1, COSTS_COL);
  	
-@@ -1071,7 +1153,7 @@
+@@ -1071,7 +1168,7 @@ static void point_based_points(game_even
  		if (spent[i] > 0) {
  			buysell[i] |= 1;
  		}
@@ -565,7 +595,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  			buysell[i] |= 2;
  		}
  		/* Display cost */
-@@ -1139,7 +1221,22 @@
+@@ -1139,7 +1236,22 @@ static enum birth_stage point_based_comm
  	 * to look like keystrokes.
  	 */
  	while (1) {
@@ -588,7 +618,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1385,7 +1482,16 @@
+@@ -1385,7 +1497,16 @@ static int edit_text(char *buffer, int b
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
@@ -605,7 +635,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1639,16 @@
+@@ -1533,7 +1654,16 @@ static enum birth_stage get_history_comm
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
@@ -622,7 +652,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
-@@ -1676,8 +1791,13 @@
+@@ -1676,8 +1806,13 @@ int textui_do_birth(void)
  
  				next = menu_question(current_stage, menu, command);
  
@@ -861,7 +891,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,53 @@
+@@ -24,6 +24,55 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -871,7 +901,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_TEXT, WEB_INPUT_QUANTITY, WEB_INPUT_CONFIRM, WEB_INPUT_AIM,
 +	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS, WEB_INPUT_DIRECTION, WEB_INPUT_MORE,
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
-+	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER
++	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER,
++	WEB_INPUT_BIRTH_ROLL
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -890,6 +921,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_cancel_birth(void);
 +void web_set_birth_menu(const char *title, const char *summary, bool preview);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
++void web_set_birth_roll(bool previous, int hp, int mana, const char *history);
 +void web_add_birth_stat(const char *label, int base, const char *value, int cost,
 +	bool can_decrease, bool can_increase);
 +void web_set_character(const char *name, const char *race, const char *class_name,

@@ -84,6 +84,9 @@ const birthIdentity = document.querySelector("#birth-identity");
 const birthPoints = document.querySelector("#birth-points");
 const birthStatRows = document.querySelector("#birth-stat-rows");
 const resetStats = document.querySelector("#reset-stats");
+const birthRollActions = document.querySelector("#birth-roll-actions");
+const previousRoll = document.querySelector("#previous-roll");
+const birthRollHistory = document.querySelector("#birth-roll-history");
 const letterChoices = document.querySelector("#letter-choices");
 const actionsScreen = document.querySelector("#actions-screen");
 const quantity = document.querySelector("#quantity");
@@ -547,7 +550,8 @@ function updateControls() {
     const resting = mode === "rest";
     const confirming = mode === "confirm";
     const history = mode === "history";
-    const stats = mode === "birth-stats";
+    const rolling = mode === "birth-roll";
+    const stats = mode === "birth-stats" || rolling;
     const birthChoiceMenu = !!menu?.birth;
     const letterMenu = !!context.letterMenu;
     const more = mode === "more";
@@ -588,7 +592,7 @@ function updateControls() {
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
-    confirmKey.textContent = confirming ? "Yes" : history ? "Keep history" :
+    confirmKey.textContent = confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
         selecting ? context.attack ? context.verb : "Select target" :
         aiming ? hasTarget ? useTarget : "Choose target" :
         editing || counting || optionNumber || resting || stats ? "Done" : isMenu() ? "Select" :
@@ -603,6 +607,8 @@ function updateControls() {
     cancelKey.hidden = more || character;
     setActions(worldActions, playing && !stopVisible, disabled);
     birthStatRows.disabled = resetStats.disabled = disabled;
+    setActions(birthRollActions, rolling, disabled);
+    previousRoll.disabled = !context.birthStats?.roll?.previous;
     setActions(aimActions, aiming && !showKeyboard && !openPanel && (context.nearest || hasTarget), disabled);
     nearest.hidden = !context.nearest;
     nearest.textContent = `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest`;
@@ -736,7 +742,7 @@ function updateView(state = world, region = views.target.crop) {
     const showDetails = context.detail !== undefined;
     const showCharacter = mode === "character" && !!context.character;
     const showSplash = mode === "splash";
-    const showBirthStats = mode === "birth-stats" && !!context.birthStats;
+    const showBirthStats = !!context.birthStats;
     splashScreen.hidden = !showSplash;
     birthStatsScreen.hidden = !showBirthStats;
     if (showSplash) angbandVersion.textContent = context.version;
@@ -791,6 +797,7 @@ function updateView(state = world, region = views.target.crop) {
     const title = showSplash ? "Angband" : showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
+        mode === "birth-roll" ? "Roll stats" :
         context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title;
@@ -874,7 +881,7 @@ function handleWorkerMessage({ data }) {
             launch.hidden = true;
             main.classList.remove("starting");
             updateView(mode === "command" ? data.world ?? null : data.world ?? world, data.region ?? null);
-            if (mode === "birth-stats") renderBirthStats(context.birthStats, changed);
+            if (context.birthStats) renderBirthStats(context.birthStats, changed);
             if (mode === "command" && world) renderQuickActions(world);
             if (mode === "character") renderCharacter();
             if (changed && (mode === "confirm" || mode === "quantity" || mode === "rest" || isTextEntry(mode))) {
@@ -1101,25 +1108,34 @@ function renderBirthPreview() {
 }
 
 function renderBirthStats(stats, changed) {
+    const { roll } = stats;
     const focused = document.activeElement;
     const focusedRow = !changed && birthStatRows.contains(focused) ? focused.closest("button") : null;
+    birthStatsScreen.classList.toggle("rolled-stats", !!roll);
     birthIdentity.textContent = `${stats.race} / ${stats.className}`;
-    birthPoints.textContent = `Points left: ${stats.remaining}`;
+    birthPoints.textContent = roll ? `HP ${roll.hp} · MP ${roll.mana}` : `Points left: ${stats.remaining}`;
+    resetStats.hidden = !!roll;
+    birthRollHistory.hidden = !roll?.history;
+    birthRollHistory.textContent = roll?.history ?? "";
     birthStatRows.replaceChildren(...stats.rows.map((stat, index) => {
         const row = document.createElement("div");
         row.className = "birth-stat";
         row.classList.toggle("current", index === stats.cursor);
         const label = document.createElement("div");
         label.textContent = stat.label;
-        const cost = document.createElement("small");
-        cost.textContent = stat.cost ? `Next: ${stat.cost} pt` : "Max base";
-        label.append(cost);
         const value = document.createElement("div");
         value.className = "birth-stat-value";
         value.textContent = stat.value;
         const base = document.createElement("small");
         base.textContent = `Base ${stat.base}`;
         value.append(base);
+        if (roll) {
+            row.append(label, value);
+            return row;
+        }
+        const cost = document.createElement("small");
+        cost.textContent = stat.cost ? `Next: ${stat.cost} pt` : "Max base";
+        label.append(cost);
         const decrease = makeInput("sell-stat", index, "−");
         decrease.setAttribute("aria-label", `Decrease ${stat.label}`);
         decrease.disabled = !stat.canDecrease;

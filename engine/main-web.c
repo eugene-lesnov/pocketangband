@@ -45,6 +45,7 @@ static const char *const input_modes[] = {
     [WEB_INPUT_DETAILS] = "details",
     [WEB_INPUT_HISTORY] = "history",
     [WEB_INPUT_BIRTH_STATS] = "birth-stats",
+    [WEB_INPUT_BIRTH_ROLL] = "birth-roll",
     [WEB_INPUT_CHARACTER] = "character",
     [WEB_INPUT_SPLASH] = "splash",
     [WEB_INPUT_OPTION_NUMBER] = "option-number",
@@ -223,6 +224,12 @@ EM_JS(void, web_set_birth_menu, (const char *title, const char *summary, bool pr
 EM_JS(void, web_set_birth_stats, (const char *race, const char *class_name, int remaining, int cursor), {
     Module['inputContext'] = { birthStats: { race: UTF8ToString(race), className: UTF8ToString(class_name),
         remaining, cursor, rows: [] } };
+});
+
+EM_JS(void, web_set_birth_roll, (bool previous, int hp, int mana, const char *history), {
+    Module['inputContext'].birthStats.roll = {
+        previous: !!previous, hp, mana, history: history ? UTF8ToString(history) : "",
+    };
 });
 
 EM_JS(void, web_add_birth_stat, (const char *label, int base, const char *value, int cost,
