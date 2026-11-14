@@ -46,7 +46,8 @@ else
         ':(glob)src/*.c' ':(glob)src/*.h' src/Makefile.src ':!src/main-*.c' ':!src/snd-sdl.c' \
         ':(glob)lib/gamedata/*.txt' ':(glob)lib/customize/*.prf' \
         ':(glob)lib/screens/*.txt' ':(glob)lib/help/*.txt' lib/tiles/list.txt \
-        ':(glob)lib/tiles/adam-bolt/*.prf' lib/tiles/adam-bolt/16x16.png docs/copying.rst \
+        ':(glob)lib/tiles/'{old,adam-bolt,gervais,nomad}'/*.prf' \
+        lib/tiles/{old/8x8,adam-bolt/16x16,gervais/32x32,nomad/8x16}.png docs/copying.rst \
         | tar -xf - -C "$source_dir/angband"
 
     (
@@ -83,7 +84,11 @@ cp "$source_dir/emscripten/system/lib/compiler-rt/LICENSE.TXT" site/compiler-rt-
 cd -- "$source_dir/angband"
 cp "$source_dir/engine/main-web.c" src/main-web.c
 cp docs/copying.rst "$build_dir/site/angband-copying.txt"
+sed -i '/^name:5:/,$d' lib/tiles/list.txt
+mv lib/tiles/old/8x8.png "$build_dir/site/original-tiles.png"
 mv lib/tiles/adam-bolt/16x16.png "$build_dir/site/adam-bolt.png"
+mv lib/tiles/gervais/32x32.png "$build_dir/site/gervais.png"
+mv lib/tiles/nomad/8x16.png "$build_dir/site/nomad.png"
 
 object_list=$(make -s --no-print-directory -f src/Makefile.src -f - pocketband_objects <<'MAKE'
 pocketband_objects:

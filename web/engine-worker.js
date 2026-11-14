@@ -1,4 +1,5 @@
 import createAngband from "./angband.js";
+import { graphicsModes } from "./tiles.js";
 
 const profileDirectory = "/profile";
 const input = [];
@@ -28,10 +29,6 @@ self.addEventListener("message", ({ data }) => {
         else if (!waiting || waiting.playing) backgroundSavePending = true;
         return;
     }
-    if (data.type === "toggle-tiles") {
-        if (waiting?.mode === "command" && data.request === waiting.request) wakeInput(data.type);
-        return;
-    }
     if (data.type === "interrupt") {
         if (!waiting && runningRequest !== undefined && data.request === runningRequest) {
             interruptPending = true;
@@ -52,6 +49,8 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
+    } else if (data.type === "set-tiles") {
+        if (waiting?.mode !== "command" || data.request !== waiting.request || !graphicsModes.has(data.code)) return;
     } else if (["tap", "aim-cell", "target-cell", "map-cell"].includes(data.type)) {
         if (!waiting || data.request !== waiting.request ||
             !Number.isInteger(data.x) || !Number.isInteger(data.y)) return;
@@ -84,7 +83,7 @@ self.addEventListener("message", ({ data }) => {
         return;
     }
     input.push(data);
-    runningRequest = waiting?.playing ? waiting.request : undefined;
+    runningRequest = waiting?.playing && data.type !== "set-tiles" ? waiting.request : undefined;
     if (waiting) wakeInput();
 });
 

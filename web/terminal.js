@@ -1,5 +1,5 @@
 import { prepareOffline } from "./offline.js";
-import { loadTiles, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
+import { graphicsModes, loadTiles, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
 
 const main = document.querySelector("main");
 const launch = document.querySelector("#launch");
@@ -109,8 +109,12 @@ const birthRollActions = document.querySelector("#birth-roll-actions");
 const previousRoll = document.querySelector("#previous-roll");
 const birthRollHistory = document.querySelector("#birth-roll-history");
 const actionsScreen = document.querySelector("#actions-screen");
-const toggleTiles = makeInput("toggle-tiles", 0, "Tiles: ASCII");
-toggleTiles.removeAttribute("aria-label");
+const tilesMenu = makeButton("Tiles: ASCII");
+tilesMenu.removeAttribute("aria-label");
+tilesMenu.setAttribute("aria-controls", "actions-screen");
+tilesMenu.addEventListener("click", () => showPanel("tiles", openMenu));
+const tilesStatus = document.createElement("p");
+tilesStatus.setAttribute("role", "status");
 const quantity = document.querySelector("#quantity");
 const optionDigits = document.querySelector("#option-digits");
 const rest = document.querySelector("#rest");
@@ -154,7 +158,7 @@ const extraCommands = [
     ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
 ];
-const panelTitles = { menu: "Menu", commands: "Commands" };
+const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles" };
 const commandFaces = new Map([["CtrlT", "^T"], ["Ctrl+V", "^V"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 
@@ -204,7 +208,7 @@ let deletingSave = false;
 let resultURL;
 let outcomeSaveFailed = false;
 let stopped = false;
-let tilesReady = false;
+let loadingTiles;
 let backgroundSaveRequested = false;
 let drawPending = false;
 let centerPending = false;
@@ -220,14 +224,15 @@ function render(view, frame, region = {}) {
         colors.push(`rgb(${palette[offset + 1]} ${palette[offset + 2]} ${palette[offset + 3]})`);
     }
 
-    const tiles = tilesReady && !!frame.terrainAttributes;
+    const graphics = graphicsModes.get(frame.graphicsMode);
+    const tiles = graphics?.atlas && frame.terrainAttributes ? graphics : undefined;
     view.grid = { x, y, columns, rows };
     view.gridElement = view.pre;
     if (view.canvas) {
         view.canvas.hidden = !tiles;
-        view.pre.hidden = tiles;
+        view.pre.hidden = !!tiles;
         if (tiles) {
-            renderTileMap(view.canvas, frame, view.grid, colors);
+            renderTileMap(view.canvas, tiles, frame, view.grid, colors);
             view.gridElement = view.canvas;
             return;
         }
@@ -247,14 +252,14 @@ function renderText(pre, frame, grid, colors, tiles) {
         for (let start = rowStart; start < rowEnd;) {
             const attr = attributes[start];
             const span = document.createElement("span");
-            const tile = tiles && tileAt(attr, codepoints[start]);
+            const tile = tiles && tileAt(tiles, attr, codepoints[start]);
             let end = start + 1;
             if (tile) {
-                styleTerminalTile(span, frame, start, tile);
+                styleTerminalTile(span, tiles, frame, start, tile);
             } else {
                 if (start !== cursor) {
                     while (end < rowEnd && attributes[end] === attr && end !== cursor &&
-                        !(tiles && tileAt(attr, codepoints[end]))) end++;
+                        !(tiles && tileAt(tiles, attr, codepoints[end]))) end++;
                 }
                 span.textContent = String.fromCodePoint(...codepoints.subarray(start, end));
                 span.style.color = colors[attr % colors.length];
@@ -298,6 +303,7 @@ function draw() {
         const focusChanged = cell?.x !== view.focusCell?.x || cell?.y !== view.focusCell?.y ||
             cell?.depth !== view.focusCell?.depth;
         const regionChanged = !sameRegion(region, view.region);
+        const graphicsChanged = frame.graphicsMode !== view.rendered?.graphicsMode;
         const changed = source !== view.rendered || cursor !== view.cursor || regionChanged;
         if (changed) {
             render(view, frame, region);
@@ -311,7 +317,7 @@ function draw() {
             if (!view.fit && (centerPending || changed) && !menu &&
                 (isMenu() || isTextEntry(mode) || mode === "quantity" || mode === "rest")) showCursor(view);
         } else if (!view.fit && cell &&
-            (centerPending || focusChanged || regionChanged || previousGrid !== view.gridElement)) {
+            (centerPending || focusChanged || regionChanged || graphicsChanged || previousGrid !== view.gridElement)) {
             centerCell(view, cell);
         }
         view.focusCell = cell;
@@ -372,7 +378,7 @@ function updateViewZoom(view) {
     }
     const { clientWidth, clientHeight } = viewport;
     if (clientWidth <= 1 || clientHeight <= 1) return;
-    const key = `${clientWidth}/${clientHeight}/${grid.columns}/${grid.rows}/${gridElement.id}`;
+    const key = `${clientWidth}/${clientHeight}/${grid.columns}/${grid.rows}/${gridElement.id}/${view.rendered.graphicsMode}`;
     viewport.style.setProperty("--zoom", 1);
     if (key !== view.fitKey) {
         view.fitScale = Math.min((clientWidth - 1) / gridElement.offsetWidth,
@@ -702,6 +708,10 @@ function isTextEntry(state) {
 }
 
 function closeInputPanel() {
+    if (openPanel === "tiles") {
+        showPanel("menu", panelTrigger);
+        return true;
+    }
     if (openPanel) {
         const trigger = panelTrigger;
         showPanel();
@@ -769,10 +779,6 @@ function updateControls() {
     const showRunControls = !openPanel && !showKeyboard && (runDirection || running);
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = targeting && !showKeyboard && !openPanel && !stopVisible;
-    toggleTiles.disabled = disabled || !tilesReady;
-    if (tilesReady && openPanel === "menu") {
-        toggleTiles.textContent = views.map.frame?.terrainAttributes ? "Tiles: Adam Bolt" : "Tiles: ASCII";
-    }
     vitals.disabled = disabled || !(command || ((selecting || aiming || directing) && context.character));
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
@@ -860,7 +866,8 @@ function updateControls() {
     keyboardToggle.textContent = showKeyboard ? "Hide" : "Keys";
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
-    setActions(actionsScreen, !!openPanel && openPanel !== "character", disabled);
+    setActions(actionsScreen, !!openPanel && openPanel !== "character",
+        disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
     saveManagement.hidden = mode !== "save-slots";
@@ -1257,7 +1264,6 @@ function sendInput(input) {
         }
     }
     request = undefined;
-    toggleTiles.disabled = true;
     deleteSave.disabled = true;
     if (running) updateControls();
     updatePrompt();
@@ -1288,6 +1294,10 @@ main.addEventListener("click", (event) => {
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
         { type: "key", code: keyCode(key) };
+    if (input.type === "set-tiles") {
+        void chooseTiles(input, button);
+        return;
+    }
     const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
     if (input.type === "menu-row" && (menu?.store || previewBirthChoice)) {
         if (request === undefined) return;
@@ -1376,6 +1386,19 @@ function renderQuickActions({ roguelike, quickActions }) {
 }
 
 function renderActionsPanel() {
+    actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
+    actionsScreen.scrollTop = 0;
+    const currentGraphics = views.map.frame?.graphicsMode ?? 0;
+    if (openPanel === "tiles") {
+        const rows = [...graphicsModes].map(([id, { label }]) => {
+            const button = makeInput("set-tiles", id, label);
+            if (id === currentGraphics) button.setAttribute("aria-current", "true");
+            return button;
+        });
+        tilesStatus.textContent = "";
+        actionsScreen.replaceChildren(...rows, tilesStatus);
+        return;
+    }
     let commands;
     if (openPanel === "menu") {
         commands = gameMenu;
@@ -1392,10 +1415,36 @@ function renderActionsPanel() {
         if (openPanel === "commands" && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
         return button;
     });
-    if (openPanel === "menu") rows.unshift(toggleTiles);
+    if (openPanel === "menu") {
+        tilesMenu.textContent = `Tiles: ${graphicsModes.get(currentGraphics).label}`;
+        rows.unshift(tilesMenu);
+    }
     actionsScreen.replaceChildren(...rows);
-    actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
-    actionsScreen.scrollTop = 0;
+}
+
+async function chooseTiles(input, button) {
+    if (input.code === views.map.frame?.graphicsMode) {
+        showPanel();
+        return;
+    }
+    const selectionRequest = request;
+    const stillChoosing = () => openPanel === "tiles" && actionsScreen.contains(button);
+    loadingTiles = button;
+    tilesStatus.textContent = "Loading tiles…";
+    updateControls();
+    try {
+        await loadTiles(input.code);
+        if (stillChoosing()) {
+            tilesStatus.textContent = "";
+            if (request === selectionRequest && sendInput(input)) showPanel();
+        }
+    } catch (error) {
+        console.error(error);
+        if (stillChoosing()) tilesStatus.textContent = "Could not load tiles. Try again.";
+    } finally {
+        if (loadingTiles === button) loadingTiles = undefined;
+        updateControls();
+    }
 }
 
 function renderBirthPreview() {
@@ -1895,13 +1944,6 @@ async function start() {
         worker.addEventListener("error", (event) => {
             console.error(event.message);
             stop("Could not start Angband.", true);
-        });
-        void loadTiles().then(() => {
-            tilesReady = true;
-            updateControls();
-        }).catch((error) => {
-            console.error(error);
-            toggleTiles.textContent = "Tiles unavailable";
         });
     } catch (error) {
         console.error(error);

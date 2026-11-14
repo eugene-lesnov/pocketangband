@@ -245,7 +245,7 @@ dt { color: var(--muted); }
 .tile-grid {
     display: block;
     font-size: calc(var(--zoom, 1) * 1rem);
-    width: calc(var(--columns) * 1em);
+    width: calc(var(--columns) * var(--tile-width, 1em));
     height: calc(var(--rows) * 1em);
     image-rendering: pixelated;
 }

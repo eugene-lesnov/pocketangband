@@ -3,7 +3,10 @@
 PocketBand's original code, icons, and changes to Angband are distributed under the GNU General Public License, version 2 only. See [COPYING](COPYING). Copyright (C) 2026 PocketBand contributors.
 
 - **Angband engine and game data:** from the official 4.2.6 release. PocketBand distributes its modified build under GPL version 2 and retains Angband's original copyright notices and dual-license terms for the upstream work. See `angband/docs/copying.rst` in the source archive or `angband-copying.txt` in the app. [Angband 4.2.6](https://github.com/angband/angband/releases/tag/4.2.6)
-- **Adam Bolt's 16×16 tiles:** the atlas comes from `lib/tiles/adam-bolt/16x16.png` at the same revision. It keeps the separate permission in Angband's copying notice. Its mapping tables come from the same directory. Other upstream tilesets, sounds, fonts and SDL are absent from the package.
+- **Original Tiles (8×8):** the atlas and mappings come from `lib/tiles/old` at the same revision and are distributed with Angband's original notices.
+- **Adam Bolt's 16×16 tiles:** the atlas and mappings come from `lib/tiles/adam-bolt` at the same revision. The atlas keeps the separate permission in Angband's copying notice.
+- **David Gervais' 32×32 tiles:** the atlas and mappings come from `lib/tiles/gervais` at the same revision. The atlas by David Gervais is distributed unchanged under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), as stated in Angband's copying notice.
+- **Nomad's 8×16 tiles:** the atlas and mappings come from `lib/tiles/nomad` at the same revision. The atlas by Nomad is distributed unchanged under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), as stated in the [author's release thread](https://angband.live/forums/forum/angband/development/3467-new-8x16-graphical-tile-set-for-3-1-2v2).
 - **Emscripten 4.0.7:** the JavaScript runtime and C library glue come from the [Emscripten SDK](https://github.com/emscripten-core/emscripten/tree/4.0.7). The source archive contains the SDK's runtime sources and notices, including Emscripten's MIT/NCSA terms, musl's copyright notice, compiler-rt's Apache-2.0 license with LLVM exceptions, and Doug Lea's public-domain allocator notice in `dlmalloc.c`.
 - **PocketZot:** used as a design reference for the mobile and offline flows. The package does not incorporate PocketZot code or assets.
 

@@ -1,80 +1,94 @@
-const tileSize = 16;
-const atlas = new Image();
+export const graphicsModes = new Map([
+    [0, { label: "ASCII" }],
+    [1, { label: "Original Tiles", file: "original-tiles.png", size: 8 }],
+    [2, { label: "Adam Bolt's tiles", file: "adam-bolt.png", size: 16 }],
+    [3, { label: "David Gervais' tiles", file: "gervais.png", size: 32 }],
+    [4, { label: "Nomad's tiles", file: "nomad.png", size: 16, aspect: 0.5 }],
+]);
 
-export async function loadTiles() {
-    atlas.src = new URL("./adam-bolt.png", import.meta.url).href;
+export async function loadTiles(id) {
+    const tiles = graphicsModes.get(id);
+    if (!tiles.file || tiles.atlas) return;
+    const atlas = new Image();
+    atlas.src = new URL(tiles.file, import.meta.url).href;
     await atlas.decode();
+    tiles.atlas = atlas;
 }
 
-export function tileAt(attr, codepoint) {
+export function tileAt({ atlas, size }, attr, codepoint) {
     if (!(attr & codepoint & 0x80)) return;
-    const x = (codepoint & 0x7f) * tileSize;
-    const y = (attr & 0x7f) * tileSize;
+    const x = (codepoint & 0x7f) * size;
+    const y = (attr & 0x7f) * size;
     if (x < atlas.naturalWidth && y < atlas.naturalHeight) return { x, y };
 }
 
-function terrainTile(frame, index) {
+function terrainTile(tiles, frame, index) {
     const attr = frame.terrainAttributes[index];
     const codepoint = frame.terrainCodepoints[index];
     if (attr === frame.attributes[index] && codepoint === frame.codepoints[index]) return;
-    return tileAt(attr, codepoint);
+    return tileAt(tiles, attr, codepoint);
 }
 
-function backgroundPosition(tile) {
-    return `${tile.x / (atlas.naturalWidth - tileSize) * 100}% ${tile.y / (atlas.naturalHeight - tileSize) * 100}%`;
+function backgroundPosition({ atlas, size }, tile) {
+    return `${tile.x / (atlas.naturalWidth - size) * 100}% ${tile.y / (atlas.naturalHeight - size) * 100}%`;
 }
 
-export function styleTerminalTile(span, frame, index, tile) {
-    const terrain = terrainTile(frame, index);
+export function styleTerminalTile(span, tiles, frame, index, tile) {
+    const { atlas, size } = tiles;
+    const terrain = terrainTile(tiles, frame, index);
     const image = `url("${atlas.src}")`;
     span.classList.add("term-tile");
     span.style.backgroundImage = terrain ? `${image}, ${image}` : image;
-    span.style.backgroundSize = `${atlas.naturalWidth / tileSize * 100}% ${atlas.naturalHeight / tileSize * 100}%`;
-    const position = backgroundPosition(tile);
-    span.style.backgroundPosition = terrain ? `${position}, ${backgroundPosition(terrain)}` : position;
+    span.style.backgroundSize = `${atlas.naturalWidth / size * 100}% ${atlas.naturalHeight / size * 100}%`;
+    const position = backgroundPosition(tiles, tile);
+    span.style.backgroundPosition = terrain ? `${position}, ${backgroundPosition(tiles, terrain)}` : position;
 }
 
-function drawTile(context, tile, x, y) {
-    context.drawImage(atlas, tile.x, tile.y, tileSize, tileSize, x, y, tileSize, tileSize);
+function drawTile(context, { atlas, size }, tile, x, y) {
+    context.drawImage(atlas, tile.x, tile.y, size, size, x, y, size, size);
 }
 
-export function renderTileMap(canvas, frame, grid, colors) {
+export function renderTileMap(canvas, tiles, frame, grid, colors) {
+    const { size, aspect = 1 } = tiles;
     const { x, y, columns, rows } = grid;
-    const width = columns * tileSize;
-    const height = rows * tileSize;
+    const width = columns * size;
+    const height = rows * size;
     if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
-        canvas.style.setProperty("--columns", columns);
-        canvas.style.setProperty("--rows", rows);
     }
+    canvas.style.setProperty("--columns", columns);
+    canvas.style.setProperty("--rows", rows);
+    canvas.style.setProperty("--tile-width", `${aspect}em`);
 
     const context = canvas.getContext("2d");
+    const cursorWidth = size / 16;
     context.clearRect(0, 0, width, height);
-    context.font = "12px monospace";
+    context.font = `${size * 0.75}px monospace`;
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.strokeStyle = "#ffdb76";
+    context.lineWidth = cursorWidth;
     for (let row = 0; row < rows; row++) {
         for (let column = 0; column < columns; column++) {
             const index = (y + row) * frame.width + x + column;
-            const left = column * tileSize;
-            const top = row * tileSize;
+            const left = column * size;
+            const top = row * size;
             const codepoint = frame.codepoints[index];
             const attr = frame.attributes[index];
             if (codepoint !== 32 && codepoint !== 0) {
-                const terrain = terrainTile(frame, index);
-                if (terrain) drawTile(context, terrain, left, top);
-                const tile = tileAt(attr, codepoint);
+                const terrain = terrainTile(tiles, frame, index);
+                if (terrain) drawTile(context, tiles, terrain, left, top);
+                const tile = tileAt(tiles, attr, codepoint);
                 if (tile) {
-                    drawTile(context, tile, left, top);
+                    drawTile(context, tiles, tile, left, top);
                 } else {
                     context.fillStyle = colors[attr % colors.length];
-                    context.fillText(String.fromCodePoint(codepoint), left + tileSize / 2, top + tileSize / 2);
+                    context.fillText(String.fromCodePoint(codepoint), left + size / 2, top + size / 2);
                 }
             }
             if (index === frame.cursor) {
-                context.strokeRect(left + 0.5, top + 0.5, tileSize - 1, tileSize - 1);
+                context.strokeRect(left + cursorWidth / 2, top + cursorWidth / 2, size - cursorWidth, size - cursorWidth);
             }
         }
     }

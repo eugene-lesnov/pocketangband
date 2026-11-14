@@ -1122,7 +1122,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
 +#ifdef __EMSCRIPTEN__
 +		if (ke.type == EVT_WEB_TILES) {
-+			web_toggle_tiles();
++			web_set_tiles(ke.key.code);
 +			continue;
 +		}
 +		if (ke.type == EVT_WEB_INSPECT_CELL) {
@@ -1209,7 +1209,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	const char *price, char key, bool enabled);
 +void web_set_menu_description(const wchar_t *description);
 +void web_menu_action(int key, const char *label);
-+void web_toggle_tiles(void);
++void web_set_tiles(uint8_t id);
 +#endif
 +
  /**

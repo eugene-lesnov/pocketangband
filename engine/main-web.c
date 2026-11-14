@@ -31,7 +31,7 @@
 #include "ui-prefs.h"
 #include <emscripten.h>
 
-enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2, RUN_STEP_DELAY_MS = 80 };
+enum { MAP_TERM = 6, LOG_LIMIT = 40, RUN_STEP_DELAY_MS = 80 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
@@ -321,20 +321,20 @@ EM_JS(void, web_add_birth_stat, (const char *label, int base, const char *value,
         value: UTF8ToString(value).trim(), cost, canDecrease: !!can_decrease, canIncrease: !!can_increase });
 });
 
-void web_toggle_tiles(void)
+void web_set_tiles(uint8_t id)
 {
-    bool tiles = use_graphics == GRAPHICS_NONE;
-    current_graphics_mode = get_graphics_mode(tiles ? ADAM_BOLT_GRAPHICS : GRAPHICS_NONE);
-    use_graphics = current_graphics_mode->grafID;
+    graphics_mode *mode = get_graphics_mode(id);
+    if (!mode || id == use_graphics) return;
+    current_graphics_mode = mode;
+    use_graphics = id;
+    bool tiles = id != GRAPHICS_NONE;
     angband_term[0]->higher_pict = tiles;
     angband_term[MAP_TERM]->higher_pict = tiles;
     reset_visuals(true);
 
-    if (!tiles) {
-        for (int i = 1; i < cave_monster_max(cave); i++) {
-            struct monster *mon = cave_monster(cave, i);
-            if (mon->attr & 0x80) mon->attr = 0;
-        }
+    for (int i = 1; i < cave_monster_max(cave); i++) {
+        struct monster *mon = cave_monster(cave, i);
+        if (mon->attr & 0x80) mon->attr = 0;
     }
 
     prt_map();
@@ -343,14 +343,14 @@ void web_toggle_tiles(void)
 
 EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
         const int *attrs, const wchar_t *terrain_chars, const int *terrain_attrs,
-        const uint8_t *colors, int color_count, int background_stride, int shade, int cursor), {
+        const uint8_t *colors, int color_count, int background_stride, int shade, int cursor, int graphics_mode), {
     const cellCount = width * height;
     const codepoints = HEAPU32.slice(chars >>> 2, (chars >>> 2) + cellCount);
     const attributes = HEAP32.slice(attrs >>> 2, (attrs >>> 2) + cellCount);
     const palette = HEAPU8.slice(colors, colors + 4 * color_count);
     const frame = { surface: map ? "map" : "terminal",
         width, height, codepoints, attributes, palette,
-        backgroundStride: background_stride, shade, cursor };
+        backgroundStride: background_stride, shade, cursor, graphicsMode: graphics_mode };
     if (terrain_attrs) {
         frame.terrainCodepoints = HEAPU32.slice(terrain_chars >>> 2, (terrain_chars >>> 2) + cellCount);
         frame.terrainAttributes = HEAP32.slice(terrain_attrs >>> 2, (terrain_attrs >>> 2) + cellCount);
@@ -624,7 +624,7 @@ void web_poll_interrupt(void)
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int inspect_cell, int move_to_cell,
-        int buy_stat, int sell_stat), {
+        int buy_stat, int sell_stat, int tiles_event), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -645,13 +645,14 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "map-cell": return event.code ? move_to_cell : inspect_cell;
         case "buy-stat": return buy_stat;
         case "sell-stat": return sell_stat;
+        case "set-tiles": return tiles_event;
         default: return 0;
     }
 });
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
         const char *prompt, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
-        int save_event, int delete_event, int tiles_event), {
+        int save_event, int delete_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
     const context = modeName === "target" ? { ...Module['targetOptions'] } :
@@ -678,7 +679,6 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     switch (action) {
         case "background-save": return save_event;
         case "delete-save": return delete_event;
-        case "toggle-tiles": return tiles_event;
         default: return 0;
     }
 });
@@ -754,7 +754,7 @@ static ui_event_type wait_for_input(void)
     return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view,
-        EVT_WEB_SAVE, EVT_WEB_DELETE, EVT_WEB_TILES);
+        EVT_WEB_SAVE, EVT_WEB_DELETE);
 }
 
 static errr queue_input(void)
@@ -762,7 +762,7 @@ static errr queue_input(void)
     int code = 0, x = 0, y = 0;
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
-        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT);
+        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES);
 
     switch (type) {
         case EVT_NONE: return 1;
@@ -808,7 +808,7 @@ static errr web_xtra(int action, int value)
             bool tiles = use_graphics != GRAPHICS_NONE;
             send_frame(Term == angband_term[MAP_TERM], Term->wid, Term->hgt, screen->vc, screen->va,
                 tiles ? screen->vtc : NULL, tiles ? screen->vta : NULL,
-                &angband_color_table[0][0], MAX_COLORS, MULT_BG, COLOUR_SHADE, cursor);
+                &angband_color_table[0][0], MAX_COLORS, MULT_BG, COLOUR_SHADE, cursor, use_graphics);
             return 0;
         }
         case TERM_XTRA_DELAY:
@@ -838,7 +838,7 @@ errr init_web(int argc, char **argv)
     static term terminal, map;
     (void)argc;
     (void)argv;
-    if (!init_graphics_modes() || !get_graphics_mode(ADAM_BOLT_GRAPHICS)) return 1;
+    if (!init_graphics_modes()) return 1;
     init_terminal(&terminal, 0, 80, 24);
     init_terminal(&map, MAP_TERM, 36, 28);
     Term_activate(&terminal);
