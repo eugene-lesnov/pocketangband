@@ -157,15 +157,15 @@
         </section>
 
         <section id="hud" aria-label="Character status" hidden>
-            <button id="vitals" type="button" aria-label="Conditions" aria-controls="conditions-screen">
+            <button id="vitals" type="button" aria-label="Open Character" aria-controls="character-screen">
                 <span class="vital-values">
-                    <span id="hp"></span><span id="sp"></span><span id="depth"></span>
+                    <span id="hp"></span><span id="sp"></span><span id="depth"></span><span id="speed"></span>
                 </span>
-                <span class="condition-summary">
+                <span id="hud-stats"></span>
+                <span id="condition-summary" hidden>
                     <span id="active-conditions"></span><span id="extra-conditions" hidden></span>
                 </span>
             </button>
-            <button id="open-character" type="button">Character</button>
         </section>
 
         <div class="controls">

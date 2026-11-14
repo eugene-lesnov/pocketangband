@@ -64,30 +64,36 @@ a { color: var(--muted); font-size: 0.75rem; }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
 #save-management { display: grid; gap: 0.25rem; }
-#hud {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.25rem;
-}
-#hud button { height: 44px; padding-inline: 0.5rem; }
 #vitals {
     display: grid;
     align-content: center;
-    gap: 0.15rem;
+    gap: 0.125rem;
+    width: 100%;
+    padding: 0.125rem 0.5rem;
     background: var(--panel);
     text-align: start;
 }
 #vitals:disabled { opacity: 1; }
-.vital-values, .condition-summary { display: flex; align-items: center; gap: 0.5rem; }
+.vital-values, #condition-summary { display: flex; align-items: center; }
 .vital-values {
+    flex-wrap: wrap;
+    gap: 0.125rem 0.25rem;
     justify-content: space-between;
-    font: 0.75rem var(--mono);
+    font: 0.75rem / 1 var(--mono);
     white-space: nowrap;
 }
+#hud-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    text-align: center;
+    font: 0.75rem / 1 var(--mono);
+}
+#hud-stats > span { display: grid; }
+#hud-stats small { color: var(--muted); font-size: 0.6875rem; }
 #hp { color: #cbe7a4; }
 #hp.low { color: #ffb3a0; }
 #depth { color: var(--accent); }
-.condition-summary { color: var(--accent); font-size: 0.75rem; }
+#condition-summary { gap: 0.5rem; color: var(--accent); font-size: 0.75rem; }
 #active-conditions { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #extra-conditions { flex: none; }
 dt { color: var(--muted); }

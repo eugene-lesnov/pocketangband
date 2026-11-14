@@ -19,6 +19,7 @@
 #include "player-timed.h"
 #include "player-util.h"
 #include "target.h"
+#include "ui-display.h"
 #include "ui-input.h"
 #include "ui-map.h"
 #include "ui-output.h"
@@ -405,16 +406,22 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
-        conditions: Module['worldConditions'], quickActions: commands ? Module['worldQuickActions'] : undefined,
+        conditions: Module['worldConditions'], stats: Module['worldStats'],
+        quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
 });
 
 EM_JS(void, start_world_status, (void), {
     Module['worldConditions'] = [];
+    Module['worldStats'] = [];
 });
 
 EM_JS(void, add_world_condition, (const char *label, int priority), {
     Module['worldConditions'].push({ label: UTF8ToString(label), priority });
+});
+
+EM_JS(void, add_world_stat, (const char *label, const char *value), {
+    Module['worldStats'].push({ label: UTF8ToString(label), value: UTF8ToString(value).trim() });
 });
 
 static void publish_world(bool commands)
@@ -430,6 +437,12 @@ static void publish_world(bool commands)
     const char *food_grade = "";
 
     start_world_status();
+    for (int stat = 0; stat < STAT_MAX; ++stat) {
+        char label[4], value[8];
+        strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
+        cnv_stat(player->state.stat_use[stat], value, sizeof(value));
+        add_world_stat(label, value);
+    }
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
         struct timed_grade *grade = timed_effects[effect].grade;
@@ -477,7 +490,6 @@ static void publish_world(bool commands)
         } else {
             strnfmt(speed, sizeof(speed), "%s (%+d)", label, speed_offset);
         }
-        add_world_condition(speed, speed_offset < 0 ? 45 : 40);
     }
 
     for (int i = 0; i < count; i++) {

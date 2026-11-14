@@ -1695,8 +1695,8 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +		categories[1] = groups[i];
 +		struct ui_entry_iterator *iter = initialize_ui_entry_iterator(
 +			check_for_two_categories, categories, groups[i]);
-+		struct ui_entry *entry;
-+		while ((entry = advance_ui_entry_iterator(iter))) {
++		for (int remaining = count_ui_entry_iterator(iter); remaining > 0; --remaining) {
++			struct ui_entry *entry = advance_ui_entry_iterator(iter);
 +			struct ui_entry_combiner_funcs combiner;
 +			int index = ui_entry_renderer_query_combiner(get_ui_entry_renderer_index(entry));
 +			if (ui_entry_combiner_get_funcs(index, &combiner)) continue;

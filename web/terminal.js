@@ -20,10 +20,12 @@ const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
 const vitals = document.querySelector("#vitals");
-const openCharacter = document.querySelector("#open-character");
 const depth = document.querySelector("#depth");
 const hp = document.querySelector("#hp");
 const sp = document.querySelector("#sp");
+const speed = document.querySelector("#speed");
+const hudStats = document.querySelector("#hud-stats");
+const conditionSummary = document.querySelector("#condition-summary");
 const activeConditions = document.querySelector("#active-conditions");
 const extraConditions = document.querySelector("#extra-conditions");
 const conditionsScreen = document.querySelector("#conditions-screen");
@@ -112,7 +114,7 @@ const specialKeys = new Map([
     ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83], ["CtrlT", 20],
 ]);
 const gameMenu = [
-    ["Save", "Save and don't quit"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
+    ["C", "Character"], ["Save", "Save and don't quit"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
     ["Q", "Retire character and quit"],
 ];
 const quickCommands = [
@@ -391,16 +393,33 @@ function renderWorld(state) {
     hp.classList.toggle("low", state.lowHp);
     sp.textContent = `SP ${state.sp}/${state.maxSp}`;
     sp.hidden = !state.magic;
+    const speedLabel = `Speed ${state.speed}`;
+    speed.textContent = state.speed === "Normal" ? speedLabel : state.speed;
+    for (const [index, { label, value }] of state.stats.entries()) {
+        let stat = hudStats.children[index];
+        if (!stat) {
+            stat = document.createElement("span");
+            const name = document.createElement("small");
+            name.textContent = label;
+            stat.append(name, document.createElement("span"));
+            hudStats.append(stat);
+        }
+        const current = stat.lastElementChild;
+        if (current.textContent !== value) current.textContent = value;
+    }
     const alerts = [...state.conditions].sort((left, right) => right.priority - left.priority);
     const labels = alerts.slice(0, 2).map(({ label }) => label);
     if (labels.length === 2 && labels.join(" · ").length > 25) labels.pop();
     const more = alerts.length - labels.length;
+    conditionSummary.hidden = !alerts.length;
     activeConditions.textContent = labels.join(" · ");
     extraConditions.hidden = more <= 0;
     extraConditions.textContent = `+${more}`;
-    vitals.setAttribute("aria-label", [hp.textContent, state.magic && sp.textContent,
-        state.depth ? `Depth ${state.depth * 50} feet` : "Town", ...labels,
-        more > 0 && `${more} more conditions`, "View conditions"].filter(Boolean).join(", "));
+    const action = mode === "command" ? "Open Character" : "View conditions";
+    vitals.setAttribute("aria-label", [action, hp.textContent, state.magic && sp.textContent,
+        state.depth ? `Depth ${state.depth * 50} feet` : "Town", speedLabel,
+        ...state.stats.map(({ label, value }) => `${label} ${value}`), ...labels,
+        more > 0 && `${more} more conditions`].filter(Boolean).join(", "));
 
     const lines = state.log.flatMap(({ text, count }) => {
         const line = text.trim();
@@ -536,7 +555,7 @@ function renderConditions(container) {
     ];
     container.replaceChildren(characterRows(rows));
     const effects = state.conditions
-        .filter(({ label }) => label !== state.speed && label !== state.foodGrade)
+        .filter(({ label }) => label !== state.foodGrade)
         .sort((left, right) => right.priority - left.priority);
     if (effects.length) {
         const list = document.createElement("ul");
@@ -732,7 +751,7 @@ function updateControls() {
     levelMap.disabled = disabled;
     toggleTiles.disabled = disabled || !tilesReady;
     toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
-    openCharacter.disabled = !command || disabled;
+    vitals.setAttribute("aria-controls", command ? "character-screen" : "conditions-screen");
     vitals.disabled = disabled || runDirection || !(selecting || aiming || directing || command);
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu && !letterMenu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
@@ -1208,6 +1227,7 @@ main.addEventListener("click", (event) => {
     }
     if (input.type === "store-action") input.row = menuCursor;
     if (!sendInput(input)) return;
+    if (openPanel === "menu" && key === "C") characterTrigger = panelTrigger;
     if (openPanel) showPanel();
     if (keyboard.contains(button) && shifted && /^[A-Z]$/.test(key) && keyboardLayer === 0) {
         shifted = false;
@@ -1553,13 +1573,12 @@ playKeyboard.addEventListener("click", toggleKeyboard);
 openMenu.addEventListener("click", () => {
     if (mode === "command" && request !== undefined) showPanel("menu", openMenu);
 });
-openCharacter.addEventListener("click", () => {
-    if (sendInput({ type: "key", code: keyCode("C") })) {
-        characterTrigger = openCharacter;
-    }
-});
 vitals.addEventListener("click", () => {
-    if (request !== undefined) showPanel("conditions", vitals);
+    if (mode === "command") {
+        if (sendInput({ type: "key", code: keyCode("C") })) characterTrigger = vitals;
+    } else if (request !== undefined) {
+        showPanel("conditions", vitals);
+    }
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
