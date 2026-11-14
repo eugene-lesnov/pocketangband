@@ -46,12 +46,24 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
-    } else if (data.type === "tap") {
+    } else if (["tap", "aim-cell", "target-cell"].includes(data.type)) {
         if (!waiting || data.request !== waiting.request ||
             !Number.isInteger(data.x) || !Number.isInteger(data.y)) return;
+        if (data.type === "tap" && !["menu", "save-slots"].includes(waiting.mode)) return;
+        if (data.type === "aim-cell" && !["aim", "direction"].includes(waiting.mode)) return;
+        if (data.type === "target-cell" && waiting.mode !== "target") return;
         const { region } = waiting;
         if (!region || data.x < region.x || data.y < region.y ||
             data.x >= region.x + region.width || data.y >= region.y + region.height) return;
+    } else if (["menu-row", "menu-section", "store-action"].includes(data.type)) {
+        if (!waiting?.menu || data.request !== waiting.request) return;
+        const { rows, sections, actions } = waiting.menu;
+        if (data.type === "menu-row" && !rows.some((row) => row.index === data.code && row.enabled)) return;
+        if (data.type === "menu-section" &&
+            !sections?.some((section) => section.id === data.code && !section.active)) return;
+        if (data.type === "store-action" &&
+            (!actions.some((action) => action.key === data.code) ||
+                (data.code !== "s".charCodeAt(0) && !rows.some((row) => row.index === data.row && row.enabled)))) return;
     } else {
         return;
     }
@@ -90,7 +102,7 @@ async function play(lock) {
         takeInput() {
             return input.shift();
         },
-        waitForInput(mode, region, playing) {
+        waitForInput(mode, region, playing, context, menu) {
             if (!playing) backgroundSavePending = false;
             if (mode === "command" && backgroundSavePending) {
                 backgroundSavePending = false;
@@ -98,8 +110,8 @@ async function play(lock) {
                 return "background-save";
             }
             return new Promise((resolve) => {
-                waiting = { request: ++request, mode, region, playing, wake: resolve };
-                self.postMessage({ type: "waiting", request, mode, region, world });
+                waiting = { request: ++request, mode, region, playing, menu, wake: resolve };
+                self.postMessage({ type: "waiting", request, mode, region, world, context, menu });
                 world = undefined;
             });
         },

@@ -233,10 +233,26 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!prompt_failed_save
  					|| !get_check("Saving failed.  Try again? ")) {
  				prompting = false;
+@@ -1149,6 +1230,7 @@ void close_game(bool prompt_failed_save)
+ 			}
+ 		}
+ 
++#ifndef __EMSCRIPTEN__
+ 		if (Term->mapped_flag) {
+ 			struct keypress ch;
+ 
+@@ -1157,6 +1239,7 @@ void close_game(bool prompt_failed_save)
+ 			if (ch.code != ESCAPE)
+ 				predict_score(false);
+ 		}
++#endif
+ 	}
+ 
+ 	/* Wipe the monster list */
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,13 @@ typedef enum
+@@ -36,7 +36,18 @@ typedef enum
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -247,36 +263,88 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_IMPORT	= 0x0400,
 +	EVT_WEB_EXPORT	= 0x0800,
 +	EVT_WEB_TILES	= 0x1000,
++	EVT_WEB_MENU_ROW = 0x2000,
++	EVT_WEB_MENU_SECTION = 0x4000,
++	EVT_WEB_STORE_ACTION = 0x8000,
++	EVT_WEB_AIM_CELL = 0x10000,
++	EVT_WEB_TARGET_CELL = 0x20000,
 +#endif
  } ui_event_type;
  
  
+@@ -196,6 +207,14 @@ struct keypress {
+ 	uint8_t mods;
+ };
+ 
++#ifdef __EMSCRIPTEN__
++struct web_store_action {
++	ui_event_type type;
++	int row;
++	int key;
++};
++#endif
++
+ /**
+  * Null keypress constant, for safe initializtion.
+  */
+@@ -221,6 +240,9 @@ struct mouseclick {
+  */
+ typedef union {
+ 	ui_event_type type;
++#ifdef __EMSCRIPTEN__
++	struct web_store_action store_action;
++#endif
+ 	struct mouseclick mouse;
+ 	struct keypress key;
+ } ui_event;
 diff --git a/src/ui-birth.c b/src/ui-birth.c
 --- a/src/ui-birth.c
 +++ b/src/ui-birth.c
-@@ -1385,7 +1385,13 @@ static int edit_text(char *buffer, int buflen) {
+@@ -1139,7 +1139,15 @@ static enum birth_stage point_based_command(void)
+ 	 * to look like keystrokes.
+ 	 */
+ 	while (1) {
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_BIRTH_STATS);
++		const char *previous_prompt = web_set_prompt("Use ↑/↓ to choose a stat and ←/→ to adjust it.");
++#endif
+ 		in = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_prompt(previous_prompt);
++		web_set_input_mode(previous);
++#endif
+ 		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
+ 			break;
+ 		}
+@@ -1385,7 +1393,16 @@ static int edit_text(char *buffer, int buflen) {
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
++		const char *previous_prompt = web_set_prompt("Edit character history");
++		web_set_edit_value(buffer, cursor, false);
 +#endif
  		ke = inkey();
 +#ifdef __EMSCRIPTEN__
++		web_set_prompt(previous_prompt);
 +		web_set_input_mode(previous);
 +#endif
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1539,13 @@ static enum birth_stage get_history_command(void)
+@@ -1533,7 +1550,16 @@ static enum birth_stage get_history_command(void)
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
 +#ifdef __EMSCRIPTEN__
-+	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_HISTORY);
++	const char *previous_prompt = web_set_prompt("Keep this character history?");
++	web_set_history(player->history);
 +#endif
  	ke = inkey();
 +#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
 +	web_set_input_mode(previous);
 +#endif
  
@@ -285,36 +353,101 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 diff --git a/src/ui-input.c b/src/ui-input.c
 --- a/src/ui-input.c
 +++ b/src/ui-input.c
-@@ -894,7 +894,14 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
+@@ -364,7 +364,11 @@ ui_event inkey_m(void)
+ 
+ 	/* Only accept a keypress */
+ 	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD	&&
+-		   ke.type != EVT_MOUSE  && ke.type != EVT_BUTTON)
++		   ke.type != EVT_MOUSE  && ke.type != EVT_BUTTON
++#ifdef __EMSCRIPTEN__
++		   && ke.type != EVT_WEB_AIM_CELL && ke.type != EVT_WEB_TARGET_CELL
++#endif
++		   )
+ 		ke = inkey_ex();
+ 	if (ke.type == EVT_ESCAPE) {
+ 		ke.type = EVT_KBRD;
+@@ -389,8 +393,15 @@ static void msg_flush(int x)
+ 	/* Pause for response */
+ 	Term_putstr(x, 0, -1, a, "-more-");
+ 
+-	if ((!OPT(player, auto_more)) && !keymap_auto_more)
++	if ((!OPT(player, auto_more)) && !keymap_auto_more) {
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_MORE);
++#endif
+ 		anykey();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
++	}
+ 
+ 	/* Clear the line */
+ 	Term_erase(0, 0, 255);
+@@ -894,7 +905,23 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
-+		if (previous == WEB_INPUT_QUANTITY) web_set_input_mode(previous);
++		if (previous == WEB_INPUT_QUANTITY || previous == WEB_INPUT_REST)
++			web_set_input_mode(previous);
++		web_set_edit_value(buf, k, firsttime);
 +#endif
  		ch = inkey();
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
++		bool preset = previous == WEB_INPUT_REST ?
++			(ch.code == '!' || ch.code == '&' || ch.code == '*') :
++			(previous == WEB_INPUT_QUANTITY && ch.code == '*');
++		bool replace_preset = (previous == WEB_INPUT_REST || previous == WEB_INPUT_QUANTITY) &&
++			(buf[0] == '!' || buf[0] == '&' || buf[0] == '*') &&
++			ch.code >= '0' && ch.code <= '9';
++		if (preset || replace_preset) firsttime = true;
 +#endif
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -1171,7 +1178,13 @@ bool get_character_name(char *buf, size_t buflen)
+@@ -992,6 +1019,9 @@ bool askfor_aux_ext(char *buf, size_t len,
+ 		 * mouse events to look like keystrokes.
+ 		 */
+ 		while (1) {
++#ifdef __EMSCRIPTEN__
++			web_set_edit_value(buf, k, firsttime);
++#endif
+ 			in = inkey_ex();
+ 			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
+ 				break;
+@@ -1171,7 +1201,15 @@ bool get_character_name(char *buf, size_t buflen)
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_NAME);
++	const char *previous_prompt = web_set_prompt("Name your character");
 +#endif
  	res = askfor_aux_ext(buf, buflen, get_name_keypress, handle_name_mouse);
 +#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
 +	web_set_input_mode(previous);
 +#endif
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1233,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1204,7 +1242,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+ 	prt(prompt, 0, 0);
+ 
+ 	/* Ask the user for a string */
++#ifdef __EMSCRIPTEN__
++	const char *previous_prompt = web_set_prompt(prompt);
++#endif
+ 	res = askfor_aux(buf, len, NULL);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
++#endif
+ 
+ 	/* Clear prompt */
+ 	prt("", 0, 0);
+@@ -1220,6 +1264,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -322,7 +455,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1254,14 @@ static int textui_get_quantity(const char *prompt, int max)
+@@ -1240,7 +1285,14 @@ static int textui_get_quantity(const char *prompt, int max)
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -338,37 +471,92 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1305,13 @@ static bool textui_get_check(const char *prompt)
+@@ -1284,7 +1336,15 @@ static bool textui_get_check(const char *prompt)
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++	const char *previous_prompt = web_set_prompt(prompt);
 +#endif
  	ke = inkey_m();
 +#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
 +	web_set_input_mode(previous);
 +#endif
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1642,7 +1669,14 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1452,7 +1512,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
+ 
+ 	/* Done */
+ 	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
+-		(ke.type == EVT_MOUSE))
++		(ke.type == EVT_MOUSE)
++#ifdef __EMSCRIPTEN__
++		|| (ke.type == EVT_WEB_AIM_CELL)
++#endif
++		)
+ 		return true;
+ 	else
+ 		return false;
+@@ -1525,11 +1589,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+ 				(ke.type == EVT_KBRD
+ 				&& !target_dir_allow(ke.key, allow_5, true))) {
+ 			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
++#ifdef __EMSCRIPTEN__
++			enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DIRECTION);
++			web_set_direction_center(allow_5);
++#endif
+ 			ke = inkey_ex();
++#ifdef __EMSCRIPTEN__
++			web_set_input_mode(previous);
++#endif
+ 		}
+ 
+ 		/* Check mouse coordinates, or get keypresses until a dir is chosen */
+-		if (ke.type == EVT_MOUSE) {
++		if (ke.type == EVT_MOUSE
++#ifdef __EMSCRIPTEN__
++				|| ke.type == EVT_WEB_AIM_CELL
++#endif
++				) {
+ 			if (ke.mouse.button == 1) {
+ 				int y = KEY_GRID_Y(ke);
+ 				int x = KEY_GRID_X(ke);
+@@ -1642,9 +1717,28 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
 -		if (!get_com_ex(p, &ke)) break;
+-
+-		if (ke.type == EVT_MOUSE) {
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_AIM);
++		struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
++		bool current = target_okay();
++		struct loc grid;
++		target_get(&grid);
++		web_set_aim_options(current, point_set_size(targets) > 0,
++			COL_MAP + (grid.x - Term->offset_x) * tile_width,
++			ROW_MAP + (grid.y - Term->offset_y) * tile_height);
++		point_set_dispose(targets);
 +#endif
 +		bool entered = get_com_ex(p, &ke);
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
 +#endif
 +		if (!entered) break;
- 
- 		if (ke.type == EVT_MOUSE) {
++
++		if (ke.type == EVT_MOUSE
++#ifdef __EMSCRIPTEN__
++				|| ke.type == EVT_WEB_AIM_CELL
++#endif
++				) {
  			if (ke.mouse.button == 1) {
-@@ -1840,6 +1874,13 @@ ui_event textui_get_command(int *count)
+ 				if (target_set_interactive(TARGET_KILL,
+ 						KEY_GRID_X(ke), KEY_GRID_Y(ke),
+@@ -1840,6 +1934,13 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -385,7 +573,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,17 @@
+@@ -24,6 +24,36 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -393,10 +581,29 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_input_mode {
 +	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
 +	WEB_INPUT_TEXT, WEB_INPUT_QUANTITY, WEB_INPUT_CONFIRM, WEB_INPUT_AIM,
-+	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS
++	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS, WEB_INPUT_DIRECTION, WEB_INPUT_MORE,
++	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
++	WEB_INPUT_BIRTH_STATS
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
++struct menu;
++const char *web_set_prompt(const char *prompt);
++cmd_code web_set_aim_command(cmd_code code);
++void web_set_aim_options(bool current, bool nearest, int x, int y);
++void web_set_edit_value(const char *value, int cursor, bool initial);
++void web_set_direction_center(bool available);
++void web_set_target_options(bool free_aim, int count, bool can_select,
++	bool can_inspect, bool attack);
++void web_set_details(const wchar_t *text, size_t length);
++void web_set_history(const char *text);
++void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
++void web_set_menu_sections(int current, int available);
++void web_set_store(const char *name, bool home);
++void web_set_confirmation_price(int32_t price);
++void web_add_menu_row(int index, const char *name, const char *detail,
++	const char *price, char key, bool enabled);
++void web_menu_action(int key, const char *label);
 +void web_toggle_tiles(void);
 +#endif
 +
@@ -406,43 +613,288 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
-@@ -782,7 +782,15 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -769,6 +769,10 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+ {
+ 	ui_event in = EVENT_EMPTY;
+ 	bool no_act = (menu->flags & MN_NO_ACTION) ? true : false;
++#ifdef __EMSCRIPTEN__
++	bool save_slots = notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT);
++	bool web_rows = menu->web_render || (save_slots && menu->row_funcs == &menu_iter_strings);
++#endif
+ 
+ 	assert(menu->active.width != 0 && menu->active.page_rows != 0);
+ 
+@@ -782,7 +786,49 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(
-+			(notify & (EVT_WEB_IMPORT | EVT_WEB_EXPORT)) ?
-+			WEB_INPUT_SAVE_SLOTS : WEB_INPUT_MENU);
++			save_slots ? WEB_INPUT_SAVE_SLOTS : WEB_INPUT_MENU);
++		if (menu->web_render)
++			menu->web_render(menu);
++		else if (web_rows) {
++			int count = menu->filter_list ? menu->filter_count : menu->count;
++			const char **items = menu_priv(menu);
++
++			web_set_menu(menu, menu->cursor, menu->title);
++			for (int pos = 0; pos < count; pos++) {
++				int oid = menu->filter_list ? menu->filter_list[pos] : pos;
++				web_add_menu_row(pos, items[oid], NULL, NULL, 0, true);
++			}
++		}
 +#endif
  		in = inkey_ex();
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
++		if (in.type == EVT_WEB_MENU_ROW) {
++			int pos = in.key.code;
++			int oid = pos;
++			int count = menu->filter_list ? menu->filter_count : menu->count;
++
++			if (!web_rows || pos < 0 || pos >= count)
++				continue;
++			if (menu->filter_list)
++				oid = menu->filter_list[pos];
++			if (menu->row_funcs->valid_row &&
++				menu->row_funcs->valid_row(menu, oid) != MN_ROW_VALID)
++				continue;
++			menu->cursor = pos;
++			out.type = (menu->flags & MN_DBL_TAP) && cursor != pos ?
++				EVT_MOVE : EVT_SELECT;
++		} else if (in.type == EVT_WEB_MENU_SECTION || in.type == EVT_WEB_STORE_ACTION) {
++			if (!menu->web_render)
++				continue;
++			if (!no_act && menu_handle_action(menu, &in))
++				continue;
++			if (in.type == EVT_WEB_MENU_SECTION)
++				out.type = EVT_SWITCH;
++		} else
 +#endif
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
+@@ -1052,10 +1098,29 @@ static const menu_iter dynamic_iter = {
+ 	NULL	/* resize */
+ };
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_dynamic_menu(struct menu *m)
++{
++	struct menu_entry *entry;
++	int i = 0;
++
++	web_set_menu(m, m->cursor, NULL);
++	for (entry = menu_priv(m); entry; entry = entry->next, i++) {
++		if (entry->valid != MN_ROW_HIDDEN)
++			web_add_menu_row(i, entry->text, NULL, NULL,
++				m->selections ? m->selections[i] : 0,
++				entry->valid == MN_ROW_VALID);
++	}
++}
++#endif
++
+ struct menu *menu_dynamic_new(void)
+ {
+ 	struct menu *m = menu_new(MN_SKIN_SCROLL, &dynamic_iter);
+ 	menu_setpriv(m, 0, NULL);
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_dynamic_menu;
++#endif
+ 	return m;
+ }
+ 
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
-@@ -466,7 +466,13 @@ static bool store_get_check(const char *prompt)
- 	prt(prompt, 0, 0);
+@@ -458,21 +458,40 @@ static void store_redraw(struct store_context *ctx)
+ 	}
+ }
+ 
+-static bool store_get_check(const char *prompt)
++static bool store_get_check(const char *prompt, int32_t price)
+ {
+ 	struct keypress ch;
+ 
+ 	/* Prompt for it */
+-	prt(prompt, 0, 0);
++#ifdef __EMSCRIPTEN__
++	prt(format("%s [y/n]", prompt), 0, 0);
++#else
++	prt(format("%s [ESC, any other key to accept]", prompt), 0, 0);
++#endif
  
  	/* Get an answer */
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
++	const char *previous_prompt = web_set_prompt(prompt);
++	web_set_confirmation_price(price);
++#else
++	(void)price;
 +#endif
  	ch = inkey();
 +#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
 +	web_set_input_mode(previous);
 +#endif
  
  	/* Erase the prompt */
  	prt("", 0, 0);
+ 
+ 	if (ch.code == ESCAPE) return (false);
+ 	if (strchr("Nn", ch.code)) return (false);
++#ifdef __EMSCRIPTEN__
++	if (ch.code != 'y' && ch.code != 'Y' && ch.code != KC_ENTER && ch.code != '\n')
++		return (false);
++#endif
+ 
+ 	/* Success */
+ 	return (true);
+@@ -563,8 +582,10 @@ static bool store_sell(struct store_context *ctx)
+ 			prt(format("Price: %ld", (long)price), 1, 0);
+ 
+ 		/* Confirm sale */
+-		if (!store_get_check(format("%s %s? [ESC, any other key to accept]",
+-				OPT(player, birth_no_selling) ? "Give" : "Sell", o_name))) {
++		char question[160];
++		bool give = OPT(player, birth_no_selling);
++		strnfmt(question, sizeof(question), "%s %s?", give ? "Give" : "Sell", o_name);
++		if (!store_get_check(question, give ? -1 : price)) {
+ 			screen_load();
+ 			return false;
+ 		}
+@@ -713,10 +734,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 		prt(format("Price: %ld", (long)price), 1, 0);
+ 
+ 		/* Confirm purchase */
+-		response = store_get_check(format("Buy %s?%s %s",
+-					o_name,
+-					obj_can_use ? "" : " (Can't use!)",
+-					"[ESC, any other key to accept]"));
++		char question[160];
++		strnfmt(question, sizeof(question), "Buy %s?%s",
++			o_name, obj_can_use ? "" : " (Can't use!)");
++		response = store_get_check(question, price);
+ 
+ 		screen_load();
+ 
+@@ -865,6 +886,44 @@ static bool store_process_command_key(struct keypress kp)
+ /**
+  * Select an item from the store's stock, and return the stock index
+  */
++#ifdef __EMSCRIPTEN__
++static void web_render_store(struct menu *m)
++{
++	struct store_context *ctx = menu_priv(m);
++	struct store *store = ctx->store;
++	bool home = store->feat == FEAT_HOME;
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_store(home ? "Your Home" : f_info[store->feat].name, home);
++	for (int i = 0; i < m->count; i++) {
++		struct object *obj = ctx->list[i];
++		char name[160];
++		char detail[32];
++		char price[32] = "";
++		int weight = object_weight_one(obj);
++
++		object_desc(name, sizeof(name), obj,
++			ODESC_PREFIX | ODESC_FULL | (home ? 0 : ODESC_STORE), player);
++		strnfmt(detail, sizeof(detail), "%d.%d lb each", weight / 10, weight % 10);
++		if (!home)
++			strnfmt(price, sizeof(price), "%ld au%s",
++				(long)price_item(store, obj, false, 1),
++				tval_can_have_charges(obj) && obj->number > 1 ? " avg" : "");
++		web_add_menu_row(i, name, detail, price, m->selections[i], true);
++	}
++	if (!(m->flags & MN_NO_ACTION)) {
++		if (!ctx->inspect_only) {
++			if (m->count)
++				web_menu_action('p', home ? "Take" : "Buy");
++			web_menu_action('s', home ? "Stash" :
++				OPT(player, birth_no_selling) ? "Give" : "Sell");
++		}
++		if (m->count)
++			web_menu_action('l', "Inspect");
++	}
++}
++#endif
++
+ static int store_get_stock(struct menu *m, int oid)
+ {
+ 	ui_event e;
+@@ -1007,7 +1066,13 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+ 	region_erase_bordered(&m->boundary);
+ 
+ 	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
++#ifdef __EMSCRIPTEN__
++	const char *previous_prompt = web_set_prompt(header);
++#endif
+ 	selected = menu_dynamic_select(m);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
++#endif
+ 
+ 	menu_dynamic_free(m);
+ 	string_free(labels);
+@@ -1034,6 +1099,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+ 	bool processed = true;
+ 	struct store_context *ctx = menu_priv(m);
+ 	struct store *store = ctx->store;
++
++#ifdef __EMSCRIPTEN__
++	if (event->type == EVT_WEB_STORE_ACTION) {
++		int stock = event->store_action.row;
++		int key = event->store_action.key;
++		if (key == 's' && !ctx->inspect_only) {
++			store_sell(ctx);
++		} else if (stock >= 0 && stock < m->count) {
++			m->cursor = stock;
++			if (key == 'p' && !ctx->inspect_only)
++				store_purchase(ctx, stock, false);
++			else if (key == 'l')
++				store_examine(ctx, stock);
++		}
++		cmdq_pop(CTX_STORE);
++		notice_stuff(player);
++		handle_stuff(player);
++		ctx->flags |= STORE_FRAME_CHANGE | STORE_GOLD_CHANGE;
++		store_display_recalc(ctx);
++		store_menu_recalc(m);
++		store_redraw(ctx);
++		return true;
++	}
++#endif
+ 	
+ 	if (event->type == EVT_SELECT) {
+ 		/* HACK there's no mouse event coordinates to use for */
+@@ -1199,6 +1288,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+ 
+ 	/* Init the menu structure */
+ 	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
++#ifdef __EMSCRIPTEN__
++	menu->web_render = web_render_store;
++#endif
+ 	menu_setpriv(menu, 0, ctx);
+ 
+ 	/* Calculate the positions of things and draw */
 diff --git a/src/ui-target.c b/src/ui-target.c
 --- a/src/ui-target.c
 +++ b/src/ui-target.c
-@@ -501,7 +501,11 @@ static bool aux_hallucinate(struct chunk *c, struct player *p,
+@@ -387,7 +387,12 @@ static ui_event target_recall_loop_object(struct object *obj, int y, int x,
+ 	while (1) {
+ 		if (recall) {
+ 			display_object_recall_interactive(cave->objects[obj->oidx]);
++#ifdef __EMSCRIPTEN__
++			recall = false;
++			continue;
++#else
+ 			press = inkey_m();
++#endif
+ 		} else {
+ 			char o_name[80];
+ 
+@@ -501,7 +506,11 @@ static bool aux_hallucinate(struct chunk *c, struct player *p,
  	prt(out_val, 0, 0);
  	move_cursor_relative(auxst->grid.y, auxst->grid.x);
  
@@ -454,12 +906,36 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  	/* Stop on everything but "return" */
  	return auxst->press.key.code != KC_ENTER;
-@@ -1341,8 +1345,14 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -547,7 +556,12 @@ static bool aux_monster(struct chunk *c, struct player *p,
+ 		/* Recall or target */
+ 		if (recall) {
+ 			lore_show_interactive(mon->race, lore);
++#ifdef __EMSCRIPTEN__
++			recall = false;
++			continue;
++#else
+ 			auxst->press = inkey_m();
++#endif
+ 		} else {
+ 			char buf[80];
+ 
+@@ -1341,8 +1355,25 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
  					player->grid.y, player->grid.x);
  
  		/* Describe and Prompt */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TARGET);
++		bool attack = !allow_pathfinding && (mode & TARGET_KILL);
++		struct loc grid = loc(x, y);
++		bool can_select = use_free_mode ? square_in_bounds_fully(cave, grid) :
++			target_able(square_monster(cave, grid));
++		struct monster *mon = square_in_bounds(cave, grid) ?
++			square_monster(cave, grid) : NULL;
++		bool can_inspect = square_in_bounds(cave, grid) &&
++			!player->timed[TMD_IMAGE] && ((mon && monster_is_obvious(mon)) ||
++				pile_has_known(square_object(cave, grid)));
++		web_set_target_options(use_free_mode, point_set_size(targets),
++			can_select, can_inspect, attack);
 +#endif
  		ui_event press = target_set_interactive_aux(y, x,
  				mode | (use_free_mode ? TARGET_LOOK : 0));
@@ -469,7 +945,17 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  		/* Remove the path */
  		if (path_drawn) load_path(path_n, path_g, path_char, path_attr);
-@@ -1396,6 +1406,7 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -1391,11 +1422,16 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+ 			}
+ 			done = true;
+ 
+-		} else if (event_is_mouse(press, 1)) {
++		} else if (event_is_mouse(press, 1)
++#ifdef __EMSCRIPTEN__
++				|| press.type == EVT_WEB_TARGET_CELL
++#endif
++				) {
+ 			/* Relocate cursor */
  			y = KEY_GRID_Y(press);
  			x = KEY_GRID_X(press);
  
@@ -477,7 +963,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  			/* If they clicked on an edge of the map, drag the cursor further
  			   to trigger a panel scroll */
  			if (press.mouse.y <= 1) {
-@@ -1407,6 +1418,7 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -1407,6 +1443,7 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
  			} else if (press.mouse.x >= Term->wid - 2) {
  				x++;
  			}
@@ -580,3 +1066,229 @@ diff --git a/src/savefile.h b/src/savefile.h
  /**
   * Load the savefile given.  Returns true on succcess, false otherwise.
   */
+diff --git a/src/cmd-core.c b/src/cmd-core.c
+--- a/src/cmd-core.c
++++ b/src/cmd-core.c
+@@ -35,6 +35,9 @@
+ #include "player-util.h"
+ #include "store.h"
+ #include "target.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ 
+ errr (*cmd_get_hook)(cmd_context c);
+ 
+@@ -961,7 +964,14 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+ 			return CMD_OK;
+ 	}
+ 
+-	if (get_aim_dir(target)) {
++#ifdef __EMSCRIPTEN__
++	cmd_code previous = web_set_aim_command(cmd->code);
++#endif
++	bool aimed = get_aim_dir(target);
++#ifdef __EMSCRIPTEN__
++	web_set_aim_command(previous);
++#endif
++	if (aimed) {
+ 		cmd_set_arg_target(cmd, arg, *target);
+ 		return CMD_OK;
+ 	}
+diff --git a/src/ui-command.c b/src/ui-command.c
+--- a/src/ui-command.c
++++ b/src/ui-command.c
+@@ -195,7 +195,14 @@ void textui_cmd_rest(void)
+ 	char out_val[5] = "& ";
+ 
+ 	/* Ask for duration */
+-	if (!get_string(p, out_val, sizeof(out_val))) return;
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_REST);
++#endif
++	bool entered = get_string(p, out_val, sizeof(out_val));
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
++	if (!entered) return;
+ 
+ 	/* Rest... */
+ 	if (out_val[0] == '&') {
+diff --git a/src/ui-context.c b/src/ui-context.c
+--- a/src/ui-context.c
++++ b/src/ui-context.c
+@@ -795,7 +795,13 @@ int context_menu_object(struct object *obj)
+ 	region_erase_bordered(&r);
+ 
+ 	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
++#ifdef __EMSCRIPTEN__
++	const char *previous_prompt = web_set_prompt(header);
++#endif
+ 	selected = menu_dynamic_select(m);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
++#endif
+ 
+ 	menu_dynamic_free(m);
+ 	string_free(labels);
+diff --git a/src/ui-map.c b/src/ui-map.c
+--- a/src/ui-map.c
++++ b/src/ui-map.c
+@@ -928,7 +928,13 @@ void do_cmd_view_map(void)
+ 	Term_gotoxy(cx, cy);
+ 
+ 	/* Get any key */
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_OVERVIEW);
++#endif
+ 	(void)anykey();
++#ifdef __EMSCRIPTEN__
++	web_set_input_mode(previous);
++#endif
+ 
+ 	/* Restore the tile multipliers */
+ 	tile_width = w;
+diff --git a/src/ui-menu.h b/src/ui-menu.h
+--- a/src/ui-menu.h
++++ b/src/ui-menu.h
+@@ -274,6 +274,9 @@ struct menu
+ 	int top;                /* Position in list for partial display */
+ 	region active;          /* Subregion actually active for selection */
+ 	int cursor_x_offset;    /* Adjustment to the default position of the cursor on a line. */
++#ifdef __EMSCRIPTEN__
++	void (*web_render)(struct menu *menu);
++#endif
+ };
+ 
+ 
+diff --git a/src/ui-object.c b/src/ui-object.c
+--- a/src/ui-object.c
++++ b/src/ui-object.c
+@@ -1002,6 +1002,64 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+ 	return false;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static int web_item_sections(void)
++{
++	return (item_mode & (USE_INVEN | USE_EQUIP | USE_QUIVER | USE_FLOOR)) |
++		((item_mode & SHOW_THROWING) && throwing_num ? SHOW_THROWING : 0);
++}
++
++static void web_render_items(struct menu *menu)
++{
++	int current = player->upkeep->command_wrk;
++	struct object_menu_data *choices = menu_priv(menu);
++
++	web_set_menu(menu, menu->cursor, prompt);
++	web_set_menu_sections(current, web_item_sections() | current);
++	for (int i = 0; i < menu->count; i++) {
++		struct object *obj = choices[i].object;
++		char name[160];
++		char detail[80] = "";
++		char price[32] = "";
++
++		if (obj) {
++			object_desc(name, sizeof(name), obj, ODESC_PREFIX | ODESC_FULL, player);
++			if ((olist_mode & OLIST_FAIL) && obj_can_fail(obj)) {
++				if (object_effect_is_known(obj))
++					strnfmt(detail, sizeof(detail), "%d%% fail",
++						(9 + get_use_device_chance(obj)) / 10);
++				else
++					my_strcpy(detail, "? fail", sizeof(detail));
++			} else if (olist_mode & OLIST_RECHARGE) {
++				int fail = 1000 / recharge_failure_chance(obj,
++					player->upkeep->recharge_pow);
++				if (object_effect_is_known(obj))
++					strnfmt(detail, sizeof(detail), "%d.%d%% fail", fail / 10, fail % 10);
++				else
++					my_strcpy(detail, "? fail", sizeof(detail));
++			} else if (olist_mode & OLIST_WEIGHT) {
++				int weight = obj->number * object_weight_one(obj);
++				strnfmt(detail, sizeof(detail), "%d.%d lb", weight / 10, weight % 10);
++			}
++			if (olist_mode & OLIST_PRICE) {
++				struct store *store = store_at(cave, player->grid);
++				if (store)
++					strnfmt(price, sizeof(price), "%d au",
++						price_item(store, obj, true, obj->number));
++			}
++		} else {
++			my_strcpy(name, "(nothing)", sizeof(name));
++		}
++		if (choices[i].equip_label[0]) {
++			if (detail[0])
++				my_strcat(detail, " · ", sizeof(detail));
++			my_strcat(detail, choices[i].equip_label, sizeof(detail));
++		}
++		web_add_menu_row(i, name, detail, price, obj ? choices[i].key : 0, obj != NULL);
++	}
++}
++#endif
++
+ /**
+  * Show quiver missiles in full inventory
+  */
+@@ -1159,6 +1217,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+ 	m->context_hook = use_context_menu_list_switcher;
+ 	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
+ 	m->browse_hook = item_menu_browser;
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_items;
++#endif
+ 
+ 	/* Get inscriptions */
+ 	m->inscriptions = mem_zalloc(10 * sizeof(char));
+@@ -1222,6 +1283,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+ 	mem_free(m);
+ 
+ 	/* Deal with menu switch */
++#ifdef __EMSCRIPTEN__
++	if (evt.type == EVT_SWITCH && evt.key.code <= SHOW_THROWING &&
++			evt.key.code && !(evt.key.code & (evt.key.code - 1)) &&
++			(evt.key.code & web_item_sections())) {
++		player->upkeep->command_wrk = evt.key.code;
++		newmenu = true;
++	}
++#endif
+ 	if (evt.type == EVT_SWITCH && !newmenu) {
+ 		bool left = evt.key.code == ARROW_LEFT;
+ 
+diff --git a/src/ui-output.c b/src/ui-output.c
+--- a/src/ui-output.c
++++ b/src/ui-output.c
+@@ -154,6 +154,19 @@ void textui_textblock_place(textblock *tb, region orig_area, const char *header)
+  */
+ struct keypress textui_textblock_show(textblock *tb, region orig_area, const char *header)
+ {
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
++	const char *previous_prompt = web_set_prompt(header);
++	const wchar_t *text = textblock_text(tb);
++	(void)orig_area;
++	screen_save();
++	web_set_details(text, wcslen(text));
++	struct keypress ch = inkey();
++	web_set_prompt(previous_prompt);
++	web_set_input_mode(previous);
++	screen_load();
++	return ch;
++#else
+ 	/* xxx on resize this should be recalculated */
+ 	region area = region_calculate(orig_area);
+ 
+@@ -220,13 +233,13 @@ struct keypress textui_textblock_show(textblock *tb, region orig_area, const cha
+ 				area.row + n_lines + 1, area.col);
+ 		ch = inkey();
+ 	}
+-
+ 	mem_free(line_starts);
+ 	mem_free(line_lengths);
+ 
+ 	screen_load();
+ 
+ 	return (ch);
++#endif
+ }
+ 
+ 

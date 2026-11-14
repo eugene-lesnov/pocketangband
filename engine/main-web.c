@@ -2,12 +2,16 @@
 
 #include "main.h"
 #include "cave.h"
+#include "game-input.h"
 #include "game-world.h"
 #include "grafmode.h"
+#include "init.h"
 #include "message.h"
 #include "monster.h"
 #include "player.h"
+#include "target.h"
 #include "ui-input.h"
+#include "ui-keymap.h"
 #include "ui-map.h"
 #include "ui-output.h"
 #include "ui-prefs.h"
@@ -17,6 +21,8 @@
 enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2 };
 
 static enum web_input_mode input_mode;
+static const char *input_prompt;
+static cmd_code aim_command;
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -28,6 +34,13 @@ static const char *const input_modes[] = {
     [WEB_INPUT_AIM] = "aim",
     [WEB_INPUT_TARGET] = "target",
     [WEB_INPUT_SAVE_SLOTS] = "save-slots",
+    [WEB_INPUT_DIRECTION] = "direction",
+    [WEB_INPUT_MORE] = "more",
+    [WEB_INPUT_REST] = "rest",
+    [WEB_INPUT_OVERVIEW] = "overview",
+    [WEB_INPUT_DETAILS] = "details",
+    [WEB_INPUT_HISTORY] = "history",
+    [WEB_INPUT_BIRTH_STATS] = "birth-stats",
 };
 
 enum web_input_mode web_set_input_mode(enum web_input_mode mode)
@@ -36,6 +49,90 @@ enum web_input_mode web_set_input_mode(enum web_input_mode mode)
     input_mode = mode;
     return previous;
 }
+
+const char *web_set_prompt(const char *prompt)
+{
+    const char *previous = input_prompt;
+    input_prompt = prompt;
+    return previous;
+}
+
+cmd_code web_set_aim_command(cmd_code code)
+{
+    cmd_code previous = aim_command;
+    aim_command = code;
+    return previous;
+}
+
+EM_JS(void, web_set_aim_options, (bool current, bool nearest, int x, int y), {
+    Module['inputContext'] = { current: !!current, nearest: !!nearest,
+        target: current ? { x, y } : undefined };
+});
+
+EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
+    Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
+});
+
+EM_JS(void, web_set_confirmation_price, (int32_t price), {
+    if (price >= 0) Module['inputContext'] = { price };
+});
+
+EM_JS(void, web_set_direction_center, (bool available), {
+    Module['inputContext'] = { center: !!available };
+});
+
+EM_JS(void, web_set_target_options, (bool free_aim, int count, bool can_select,
+        bool can_inspect, bool attack), {
+    Module['targetOptions'] = { freeAim: !!free_aim, targetCount: count,
+        canSelect: !!can_select, canInspect: !!can_inspect, attack: !!attack };
+});
+
+EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
+    let detail = "";
+    for (let i = 0; i < length; i += 4096) {
+        detail += String.fromCodePoint(...HEAPU32.subarray((text >>> 2) + i,
+            (text >>> 2) + Math.min(length, i + 4096)));
+    }
+    Module['inputContext'] = { detail };
+});
+
+EM_JS(void, web_set_history, (const char *text), {
+    Module['inputContext'] = { detail: UTF8ToString(text) };
+});
+
+EM_JS(void, web_set_menu, (const struct menu *menu, int cursor, const char *prompt), {
+    Module['inputMenu'] = { id: menu, cursor, prompt: prompt ? UTF8ToString(prompt) : "",
+        rows: [], actions: [] };
+});
+
+EM_JS(void, set_menu_sections, (int current, int available, int equipment,
+        int inventory, int floor, int quiver, int throwing), {
+    const sections = [[inventory, "Inventory"], [equipment, "Equipment"],
+        [quiver, "Quiver"], [floor, "Floor"], [throwing, "Throwing"]];
+    Module['inputMenu'].sections = sections.filter(([id]) => available & id)
+        .map(([id, label]) => ({ id, label, active: id === current }));
+});
+
+void web_set_menu_sections(int current, int available)
+{
+    set_menu_sections(current, available, USE_EQUIP, USE_INVEN, USE_FLOOR, USE_QUIVER,
+        SHOW_THROWING);
+}
+
+EM_JS(void, web_set_store, (const char *name, bool home), {
+    Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home };
+});
+
+EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
+        const char *price, char key, bool enabled), {
+    Module['inputMenu'].rows.push({ index, name: UTF8ToString(name),
+        detail: detail ? UTF8ToString(detail).trim() : "",
+        price: price ? UTF8ToString(price).trim() : "", key, enabled: !!enabled });
+});
+
+EM_JS(void, web_menu_action, (int key, const char *label), {
+    Module['inputMenu'].actions.push({ key, label: UTF8ToString(label) });
+});
 
 void web_toggle_tiles(void)
 {
@@ -76,7 +173,7 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
 
 EM_JS(void, send_world, (const char *name, int level, int depth, int gold,
         int hp, int max_hp, int sp, int max_sp, int ac, int x, int y,
-        int count, const char *const *lines, const int *repeats), {
+        int count, const char *const *lines, const int *repeats, int roguelike), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -85,22 +182,48 @@ EM_JS(void, send_world, (const char *name, int level, int depth, int gold,
         });
     }
     Module['sendWorld']({ name: UTF8ToString(name), level, depth, gold,
-        hp, maxHp: max_hp, sp, maxSp: max_sp, ac, x, y, log });
+        hp, maxHp: max_hp, sp, maxSp: max_sp, ac, x, y, log, roguelike: !!roguelike });
 });
 
-EM_JS(int, take_input, (int *x, int *y), {
+EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
+        int store_action, int aim_cell, int target_cell), {
     const event = Module['takeInput']();
     if (!event) return 0;
-    if (event.type === "key") return event.code;
-    HEAP32[x >>> 2] = event.x;
-    HEAP32[y >>> 2] = event.y;
-    return -1;
+    HEAP32[code >>> 2] = event.code ?? 0;
+    if (event.type === "store-action") {
+        HEAP32[x >>> 2] = event.row ?? 0;
+    } else if (event.x !== undefined) {
+        HEAP32[x >>> 2] = event.x;
+        HEAP32[y >>> 2] = event.y;
+    }
+    switch (event.type) {
+        case "key": return 1;
+        case "tap": return tap;
+        case "menu-row": return row;
+        case "menu-section": return section;
+        case "store-action": return store_action;
+        case "aim-cell": return aim_cell;
+        case "target-cell": return target_cell;
+        default: return 0;
+    }
 });
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
+        const char *prompt, const char *verb, int player_x, int player_y, int gold, int world_view,
         int save_event, int import_event, int export_event, int tiles_event), {
     const region = width ? { x, y, width, height } : undefined;
-    const action = await Module['waitForInput'](UTF8ToString(mode), region, !!playing);
+    const modeName = UTF8ToString(mode);
+    const context = modeName === "target" ? { ...Module['targetOptions'] } :
+        modeName === "more" ? {} : Module['inputContext'] ?? {};
+    const menu = modeName === "menu" || modeName === "save-slots" ? Module['inputMenu'] : undefined;
+    if (modeName !== "more") Module['inputContext'] = Module['inputMenu'] = undefined;
+    if (menu?.store) menu.store.gold = gold;
+    if (prompt) context.prompt = UTF8ToString(prompt);
+    if (verb) context.verb = UTF8ToString(verb);
+    if (player_x >= 0) context.player = { x: player_x, y: player_y };
+    if (modeName === "more") context.worldView = !!world_view;
+    const action = await Module['waitForInput'](modeName, region, !!playing,
+        context, menu);
     switch (action) {
         case "background-save": return save_event;
         case "import-save": return import_event;
@@ -156,12 +279,15 @@ static ui_event_type wait_for_input(void)
     bool playing = player && character_generated && player->upkeep->playing && !player->is_dead;
     enum web_input_mode mode = input_mode;
     int x = 0, y = 0, width = 0, height = 0;
+    int player_x = -1, player_y = -1;
     if (mode == WEB_INPUT_TERMINAL && playing && character_dungeon && inkey_flag && map_visible) {
         mode = WEB_INPUT_COMMAND;
     }
-    if (mode == WEB_INPUT_TARGET && !map_visible) mode = WEB_INPUT_TERMINAL;
+    if (mode == WEB_INPUT_TARGET && !map_visible) mode = WEB_INPUT_DETAILS;
 
-    if (mode == WEB_INPUT_COMMAND && window_flag[MAP_TERM] == PW_OVERHEAD) {
+    bool world_view = (mode == WEB_INPUT_COMMAND ||
+        (mode == WEB_INPUT_MORE && map_visible && playing)) && window_flag[MAP_TERM] == PW_OVERHEAD;
+    if (world_view) {
         const term *map = angband_term[MAP_TERM];
         const char *lines[LOG_LIMIT];
         int repeats[LOG_LIMIT];
@@ -174,37 +300,68 @@ static ui_event_type wait_for_input(void)
             player->chp, player->mhp, player->csp, player->msp,
             player->known_state.ac + player->known_state.to_a,
             player->grid.x - map->offset_x, player->grid.y - map->offset_y,
-            count, lines, repeats);
+            count, lines, repeats, OPT(player, rogue_like_commands));
     }
-    if (mode == WEB_INPUT_TARGET) {
+    if (mode == WEB_INPUT_TARGET || (map_visible &&
+            (mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION))) {
         x = COL_MAP;
         y = ROW_MAP;
         width = SCREEN_WID * tile_width;
         height = SCREEN_HGT * tile_height;
+        if (mode != WEB_INPUT_TARGET) {
+            player_x = x + (player->grid.x - Term->offset_x) * tile_width;
+            player_y = y + (player->grid.y - Term->offset_y) * tile_height;
+        }
     } else if (mode == WEB_INPUT_MENU || mode == WEB_INPUT_SAVE_SLOTS) {
         width = Term->wid;
         height = Term->hgt;
     }
-    return wait_for_event(input_modes[mode], x, y, width, height, playing,
+    const char *verb = aim_command == CMD_FIRE ? "Fire" :
+        aim_command == CMD_THROW ? "Throw" : aim_command == CMD_CAST ? "Cast" : "Use";
+    return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
+        mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
+        player ? player->au : 0, world_view,
         EVT_WEB_SAVE, EVT_WEB_IMPORT, EVT_WEB_EXPORT, EVT_WEB_TILES);
+}
+
+static errr queue_input(void)
+{
+    int code = 0, x = 0, y = 0;
+    ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
+        EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL);
+
+    switch (type) {
+        case EVT_NONE: return 1;
+        case EVT_KBRD: return Term_keypress(code, 0);
+        case EVT_MOUSE: return Term_mousepress(x, y, 1);
+        case EVT_WEB_AIM_CELL:
+        case EVT_WEB_TARGET_CELL: {
+            const ui_event action = { .mouse = { .type = type, .x = x, .y = y, .button = 1 } };
+            return Term_event_push(&action);
+        }
+        case EVT_WEB_STORE_ACTION: {
+            const ui_event action = { .store_action = { .type = type, .row = x, .key = code } };
+            return Term_event_push(&action);
+        }
+        default: {
+            const ui_event action = { .key = { .type = type, .code = code } };
+            return Term_event_push(&action);
+        }
+    }
 }
 
 static errr web_xtra(int action, int value)
 {
     switch (action) {
         case TERM_XTRA_EVENT: {
-            int x, y;
-            int event = take_input(&x, &y);
-            if (!event && value) {
-                ui_event_type type = wait_for_input();
-                if (type != EVT_NONE) {
-                    const ui_event action = { .key = { .type = type } };
-                    return Term_event_push(&action);
-                }
-                event = take_input(&x, &y);
+            if (!queue_input()) return 0;
+            if (!value) return 1;
+            ui_event_type type = wait_for_input();
+            if (type != EVT_NONE) {
+                const ui_event action = { .key = { .type = type } };
+                return Term_event_push(&action);
             }
-            if (event < 0) return Term_mousepress(x, y, 1);
-            return event ? Term_keypress(event, 0) : 1;
+            return queue_input();
         }
         case TERM_XTRA_FLUSH:
             flush_input();

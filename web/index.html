@@ -23,6 +23,60 @@
             <button id="retry" type="button" hidden>Try again</button>
         </div>
 
+        <section class="view" aria-labelledby="view-title">
+            <div class="view-bar">
+                <h2 id="view-title">Terminal</h2>
+                <button id="view-options" type="button" aria-controls="view-controls" aria-expanded="false" hidden>
+                    View
+                </button>
+                <div id="view-controls">
+                    <button id="toggle-tiles" type="button" aria-pressed="false" disabled hidden>Tiles</button>
+                    <div class="zoom" role="group" aria-label="Zoom">
+                        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+                        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+                    </div>
+                </div>
+            </div>
+            <div id="terminal-screen" class="screen" role="region" aria-label="Angband terminal" tabindex="0">
+                <pre id="terminal"></pre>
+            </div>
+            <div id="map-screen" class="screen" role="region" aria-label="Angband map" tabindex="0" hidden>
+                <div class="map-grid">
+                    <pre id="map" aria-hidden="true"></pre>
+                    <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
+                </div>
+            </div>
+            <div id="target-screen" class="screen" role="region" aria-label="Targeting map" tabindex="0" hidden>
+                <div class="map-grid">
+                    <pre id="target" aria-hidden="true"></pre>
+                    <canvas id="target-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
+                </div>
+            </div>
+            <div id="menu-screen" class="menu-screen" hidden>
+                <div id="menu-summary" hidden></div>
+                <fieldset id="menu-sections" aria-label="Item lists" hidden></fieldset>
+                <fieldset id="menu-rows" class="menu-rows" aria-label="Choices"></fieldset>
+                <p id="menu-empty" hidden>No items.</p>
+            </div>
+            <fieldset id="commands-screen" class="menu-screen menu-rows" aria-label="Commands" disabled hidden></fieldset>
+            <div id="edit-screen" class="menu-screen" hidden>
+                <p id="edit-value" aria-label="Current value"></p>
+            </div>
+            <div id="details-screen" class="menu-screen" tabindex="0" hidden></div>
+            <p id="input-prompt" role="status" hidden></p>
+            <details id="journal" hidden>
+                <summary>
+                    <span id="recent-messages">
+                        <span id="previous-message"></span>
+                        <span id="latest-message"></span>
+                    </span>
+                    <span id="journal-label">Journal</span>
+                </summary>
+                <ol id="messages" tabindex="0" aria-label="Angband messages"></ol>
+            </details>
+            <p id="save-status" class="status" role="status" hidden></p>
+        </section>
+
         <section id="hud" aria-label="Character status" hidden>
             <div class="location">
                 <strong id="character"></strong>
@@ -36,96 +90,59 @@
             </dl>
         </section>
 
-        <section class="view" aria-labelledby="view-title">
-            <div class="view-bar">
-                <h2 id="view-title">Terminal</h2>
-                <div class="view-controls">
-                    <button id="toggle-tiles" type="button" aria-pressed="false" disabled hidden>Tiles</button>
-                    <div class="zoom" role="group" aria-label="Zoom">
-                        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
-                        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
-                    </div>
-                </div>
-            </div>
-            <div id="terminal-screen" class="screen" role="region" aria-label="Angband terminal" tabindex="0">
-                <pre id="terminal"></pre>
-            </div>
-            <div id="map-screen" class="screen" role="region" aria-label="Angband map" tabindex="0" hidden>
-                <pre id="map" aria-hidden="true"></pre>
-                <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
-            </div>
-            <div id="target-screen" class="screen" role="region" aria-label="Targeting map" tabindex="0" hidden>
-                <pre id="target" aria-hidden="true"></pre>
-                <canvas id="target-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
-            </div>
-            <p id="target-prompt" hidden></p>
-        </section>
-
-        <details id="journal" hidden open>
-            <summary>Journal</summary>
-            <ol id="messages" tabindex="0" aria-label="Angband messages"></ol>
-        </details>
-
         <div class="controls">
-            <fieldset id="direction-pad" class="direction-pad" aria-label="Direction pad" disabled>
-                <button class="diagonal" type="button" data-key="7" aria-label="Up left">↖</button>
-                <button type="button" data-key="ArrowUp" aria-label="Up">↑</button>
-                <button class="diagonal" type="button" data-key="9" aria-label="Up right">↗</button>
-                <button type="button" data-key="ArrowLeft" aria-label="Left">←</button>
-                <button id="direction-center" type="button" data-key="5" aria-label="Wait one turn">·</button>
-                <button type="button" data-key="ArrowRight" aria-label="Right">→</button>
-                <button class="diagonal" type="button" data-key="1" aria-label="Down left">↙</button>
-                <button type="button" data-key="ArrowDown" aria-label="Down">↓</button>
-                <button class="diagonal" type="button" data-key="3" aria-label="Down right">↘</button>
-            </fieldset>
-            <div class="actions">
-                <fieldset id="world-actions" class="key-row" aria-label="Game actions" disabled hidden>
-                    <button type="button" data-key="i">Inventory</button>
-                    <button type="button" data-key="e">Equipment</button>
-                    <button type="button" data-key="*">Target</button>
-                    <button type="button" data-key="&lt;">Ascend</button>
-                    <button type="button" data-key="&gt;">Descend</button>
-                    <button type="button" data-key="M">Level map</button>
-                    <button type="button" data-key="Save">Save</button>
-                    <button type="button" data-key="SaveAndQuit">Save and quit</button>
+            <div class="control-body">
+                <fieldset id="direction-pad" class="direction-pad" aria-label="Direction pad" disabled hidden>
+                    <button class="diagonal" type="button" data-key="7" aria-label="Up left">↖</button>
+                    <button type="button" data-key="ArrowUp" aria-label="Up">↑</button>
+                    <button class="diagonal" type="button" data-key="9" aria-label="Up right">↗</button>
+                    <button type="button" data-key="ArrowLeft" aria-label="Left">←</button>
+                    <button id="direction-center" type="button" data-key="5" aria-label="Wait one turn">
+                        5<small id="center-caption">Wait</small>
+                    </button>
+                    <button type="button" data-key="ArrowRight" aria-label="Right">→</button>
+                    <button class="diagonal" type="button" data-key="1" aria-label="Down left">↙</button>
+                    <button type="button" data-key="ArrowDown" aria-label="Down">↓</button>
+                    <button class="diagonal" type="button" data-key="3" aria-label="Down right">↘</button>
                 </fieldset>
-                <fieldset id="terminal-keys" class="key-row" aria-label="Angband keys" disabled>
-                    <button id="cancel-key" type="button" data-key="Escape">Back</button>
-                    <button id="confirm-key" type="button" data-key="Enter">Select</button>
+                <fieldset id="world-actions" class="command-grid" aria-label="Quick commands" disabled hidden></fieldset>
+                <fieldset id="stat-actions" class="key-row" aria-label="Stat allocation" disabled hidden>
+                    <button type="button" data-key="r">Reset stats</button>
                 </fieldset>
-                <fieldset id="aim-actions" class="key-row" aria-label="Attack direction" disabled hidden>
-                    <button type="button" data-key="*">Target</button>
-                    <button type="button" data-key="'">Nearest</button>
+                <fieldset id="aim-actions" class="key-row" aria-label="Aiming" disabled hidden>
+                    <button id="nearest" type="button" data-key="'">Use on nearest</button>
+                    <button type="button" data-key="*">Choose target</button>
                 </fieldset>
                 <fieldset id="target-actions" class="key-row" aria-label="Targeting" disabled hidden>
-                    <button type="button" data-key="-" aria-label="Previous target">← Target</button>
-                    <button type="button" data-key="+" aria-label="Next target">Target →</button>
-                    <button type="button" data-key="o">Cell</button>
-                    <button type="button" data-key="r">Inspect</button>
+                    <button id="previous-target" type="button" data-key="-" aria-label="Previous target">‹ Target</button>
+                    <button id="next-target" type="button" data-key="+" aria-label="Next target">Target ›</button>
+                    <button id="target-mode" type="button" data-key="o">Free aim</button>
+                    <button id="target-inspect" type="button" data-key="r">Inspect</button>
                 </fieldset>
-                <fieldset id="utility-keys" class="key-row" aria-label="Input options" disabled>
-                    <button id="command-menu" type="button" data-key="Enter" hidden>Commands</button>
-                    <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false">
-                        Keyboard
-                    </button>
-                </fieldset>
-                <p id="save-status" class="status" role="status" hidden></p>
             </div>
-        </div>
-        <section id="save-transfer" aria-label="Save files" hidden>
-            <fieldset id="save-transfer-actions" class="key-row" aria-label="Transfer a save" disabled>
-                <button id="import-save" type="button">Import save</button>
-                <button id="export-save" type="button">Export selected save</button>
+            <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
+            <section id="save-transfer" aria-label="Save files" hidden>
+                <fieldset id="save-transfer-actions" class="key-row" aria-label="Transfer a save" disabled>
+                    <button id="import-save" type="button">Import save</button>
+                    <button id="export-save" type="button">Export selected save</button>
+                </fieldset>
+                <input id="import-file" type="file" aria-label="Angband save file" hidden>
+                <p id="transfer-status" class="status" role="status" hidden></p>
+                <div id="export-file" class="key-row" hidden>
+                    <button id="share-save" type="button" hidden>Share file…</button>
+                    <a id="download-save" target="_blank" rel="noopener">Download file</a>
+                </div>
+            </section>
+            <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
+            <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>
+            <fieldset id="keyboard" class="key-panel" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
+            <fieldset id="terminal-keys" aria-label="Angband controls" disabled>
+                <button id="cancel-key" type="button" data-key="Escape" aria-label="Back">Back</button>
+                <button id="keyboard-toggle" type="button" aria-label="Keyboard" aria-controls="keyboard"
+                        aria-expanded="false">ABC</button>
+                <button id="confirm-key" type="button" data-key="Enter">Continue</button>
             </fieldset>
-            <input id="import-file" type="file" aria-label="Angband save file" hidden>
-            <p id="transfer-status" class="status" role="status" hidden></p>
-            <div id="export-file" class="key-row" hidden>
-                <button id="share-save" type="button" hidden>Share file…</button>
-                <a id="download-save" target="_blank" rel="noopener">Download file</a>
-            </div>
-        </section>
-        <fieldset id="quantity" aria-label="Quantity" disabled hidden></fieldset>
-        <fieldset id="keyboard" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
+        </div>
     </main>
 </body>
 </html>
