@@ -104,6 +104,28 @@ EM_JS(void, web_set_history, (const char *text), {
     Module['inputContext'] = { detail: UTF8ToString(text) };
 });
 
+EM_JS(void, web_set_letter_menu, (const char *title), {
+    Module['inputContext'] = { letterMenu: { title: UTF8ToString(title), choices: [] } };
+});
+
+EM_JS(void, web_add_letter_choice, (char key, const char *name), {
+    Module['inputContext'].letterMenu.choices.push({ key: String.fromCharCode(key), name: UTF8ToString(name) });
+});
+
+EM_JS(bool, web_skip_splash, (void), {
+    return !!Module['skipSplash'];
+});
+
+EM_JS(void, cancel_birth, (void), {
+    Module['birthCancelled'] = true;
+});
+
+void web_cancel_birth(void)
+{
+    cancel_birth();
+    quit(NULL);
+}
+
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
         int level, const char *history), {
     Module['inputContext'] = { character: {

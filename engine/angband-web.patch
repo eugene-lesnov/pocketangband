@@ -26,18 +26,19 @@ diff --git a/src/list-options.h b/src/list-options.h
 diff --git a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
-@@ -58,6 +58,10 @@
+@@ -58,6 +58,11 @@
  #include "SDL_main.h"
  #endif
  
 +#ifdef __EMSCRIPTEN__
 +extern errr init_web(int argc, char **argv);
++extern bool web_skip_splash(void);
 +#endif
 +
  /**
   * List of the available modules in the order they are tried.
   */
-@@ -94,6 +98,10 @@ static const struct module modules[] =
+@@ -94,6 +99,10 @@
  #ifdef USE_IBM
  	{ "ibm", help_ibm, init_ibm },
  #endif /* USE_IBM */
@@ -48,6 +49,18 @@ diff --git a/src/main.c b/src/main.c
  };
  
  /**
+@@ -540,7 +549,10 @@
+ 	textui_init();
+ 
+ 	/* Wait for response */
+-	pause_line(Term);
++#ifdef __EMSCRIPTEN__
++	if (!web_skip_splash())
++#endif
++		pause_line(Term);
+ 
+ 	/* Play the game */
+ 	play_game((select_game) ?
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
@@ -364,7 +377,72 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 diff --git a/src/ui-birth.c b/src/ui-birth.c
 --- a/src/ui-birth.c
 +++ b/src/ui-birth.c
-@@ -1139,7 +1139,15 @@ static enum birth_stage point_based_command(void)
+@@ -120,6 +120,10 @@ static enum birth_stage textui_birth_quickstart(void)
+ 			next = BIRTH_RACE_CHOICE;
+ 		} else if (ke.code == KTRL('X')) {
+ 			quit(NULL);
++#ifdef __EMSCRIPTEN__
++		} else if (ke.code == ESCAPE) {
++			web_cancel_birth();
++#endif
+ 		} else if ( !arg_force_name && (ke.code == 'C' || ke.code == 'c')) {
+ 			next = BIRTH_NAME_CHOICE;
+ 		} else if (ke.code == '=') {
+@@ -214,6 +218,18 @@ static void birthmenu_display(struct menu *menu, int oid, bool cursor,
+  */
+ static const menu_iter birth_iter = { NULL, NULL, birthmenu_display, NULL, NULL };
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_birth_choices(struct menu *menu)
++{
++	const struct birthmenu_data *data = menu_priv(menu);
++	const char *title = menu == &race_menu ? "Choose race" :
++		menu == &class_menu ? "Choose class" : "Choose stat method";
++	web_set_letter_menu(title);
++	for (int i = 0; i < menu->count; i++)
++		web_add_letter_choice(menu->selections[i], data->items[i]);
++}
++#endif
++
+ static void skill_help(const int r_skills[], const int c_skills[], int mhp, int exp, int infra)
+ {
+ 	int16_t skills[SKILL_MAX];
+@@ -501,11 +517,13 @@ static void init_birth_menu(struct menu *menu, int n_choices,
+ 	/* Initialise a basic menu */
+ 	menu_init(menu, MN_SKIN_SCROLL, &birth_iter);
+ 
+-	/* A couple of behavioural flags - we want selections as letters
+-	   skipping the rogue-like cardinal direction movements and a
+-	   double tap to act as a selection. */
++	/* Use letters for selections, skipping roguelike movement keys. */
+ 	menu->selections = all_letters_nohjkl;
++#ifdef __EMSCRIPTEN__
++	menu->web_render = web_render_birth_choices;
++#else
+ 	menu->flags = MN_DBL_TAP;
++#endif
+ 
+ 	/* Copy across the game's suggested initial selection, etc. */
+ 	menu->cursor = initial_choice;
+@@ -631,7 +649,7 @@ static void clear_question(void)
+ /**
+  * Show the birth instructions on an otherwise blank screen
+  */	
+-static void print_menu_instructions(void)
++static void print_menu_instructions(const char *instructions)
+ {
+ 	/* Clear screen */
+ 	Term_clear();
+@@ -644,7 +662,7 @@ static void print_menu_instructions(void)
+ 	Term_gotoxy(QUESTION_COL, HEADER_ROW);
+ 	
+ 	/* Display some helpful information */
+-	text_out_e(BIRTH_MENU_HELPTEXT);
++	text_out_e("%s", instructions);
+ 	
+ 	/* Reset text_out() indentation */
+ 	text_out_indent = 0;
+@@ -1139,7 +1157,15 @@ static enum birth_stage point_based_command(void)
  	 * to look like keystrokes.
  	 */
  	while (1) {
@@ -380,7 +458,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1385,7 +1393,16 @@ static int edit_text(char *buffer, int buflen) {
+@@ -1385,7 +1411,16 @@ static int edit_text(char *buffer, int buflen) {
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
@@ -397,7 +475,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1550,16 @@ static enum birth_stage get_history_command(void)
+@@ -1533,7 +1568,16 @@ static enum birth_stage get_history_command(void)
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
@@ -414,6 +492,39 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
+@@ -1659,9 +1703,16 @@ int textui_do_birth(void)
+ 			{
+ 				struct menu *menu = &race_menu;
+ 				cmd_code command = CMD_CHOOSE_RACE;
++#ifdef __EMSCRIPTEN__
++				const char *instructions = "{light blue}Tap a letter to choose.{/}\n\n"
++					"Open {light green}Keys{/} for birth options (=), help (?), "
++					"or to finish with random choices (@).";
++#else
++				const char *instructions = BIRTH_MENU_HELPTEXT;
++#endif
+ 
+ 				Term_clear();
+-				print_menu_instructions();
++				print_menu_instructions(instructions);
+ 
+ 				if (current_stage > BIRTH_RACE_CHOICE) {
+ 					menu_refresh(&race_menu, false);
+@@ -1676,8 +1727,13 @@ int textui_do_birth(void)
+ 
+ 				next = menu_question(current_stage, menu, command);
+ 
+-				if (next == BIRTH_BACK)
++				if (next == BIRTH_BACK) {
++#ifdef __EMSCRIPTEN__
++					if (current_stage == BIRTH_RACE_CHOICE && !quickstart_allowed)
++						web_cancel_birth();
++#endif
+ 					next = current_stage - 1;
++				}
+ 
+ 				/* Make sure the character gets reset before quickstarting */
+ 				if (next == BIRTH_QUICKSTART) 
 diff --git a/src/ui-input.c b/src/ui-input.c
 --- a/src/ui-input.c
 +++ b/src/ui-input.c
@@ -637,11 +748,10 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,42 @@
- #include "game-event.h"
+@@ -24,6 +24,45 @@
  #include "ui-event.h"
  #include "ui-term.h"
-+
+ 
 +#ifdef __EMSCRIPTEN__
 +enum web_input_mode {
 +	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
@@ -662,6 +772,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	bool can_inspect, bool attack);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
++void web_set_letter_menu(const char *title);
++void web_add_letter_choice(char key, const char *name);
++void web_cancel_birth(void);
 +void web_set_character(const char *name, const char *race, const char *class_name,
 +	int level, const char *history);
 +void web_character_row(int section, const char *label, const char *value);
@@ -677,9 +790,10 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_menu_action(int key, const char *label);
 +void web_toggle_tiles(void);
 +#endif
- 
++
  /**
   * Holds a generic command.  If hook is not NULL, that function
+  * will be called.  Otherwise, if cmd is not CMD_NULL, that command
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
@@ -1528,7 +1642,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  #include "ui-menu.h"
  #include "ui-output.h"
  #include "ui-spell.h"
-@@ -215,6 +216,26 @@
+@@ -215,6 +216,34 @@
  	NULL	/* no resize hook */
  };
  
@@ -1536,18 +1650,26 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +static void web_render_spell_choices(struct menu *m)
 +{
 +	struct spell_menu_data *d = menu_priv(m);
-+	if (d->show_description) return;
-+	web_set_menu(m, m->cursor, NULL);
++	bool letter_menu = d->browse || d->show_description;
++	if (letter_menu)
++		web_set_letter_menu(d->browse ? "Browse book" : "Choose spell");
++	else
++		web_set_menu(m, m->cursor, NULL);
 +	for (int i = 0; i < d->n_spells; ++i) {
 +		int index = d->spells[i];
 +		const struct class_spell *spell = spell_by_index(player, index);
 +		if (!spell) continue;
++		bool valid = spell_menu_valid(m, i);
++		if (letter_menu) {
++			if (valid) web_add_letter_choice(m->selections[i], spell->name);
++			continue;
++		}
 +		char detail[80];
 +		strnfmt(detail, sizeof(detail), "Level %d · %d MP · %d%% fail",
 +			spell->slevel, spell->smana, spell_chance(index));
 +		web_add_menu_row(i, spell->slevel >= 99 ? "(illegible)" : spell->name,
 +			spell->slevel >= 99 ? NULL : detail, NULL, m->selections[i],
-+			spell_menu_valid(m, i));
++			valid);
 +	}
 +}
 +#endif
@@ -1555,7 +1677,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -287,7 +308,14 @@
+@@ -287,7 +316,14 @@
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
@@ -1570,3 +1692,13 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	screen_load();
  
  	return d->selected_spell;
+@@ -306,6 +342,9 @@
+ 	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
+ 
+ 	d->browse = true;
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_spell_choices;
++#endif
+ 	menu_select(m, 0, true);
+ 
+ 	screen_load();

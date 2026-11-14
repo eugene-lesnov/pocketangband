@@ -5,7 +5,6 @@ const profileDirectory = "/profile";
 const input = [];
 let waiting;
 let request = 0;
-let lastError;
 let backgroundSavePending = false;
 let saveToImport;
 let interruptPending = false;
@@ -112,15 +111,15 @@ async function deleteProfileFiles(idbfs, paths) {
     });
 }
 
-async function play(lock) {
-    if (!lock) throw new Error("The Angband profile is open in another tab.");
-
+async function play(skipSplash) {
     let world;
+    let lastError;
     let finish;
     const exited = new Promise((resolve) => {
         finish = resolve;
     });
     const game = await createAngband({
+        skipSplash,
         sendFrame(frame) {
             const buffers = [frame.codepoints.buffer, frame.attributes.buffer, frame.palette.buffer];
             if (frame.terrainAttributes) {
@@ -274,7 +273,7 @@ async function play(lock) {
             console.error(message);
         },
         onExit(code) {
-            finish({ type: "exit", code, message: lastError });
+            finish({ type: "exit", code, message: lastError, birthCancelled: !!game.birthCancelled });
         },
     });
 
@@ -294,7 +293,14 @@ try {
     if (!navigator.locks) {
         throw new Error("The Angband profile requires a browser with Web Locks and an HTTPS or localhost address.");
     }
-    const result = await navigator.locks.request("pocketband-profile", { ifAvailable: true }, play);
+    const result = await navigator.locks.request("pocketband-profile", { ifAvailable: true }, async (lock) => {
+        if (!lock) throw new Error("The Angband profile is open in another tab.");
+        let exit = await play(false);
+        while (exit.code === 0 && exit.birthCancelled) {
+            exit = await play(true);
+        }
+        return exit;
+    });
     self.postMessage(result);
 } catch (error) {
     self.postMessage({ type: "error", message: error.message || String(error) });

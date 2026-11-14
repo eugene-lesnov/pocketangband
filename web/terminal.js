@@ -74,6 +74,7 @@ const menuSections = document.querySelector("#menu-sections");
 const menuRows = document.querySelector("#menu-rows");
 const menuEmpty = document.querySelector("#menu-empty");
 const menuActions = document.querySelector("#menu-actions");
+const letterChoices = document.querySelector("#letter-choices");
 const actionsScreen = document.querySelector("#actions-screen");
 const quantity = document.querySelector("#quantity");
 const rest = document.querySelector("#rest");
@@ -497,6 +498,7 @@ function updateControls() {
     const confirming = mode === "confirm";
     const history = mode === "history";
     const stats = mode === "birth-stats";
+    const letterMenu = !!context.letterMenu;
     const more = mode === "more";
     const overview = mode === "overview";
     const details = mode === "details";
@@ -513,11 +515,11 @@ function updateControls() {
     toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
     openCharacter.disabled = !command || disabled;
     vitals.disabled = disabled || !(selecting || aiming || directing || command);
-    views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
+    views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu && !letterMenu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
     const playPad = command || selecting || aiming || directing;
     const padVisible = !openPanel && !showKeyboard && !stopVisible &&
-        (playPad || stats || (isMenu() && !menu));
+        (playPad || stats || (isMenu() && !menu && !letterMenu));
     setActions(directionPad, padVisible, disabled);
     directionPad.classList.toggle("cardinal", mode === "save-slots" || stats);
     directionCenter.disabled = !command && !(directing && context.center);
@@ -525,6 +527,8 @@ function updateControls() {
     directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Wait one turn");
     setActions(playKeys, playing && !stopVisible, disabled);
     setActions(terminalKeys, !playing && !stopVisible && !(command && showKeyboard), disabled);
+    terminalKeys.classList.toggle("letter-controls", letterMenu);
+    setActions(letterChoices, letterMenu && !showKeyboard, disabled);
     confirmKey.dataset.key = confirming || history ? "y" : selecting ? "t" : aiming ?
         hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
@@ -535,7 +539,7 @@ function updateControls() {
         aiming ? hasTarget ? useTarget : "Choose target" :
         editing || counting || resting || stats ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel;
+    confirmKey.hidden = !!openPanel || letterMenu;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? "No" : history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
@@ -723,6 +727,7 @@ function updateView(state = world, region = views.target.crop) {
     const title = showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
+        context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : "Text entry" : activeView.title;
     const activeSection = menu?.sections?.find((section) => section.active);
@@ -768,7 +773,7 @@ function handleWorkerMessage({ data }) {
         }
         case "waiting": {
             clearPendingInput();
-            const changed = data.mode !== mode;
+            const changed = data.mode !== mode || data.context.letterMenu?.title !== context.letterMenu?.title;
             if (changed) {
                 centerPending = true;
                 if (mode === "save-slots") {
@@ -787,6 +792,10 @@ function handleWorkerMessage({ data }) {
             request = data.request;
             context = data.context;
             menu = data.menu;
+            if (changed && context.letterMenu) {
+                letterChoices.replaceChildren(...context.letterMenu.choices.map(({ key, name }) =>
+                    makeKey(key, key, `${name} (${key})`)));
+            }
             transferring = false;
             if (changed && isTextEntry(mode)) renderKeyboard();
             launch.hidden = true;
@@ -798,6 +807,7 @@ function handleWorkerMessage({ data }) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (changed && context.letterMenu) layoutLetterChoices(letterChoices.clientWidth);
             if (changed && mode === "character") {
                 for (const detail of characterScreen.querySelectorAll(".character-detail")) detail.open = false;
                 characterScreen.scrollTop = 0;
@@ -880,7 +890,8 @@ function sendInput(input) {
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
     worker.postMessage({ ...input, request });
-    if ((mode === "command" || !hud.hidden || mode === "rest" || (mode === "menu" && !menu?.store)) &&
+    if ((mode === "command" || !hud.hidden || mode === "rest" ||
+        (mode === "menu" && !menu?.store && !context.letterMenu)) &&
         ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
         pendingInput = request;
         stopTimer = setTimeout(() => {
@@ -1085,7 +1096,7 @@ function renderKeyboard() {
         makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
         makeKey("ArrowRight", "→", "Move text cursor right")]);
-    if (mode === "terminal" || mode === "birth-stats" || (isMenu() && !menu)) rows.unshift([
+    if (mode === "terminal" || mode === "birth-stats" || (isMenu() && !menu && !context.letterMenu)) rows.unshift([
         makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
         makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
     ]);
@@ -1193,7 +1204,7 @@ for (const view of [views.terminal, views.target]) {
     view.viewport.addEventListener("click", (event) => {
         const type = view === views.target ? mode === "target" ? "target-cell" :
             mode === "aim" || mode === "direction" ? "aim-cell" : undefined :
-            isMenu() && !menu ? "tap" : undefined;
+            isMenu() && !menu && !context.letterMenu ? "tap" : undefined;
         if (event.detail === 0 || !request || tap?.request !== request || activeView !== view ||
             !type || !view.grid || !view.gridElement.contains(event.target) ||
             view.rendered !== views.terminal.frame || !sameRegion(view.region, view.crop)) return;
@@ -1219,6 +1230,23 @@ journal.addEventListener("toggle", () => {
     viewOptions.setAttribute("aria-expanded", "false");
     messages.scrollTop = messages.scrollHeight;
 });
+function layoutLetterChoices(width) {
+    const count = letterChoices.childElementCount;
+    if (!width || !count) return;
+    const gap = parseFloat(getComputedStyle(letterChoices).columnGap);
+    const capacity = Math.max(1, Math.floor((width + gap) / (44 + gap)));
+    const rows = Math.ceil(count / capacity);
+    const shorterRow = Math.floor(count / rows);
+    const longerRow = shorterRow + 1;
+    const choicesInLongerRows = (count % rows) * longerRow;
+    for (let i = 0; i < count; i++) {
+        const columns = i < choicesInLongerRows ? longerRow : shorterRow;
+        letterChoices.children[i].style.setProperty("--choices-per-row", columns);
+    }
+}
+
+new ResizeObserver(([entry]) => layoutLetterChoices(entry.contentRect.width)).observe(letterChoices);
+
 const mapResize = new ResizeObserver(() => {
     if (activeView === views.terminal || activeView.viewport.hidden) return;
     centerPending = true;
