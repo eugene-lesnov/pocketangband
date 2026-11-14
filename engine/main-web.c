@@ -30,6 +30,7 @@ enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2, RUN_STEP_DELAY_MS =
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
+static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
 static const char *const input_modes[] = {
@@ -74,6 +75,15 @@ const char *web_set_prompt(const char *prompt)
     const char *previous = input_prompt;
     input_prompt = prompt;
     return previous;
+}
+
+bool web_confirm_cast(const char *warning, const char *prompt)
+{
+    message_add(warning, MSG_GENERIC);
+    cast_warning = warning;
+    bool confirmed = get_check(prompt);
+    cast_warning = NULL;
+    return confirmed;
 }
 
 cmd_code web_set_direction_command(cmd_code code)
@@ -556,7 +566,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
 });
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
-        const char *prompt, const char *verb, int player_x, int player_y, int gold, int world_view,
+        const char *prompt, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
         int save_event, int delete_event, int tiles_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
@@ -566,6 +576,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     if (modeName !== "more") Module['inputContext'] = Module['inputMenu'] = undefined;
     if (menu?.store) menu.store.gold = gold;
     if (prompt) context.prompt = UTF8ToString(prompt);
+    if (warning) context.castWarning = UTF8ToString(warning);
     if (verb) context.verb = UTF8ToString(verb);
     if (player_x >= 0) context.player = { x: player_x, y: player_y };
     context.worldView = !!world_view;
@@ -620,8 +631,9 @@ static ui_event_type wait_for_input(void)
     pace_run = mode == WEB_INPUT_RUN_DIRECTION;
 
     bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION;
+    const char *warning = mode == WEB_INPUT_CONFIRM ? cast_warning : NULL;
     bool world_view = map_visible && playing &&
-        (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE || mode == WEB_INPUT_RUN_DIRECTION) &&
+        (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE || mode == WEB_INPUT_RUN_DIRECTION || warning) &&
         window_flag[MAP_TERM] == PW_OVERHEAD;
     if (mode == WEB_INPUT_CHARACTER ||
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
@@ -641,7 +653,7 @@ static ui_event_type wait_for_input(void)
     }
     const char *verb = direction_command == CMD_FIRE ? "Fire" :
         direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
-    return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
+    return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view,
         EVT_WEB_SAVE, EVT_WEB_DELETE, EVT_WEB_TILES);

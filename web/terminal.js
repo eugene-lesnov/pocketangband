@@ -796,7 +796,8 @@ function updateControls() {
     confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options || birthChoiceMenu || resultChild;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
-    cancelKey.textContent = confirming ? "No" : history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
+    cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
+        history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
         "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
@@ -870,7 +871,8 @@ function updatePrompt() {
         text = terminalLine(0);
         if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
-    if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
+    if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
+    else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
     inputPrompt.hidden = !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -882,11 +884,10 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     world = state;
     views.target.crop = region;
-    const map = (mode === "command" || mode === "more" || mode === "run-direction") && context.worldView;
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
-    activeView = aiming && region ? views.target : world && map ? views.map : views.terminal;
+    activeView = aiming && region ? views.target : world && context.worldView ? views.map : views.terminal;
     const editing = context.value !== undefined && !openPanel;
-    const question = (mode === "confirm" || mode === "retire") && context.prompt;
+    const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
     const showDetails = context.detail !== undefined;
     const reviewing = mode === "birth-review";
     const showCharacter = (mode === "character" || reviewing) && !!context.character;
