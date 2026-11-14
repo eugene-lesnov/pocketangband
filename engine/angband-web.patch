@@ -1103,7 +1103,20 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1840,6 +1950,21 @@ ui_event textui_get_command(int *count)
+@@ -1661,7 +1771,11 @@ static bool textui_get_aim_dir(int *dp)
+ 					dir = 5;
+ 			} else if (ke.key.code == '\'') {
+ 				/* Set to closest target */
+-				if (target_set_closest(TARGET_KILL, NULL)) {
++				int mode = TARGET_KILL;
++#ifdef __EMSCRIPTEN__
++				mode |= TARGET_QUIET;
++#endif
++				if (target_set_closest(mode, NULL)) {
+ 					dir = 5;
+ 				} else {
+ 					need_beep = true;
+@@ -1840,6 +1954,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
