@@ -1,6 +1,7 @@
 import argparse
 import errno
 import os
+import re
 import select
 import signal
 import subprocess
@@ -40,25 +41,45 @@ def is_pocketband_server(pid):
     )
 
 
+def find_listener():
+    try:
+        listeners = subprocess.run(
+            ["ss", "-H", "-O", "-4", "-ltnpe", "src", f"{HOST}:{PORT}"],
+            check=True,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=3,
+        ).stdout.splitlines()
+    except FileNotFoundError:
+        raise RuntimeError("Restarting the local server requires ss (iproute2).") from None
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"Timed out finding the listener on {URL} with ss.") from None
+    except subprocess.CalledProcessError:
+        raise RuntimeError(f"Could not find the listener on {URL} with ss.") from None
+
+    if not listeners:
+        return None
+    if len(listeners) != 1:
+        raise RuntimeError(f"Multiple sockets are listening on {URL}.")
+
+    owners = re.findall(r",pid=(\d+),fd=(\d+)\)", listeners[0])
+    inode = re.search(r"\bino:(\d+)\b", listeners[0])
+    if len(owners) != 1 or inode is None:
+        raise RuntimeError(f"{URL} is already in use. Could not identify a single listener.")
+    pid, fd = map(int, owners[0])
+    return pid, fd, inode[1]
+
+
 def stop_previous_server():
     if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
         raise RuntimeError(f"Stop the server using {URL} and try again.")
 
-    try:
-        listeners = subprocess.run(
-            ["lsof", "-nP", "-a", "-t", f"-iTCP@{HOST}:{PORT}", "-sTCP:LISTEN"],
-            capture_output=True,
-            text=True,
-        ).stdout.split()
-    except FileNotFoundError:
-        raise RuntimeError("Restarting the local server requires lsof.") from None
-
-    if not listeners:
+    listener = find_listener()
+    if listener is None:
         return
-    if len(listeners) != 1:
-        raise RuntimeError(f"Multiple processes are listening on {URL}.")
 
-    pid = int(listeners[0])
+    pid, fd, inode = listener
     try:
         process = os.pidfd_open(pid)
     except ProcessLookupError:
@@ -66,6 +87,8 @@ def stop_previous_server():
     try:
         if not is_pocketband_server(pid):
             raise RuntimeError(f"{URL} is already in use by another process (PID {pid}).")
+        if os.readlink(f"/proc/{pid}/fd/{fd}") != f"socket:[{inode}]":
+            raise RuntimeError(f"The listener on {URL} changed. Try again.")
         signal.pidfd_send_signal(process, signal.SIGTERM)
         poller = select.poll()
         poller.register(process, select.POLLIN)
