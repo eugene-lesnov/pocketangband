@@ -101,6 +101,7 @@ const commandFaces = new Map([["CtrlT", "^T"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and MP"], ["!", "HP or MP"]]);
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
+const defaultMapZoom = scales.indexOf(1.5);
 const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
@@ -113,14 +114,14 @@ const views = {
         pre: document.querySelector("#map"),
         canvas: document.querySelector("#map-tiles"),
         title: "Map",
-        zoom: 2,
+        zoom: defaultMapZoom,
     },
     target: {
         viewport: document.querySelector("#target-screen"),
         pre: document.querySelector("#target"),
         canvas: document.querySelector("#target-tiles"),
         title: "Targeting",
-        zoom: 2,
+        zoom: defaultMapZoom,
     },
 };
 
