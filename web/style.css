@@ -10,6 +10,8 @@
     --mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+:root:has(#map-screen) { touch-action: pan-x pan-y; }
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; }

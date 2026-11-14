@@ -369,12 +369,13 @@ function recenterView() {
 }
 
 function changeZoom(step) {
-    if (activeView.fit) {
-        activeView.zoom = scales.findIndex((scale) => scale > activeView.fitScale);
-        activeView.fit = false;
-    } else {
-        activeView.zoom = zoomIndex(activeView) + step;
-    }
+    const fitted = activeView.fit;
+    if (fitted && (step < 0 || activeView.fitScale === undefined)) return;
+    const index = fitted ? scales.findIndex((scale) => scale > activeView.fitScale) - 1 : zoomIndex(activeView);
+    const next = Math.max(0, Math.min(scales.length - 1, index + step));
+    if (!fitted && next === index) return;
+    activeView.fit = false;
+    activeView.zoom = next;
     recenterView();
 }
 
@@ -1611,6 +1612,60 @@ fitMap.addEventListener("click", () => {
 });
 zoomOut.addEventListener("click", () => changeZoom(-1));
 zoomIn.addEventListener("click", () => changeZoom(1));
+
+function touchDistance(first, second) {
+    return Math.hypot(first.clientX - second.clientX, first.clientY - second.clientY);
+}
+
+const mapViewport = views.map.viewport;
+const zoomStepRatio = 1.18;
+const touchOptions = { capture: true, passive: false };
+let multiTouch = false;
+let zoomDistance;
+
+document.addEventListener("touchstart", (event) => {
+    if (event.touches.length < 2) return;
+    if (event.cancelable) event.preventDefault();
+    const [first, second] = event.touches;
+    zoomDistance = !multiTouch && event.touches.length === 2 && !mapViewport.hidden &&
+        mapViewport.contains(first.target) && mapViewport.contains(second.target) ?
+        touchDistance(first, second) : undefined;
+    multiTouch = true;
+}, touchOptions);
+
+document.addEventListener("touchmove", (event) => {
+    if (!multiTouch && event.touches.length < 2) return;
+    if (event.cancelable) event.preventDefault();
+    if (zoomDistance === undefined || event.touches.length !== 2) return;
+    const [first, second] = event.touches;
+    if (mapViewport.hidden || ![first, second].every(({ clientX, clientY }) =>
+        mapViewport.contains(document.elementFromPoint(clientX, clientY)))) {
+        zoomDistance = undefined;
+        return;
+    }
+    const distance = touchDistance(first, second);
+    if (distance === 0) return;
+    if (zoomDistance > 0) {
+        const steps = Math.trunc(Math.log(distance / zoomDistance) / Math.log(zoomStepRatio));
+        if (steps === 0) return;
+        changeZoom(steps);
+    }
+    zoomDistance = distance;
+}, touchOptions);
+
+function endTouches(event) {
+    if (!multiTouch) return;
+    if (event.cancelable) event.preventDefault();
+    zoomDistance = undefined;
+    multiTouch = event.touches.length > 0;
+}
+
+document.addEventListener("touchend", endTouches, touchOptions);
+document.addEventListener("touchcancel", endTouches, touchOptions);
+for (const type of ["gesturestart", "gesturechange"]) {
+    document.addEventListener(type, (event) => event.preventDefault());
+}
+
 viewOptions.addEventListener("click", () => {
     journal.open = false;
     viewOptions.setAttribute("aria-expanded", String(viewOptions.getAttribute("aria-expanded") !== "true"));
