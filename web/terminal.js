@@ -70,6 +70,20 @@ const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
 const splashScreen = document.querySelector("#splash-screen");
 const angbandVersion = document.querySelector("#angband-version");
+const victoryScreen = document.querySelector("#victory-screen");
+const victoryName = document.querySelector("#victory-name");
+const victoryClass = document.querySelector("#victory-class");
+const outcomeSummary = document.querySelector("#outcome-summary");
+const outcomeName = document.querySelector("#outcome-name");
+const outcomeClass = document.querySelector("#outcome-class");
+const outcomeCause = document.querySelector("#outcome-cause");
+const outcomeStats = document.querySelector("#outcome-stats");
+const outcomeDate = document.querySelector("#outcome-date");
+const outcomeActions = document.querySelector("#outcome-actions");
+const resultsList = document.querySelector("#results-list");
+const resultsFile = document.querySelector("#results-file");
+const resultsFileStatus = document.querySelector("#results-file-status");
+const downloadResult = document.querySelector("#download-result");
 const menuScreen = document.querySelector("#menu-screen");
 const menuSummary = document.querySelector("#menu-summary");
 const menuSections = document.querySelector("#menu-sections");
@@ -102,6 +116,7 @@ const specialKeys = new Map([
 
 const gameMenu = [
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
+    ["Q", "Retire character"],
 ];
 const quickCommands = [
     ["r", "Read a scroll"], ["q", "Quaff a potion"], ["u", "Use a staff", "Z"],
@@ -164,6 +179,8 @@ let stopTimer;
 let saving = false;
 let transferring = false;
 let preparedFile;
+let resultURL;
+let outcomeSaveFailed = false;
 let stopped = false;
 let tilesReady = false;
 let backgroundSaveRequested = false;
@@ -413,6 +430,88 @@ function characterRows(rows) {
     return list;
 }
 
+const resultNumber = new Intl.NumberFormat("en");
+const resultDate = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" });
+const outcomeTitles = { dead: "Character died", retired: "Character retired", victory: "Victory summary" };
+
+function renderOutcome({ kind, name, race, className, level, depth, exp, gold, cause, timestamp }) {
+    const identity = `${race} ${className} · Level ${level}`;
+    const place = depth ? `Dungeon level ${depth} (${resultNumber.format(depth * 50)} ft)` : "Town";
+    if (mode === "victory") {
+        victoryName.textContent = name;
+        victoryClass.textContent = identity;
+        return;
+    }
+    outcomeName.textContent = name;
+    outcomeClass.textContent = identity;
+    outcomeCause.textContent = kind === "victory" ? "Retired after defeating Morgoth." :
+        kind === "retired" ? "Retired from adventuring." : `Killed by ${cause}.`;
+    outcomeStats.replaceChildren(characterRows([
+        { label: "Location", value: place },
+        { label: "Experience", value: resultNumber.format(exp) },
+        { label: "Gold", value: resultNumber.format(gold) },
+    ]));
+    const date = new Date(timestamp * 1000);
+    outcomeDate.dateTime = date.toISOString();
+    outcomeDate.textContent = resultDate.format(date);
+}
+
+function renderResultsList({ title, sections }) {
+    const nodes = [];
+    for (const { title: section, entries } of sections) {
+        if (!section && !entries.length && sections.length > 1) continue;
+        if (section) {
+            const heading = document.createElement("h3");
+            heading.textContent = section;
+            nodes.push(heading);
+        }
+        if (!entries.length) {
+            const empty = document.createElement("p");
+            empty.className = "results-empty";
+            empty.textContent = title === "Hall of Fame" ? "No scores recorded." :
+                title === "Messages" ? "No messages." : title === "Character history" ?
+                    "No history recorded." : title === "Examine items" ? "Nothing to examine." : "Empty";
+            nodes.push(empty);
+            continue;
+        }
+        const list = document.createElement("ul");
+        for (const { text, detail, highlighted } of entries) {
+            const item = document.createElement("li");
+            item.textContent = text;
+            if (highlighted) item.setAttribute("aria-current", "true");
+            if (detail) {
+                const caption = document.createElement("small");
+                caption.textContent = highlighted ? `This run\n${detail}` : detail;
+                item.append(caption);
+            }
+            list.append(item);
+        }
+        nodes.push(list);
+    }
+    resultsList.replaceChildren(...nodes);
+    resultsList.scrollTop = 0;
+}
+
+function clearResultFile() {
+    if (resultURL) {
+        const url = resultURL;
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        resultURL = undefined;
+    }
+    downloadResult.removeAttribute("href");
+    downloadResult.hidden = true;
+}
+
+function renderResultFile({ filename, data }) {
+    clearResultFile();
+    resultsFileStatus.textContent = data?.length ? filename : "Could not prepare the file.";
+    if (!data?.length) return;
+    resultURL = URL.createObjectURL(new Blob([data], { type: "text/plain;charset=utf-8" }));
+    downloadResult.href = resultURL;
+    downloadResult.download = filename;
+    downloadResult.hidden = false;
+}
+
 function appendCharacterGroup(container, title, rows) {
     if (!rows.length) return;
     const heading = document.createElement("h3");
@@ -558,9 +657,14 @@ function updateControls() {
     const overview = mode === "overview";
     const details = mode === "details";
     const character = mode === "character";
+    const outcome = mode === "menu" && !!context.outcome;
+    const victory = mode === "victory";
+    const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Spoilers";
+    const retiring = mode === "retire";
     const hasTarget = aiming && context.current;
     const canOpenKeyboard = !counting && !optionNumber && !splash && !resting && !confirming && !history &&
-        !more && !overview && !details && !openPanel && !birthChoiceMenu && !stats;
+        !more && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
+        !outcome && !victory && !resultChild && !retiring;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
     const stopVisible = !stopAction.hidden;
@@ -581,30 +685,32 @@ function updateControls() {
     centerCaption.textContent = directing ? "Here" : "Wait";
     directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Wait one turn");
     setActions(playKeys, playing && !stopVisible, disabled);
-    setActions(terminalKeys, !playing && !stopVisible && !(command && showKeyboard), disabled);
+    setActions(terminalKeys, !playing && !stopVisible && !outcome && !(command && showKeyboard), disabled);
+    setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("letter-controls", letterMenu);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
+    terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
     setActions(letterChoices, letterMenu && !showKeyboard, disabled);
-    confirmKey.dataset.key = confirming || history ? "y" : selecting ? "t" : aiming ?
+    confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" : aiming ?
         hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
     if (details) cancelKey.dataset.key = confirmKey.dataset.key;
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
-    confirmKey.textContent = confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
+    confirmKey.textContent = retiring ? "Retire character" : confirming ? "Yes" : history ? "Keep history" : rolling ? "Keep roll" :
         selecting ? context.attack ? context.verb : "Select target" :
         aiming ? hasTarget ? useTarget : "Choose target" :
         editing || counting || optionNumber || resting || stats ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options || birthChoiceMenu;
+    confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options || birthChoiceMenu || resultChild;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? "No" : history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
-        "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting ?
+        "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    cancelKey.hidden = more || character;
+    cancelKey.hidden = more || character || victory;
     setActions(worldActions, playing && !stopVisible, disabled);
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
@@ -722,7 +828,7 @@ function updatePrompt() {
         text = terminalLine(0);
         if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
-    if ((mode === "confirm" || mode === "details") && context.prompt) text = "";
+    if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
     inputPrompt.hidden = !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -738,10 +844,16 @@ function updateView(state = world, region = views.target.crop) {
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
     activeView = aiming && region ? views.target : world && map ? views.map : views.terminal;
     const editing = context.value !== undefined && !openPanel;
-    const question = mode === "confirm" && context.prompt;
+    const question = (mode === "confirm" || mode === "retire") && context.prompt;
     const showDetails = context.detail !== undefined;
     const showCharacter = mode === "character" && !!context.character;
     const showSplash = mode === "splash";
+    const showVictory = mode === "victory";
+    const showOutcome = mode === "menu" && !!context.outcome;
+    victoryScreen.hidden = !showVictory;
+    outcomeSummary.hidden = !showOutcome;
+    resultsList.hidden = mode !== "results-list";
+    resultsFile.hidden = mode !== "results-file";
     const showBirthStats = !!context.birthStats;
     splashScreen.hidden = !showSplash;
     birthStatsScreen.hidden = !showBirthStats;
@@ -782,29 +894,32 @@ function updateView(state = world, region = views.target.crop) {
     }
     for (const view of Object.values(views)) view.viewport.hidden =
         view !== activeView || !!menu || !!openPanel || editing || !!question || showDetails || showCharacter ||
-        showSplash || showBirthStats;
+        showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
     const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
     main.classList.toggle("in-world", showMap);
-    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || !!menu?.options || mode === "option-number");
+    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || !!menu?.options || mode === "option-number" ||
+        showOutcome || showVictory || !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
     main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
     viewOptions.hidden = !showMap;
     fitMap.hidden = !showMap;
     if (!showMap) viewOptions.setAttribute("aria-expanded", "false");
-    const title = showSplash ? "Angband" : showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
+    const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
+        context.resultsList?.title ?? context.resultsFile?.title ??
+        (showSplash ? "Angband" : showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
         mode === "birth-roll" ? "Roll stats" :
         context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
-            mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title;
+            mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title);
     const activeSection = menu?.sections?.find((section) => section.active);
     viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
-        menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? activeSection?.label ??
-        (menu ? "Choices" : mode === "details" ? context.prompt || title : title));
+        menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label ??
+        (menu && !showOutcome ? "Choices" : mode === "details" ? context.prompt || title : title));
     zoomOut.hidden = zoomIn.hidden = activeView.viewport.hidden;
     if (previous !== activeView) {
         if (activeView === views.target) {
@@ -827,6 +942,7 @@ function stop(message, failed) {
     openPanel = panelTrigger = characterTrigger = undefined;
     clearPendingInput();
     clearExport();
+    clearResultFile();
     keyboardOpen = false;
     updateControls();
     updateView(undefined, undefined);
@@ -849,7 +965,9 @@ function handleWorkerMessage({ data }) {
         case "waiting": {
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.birth?.title !== menu?.birth?.title ||
-                data.context.letterMenu?.title !== context.letterMenu?.title;
+                data.context.letterMenu?.title !== context.letterMenu?.title ||
+                data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
+            if (mode === "results-file") clearResultFile();
             if (changed) {
                 centerPending = true;
                 if (mode === "save-slots") {
@@ -882,12 +1000,26 @@ function handleWorkerMessage({ data }) {
             main.classList.remove("starting");
             updateView(mode === "command" ? data.world ?? null : data.world ?? world, data.region ?? null);
             if (context.birthStats) renderBirthStats(context.birthStats, changed);
+            if (context.outcome) renderOutcome(context.outcome);
+            if (context.resultsList) renderResultsList(context.resultsList);
+            if (context.resultsFile) renderResultFile(context.resultsFile);
             if (mode === "command" && world) renderQuickActions(world);
             if (mode === "character") renderCharacter();
             if (changed && (mode === "confirm" || mode === "quantity" || mode === "rest" || isTextEntry(mode))) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
+            if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
+            if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
+            if (changed && mode === "menu" && (context.outcome || menu?.title)) {
+                const selected = menuRows.querySelector('[aria-current="true"]') ??
+                    outcomeActions.querySelector('[aria-current="true"]:not([disabled])');
+                (selected ?? menuRows).focus({ preventScroll: true });
+                if (selected && menuRows.contains(selected) && menu.cursor > 0) {
+                    selected.scrollIntoView({ block: "nearest" });
+                }
+            }
             if (changed && context.letterMenu) layoutLetterChoices(letterChoices.clientWidth);
             if (changed && mode === "character") {
                 for (const detail of characterScreen.querySelectorAll(".character-detail")) detail.open = false;
@@ -904,18 +1036,36 @@ function handleWorkerMessage({ data }) {
             clearPendingInput();
             saving = true;
             updateControls();
-            saveStatus.textContent = "Saving game…";
+            saveStatus.textContent = data.outcome ? "Saving outcome…" : "Saving game…";
             saveStatus.classList.remove("error");
             saveStatus.hidden = false;
             updatePrompt();
             break;
         case "saved":
             saving = false;
+            if (data.outcome) outcomeSaveFailed = !data.ok;
             updateControls();
-            saveStatus.textContent = data.ok ? "Game saved." : "Could not save the game.";
+            saveStatus.textContent = data.outcome ?
+                (data.ok ? "Outcome saved." : "Outcome not saved. An earlier save may still be playable.") :
+                (data.ok ? "Game saved." : "Could not save the game.");
             saveStatus.classList.toggle("error", !data.ok);
             saveStatus.hidden = false;
             updatePrompt();
+            break;
+        case "restarting":
+            clearPendingInput();
+            request = mode = world = menu = undefined;
+            context = {};
+            openPanel = panelTrigger = characterTrigger = undefined;
+            keyboardOpen = false;
+            if (!outcomeSaveFailed) saveStatus.hidden = true;
+            outcomeSaveFailed = false;
+            clearResultFile();
+            main.classList.add("starting");
+            launch.hidden = false;
+            status.textContent = "Starting Angband…";
+            updateView(null, null);
+            updateControls();
             break;
         case "save-imported":
             transferring = false;
@@ -972,7 +1122,7 @@ function sendInput(input) {
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
     worker.postMessage({ ...input, request });
     if ((mode === "command" || !hud.hidden || mode === "rest" ||
-        (mode === "menu" && !menu?.store && !menu?.birth && !context.letterMenu)) &&
+        (mode === "menu" && !menu?.store && !menu?.birth && !context.letterMenu && !context.outcome && !menu?.title)) &&
         ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
         pendingInput = request;
         stopTimer = setTimeout(() => {
@@ -1157,11 +1307,14 @@ function renderMenu(state) {
     menuScreen.hidden = !state;
     menuScreen.classList.toggle("options-menu", Boolean(state?.options));
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
+    const outcome = !!context.outcome;
+    menuScreen.classList.toggle("outcome-menu", outcome);
     menuActions.classList.toggle("birth-actions", Boolean(state?.birth));
     if (!state) {
         renderedMenu = undefined;
         menuCursor = undefined;
         birthSelection = undefined;
+        outcomeActions.replaceChildren();
         renderBirthPreview();
         return;
     }
@@ -1189,9 +1342,12 @@ function renderMenu(state) {
     }));
     menuEmpty.hidden = state.rows.length > 0;
     const focused = document.activeElement?.closest("button[data-input]");
-    const focusedCode = focused && menuRows.contains(focused) ? focused.dataset.value : undefined;
+    const focusedCode = focused && (menuRows.contains(focused) || outcomeActions.contains(focused)) ?
+        focused.dataset.value : undefined;
     let current;
-    menuRows.replaceChildren(...state.rows.map((row) => {
+    const endings = [];
+    const choices = [];
+    for (const row of state.rows) {
         const button = makeInput("menu-row", row.index, row.name);
         button.disabled = !row.enabled;
         if (row.checked !== undefined) {
@@ -1212,18 +1368,21 @@ function renderMenu(state) {
         const price = document.createElement("span");
         price.className = "price";
         price.textContent = row.price;
-        if (state.birth) button.replaceChildren(description);
+        const ending = outcome && ["n", "q"].some((key) => row.key === keyCode(key));
+        if (state.birth || ending) button.replaceChildren(description);
         else button.replaceChildren(keyBadge(row.key ? String.fromCharCode(row.key) : ""), description, price);
         button.setAttribute("aria-label",
             [row.name, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
                 .filter(Boolean).join(", "));
-        return button;
-    }));
+        (ending ? endings : choices).push(button);
+    }
+    menuRows.replaceChildren(...choices);
+    outcomeActions.replaceChildren(...endings);
     menuActions.replaceChildren(...state.actions.map((action) => state.options || state.birth ?
         makeKey(String.fromCharCode(action.key), action.label) : makeInput("store-action", action.key, action.label)));
     renderBirthPreview();
     menuScreen.scrollTop = differentList ? 0 : previousScroll;
-    if (current && !differentList && state.cursor !== previous.cursor) {
+    if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
         const bounds = current.getBoundingClientRect();
         const screen = menuScreen.getBoundingClientRect();
         if (bounds.top < screen.top) menuScreen.scrollTop += bounds.top - screen.top;
@@ -1231,7 +1390,7 @@ function renderMenu(state) {
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
         const button = state.birth?.preview && state.cursor !== previous.cursor ? current :
-            [...menuRows.children].find((row) => row.dataset.value === focusedCode);
+            [...choices, ...endings].find((row) => row.dataset.value === focusedCode);
         if (button?.matches(":enabled")) button.focus({ preventScroll: true });
     }
 }
@@ -1473,6 +1632,7 @@ document.addEventListener("keydown", (event) => {
     }
     if ((event.key === "Enter" || event.key === " ") &&
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
+    if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape") return;
     if (mode === "character" && characterScreen.contains(event.target) &&
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 

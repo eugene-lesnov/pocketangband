@@ -49,6 +49,10 @@ static const char *const input_modes[] = {
     [WEB_INPUT_CHARACTER] = "character",
     [WEB_INPUT_SPLASH] = "splash",
     [WEB_INPUT_OPTION_NUMBER] = "option-number",
+    [WEB_INPUT_VICTORY] = "victory",
+    [WEB_INPUT_RESULTS_LIST] = "results-list",
+    [WEB_INPUT_RESULTS_FILE] = "results-file",
+    [WEB_INPUT_RETIRE] = "retire",
 };
 
 enum web_input_mode web_set_input_mode(enum web_input_mode mode)
@@ -147,6 +151,41 @@ void web_cancel_birth(void)
     quit(NULL);
 }
 
+EM_JS(void, web_finish_run, (bool new_game), {
+    Module['afterRun'] = new_game ? "new-game" : "save-slots";
+});
+
+EM_JS(void, web_set_outcome, (const char *kind, const char *name, const char *race,
+        const char *class_name, int level, int depth, int32_t exp, int32_t gold,
+        const char *cause, double timestamp), {
+    Module['inputContext'] = { outcome: {
+        kind: UTF8ToString(kind), name: UTF8ToString(name), race: UTF8ToString(race),
+        className: UTF8ToString(class_name), level, depth, exp, gold,
+        cause: UTF8ToString(cause), timestamp,
+    } };
+});
+
+EM_JS(void, web_set_results_list, (const char *title), {
+    Module['inputContext'] = { resultsList: { title: UTF8ToString(title), sections: [{ entries: [] }] } };
+});
+
+EM_JS(void, web_add_results_section, (const char *title), {
+    Module['inputContext'].resultsList.sections.push({ title: UTF8ToString(title), entries: [] });
+});
+
+EM_JS(void, web_add_results_entry, (const char *text, const char *detail, bool highlighted), {
+    Module['inputContext'].resultsList.sections.at(-1).entries.push({
+        text: UTF8ToString(text), detail: detail ? UTF8ToString(detail) : "", highlighted: !!highlighted,
+    });
+});
+
+EM_JS(void, web_set_results_file, (const char *title, const char *path, const char *filename), {
+    Module['inputContext'] = { resultsFile: {
+        title: UTF8ToString(title), filename: UTF8ToString(filename),
+        data: path ? Module['readResultsFile'](UTF8ToString(path)) : undefined,
+    } };
+});
+
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
         int level, const char *history), {
     Module['inputContext'] = { character: {
@@ -173,6 +212,10 @@ EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int
 EM_JS(void, web_set_menu, (const struct menu *menu, int cursor, const char *prompt), {
     Module['inputMenu'] = { id: menu, cursor, prompt: prompt ? UTF8ToString(prompt) : "",
         rows: [], actions: [] };
+});
+
+EM_JS(void, web_set_menu_title, (const char *title), {
+    Module['inputMenu'].title = UTF8ToString(title);
 });
 
 EM_JS(void, web_set_options_title, (const char *title), {
@@ -446,13 +489,13 @@ EM_JS(void, flush_input, (void), {
     Module['flushInput']();
 });
 
-EM_ASYNC_JS(int, persist_profile, (int saved), {
-    return (await Module['persistProfile'](!!saved)) ? 1 : 0;
+EM_ASYNC_JS(int, persist_profile, (int saved, int outcome), {
+    return (await Module['persistProfile'](!!saved, !!outcome)) ? 1 : 0;
 });
 
 bool web_persist_profile(bool saved)
 {
-    return persist_profile(saved);
+    return persist_profile(saved, player && player->is_dead);
 }
 
 EM_ASYNC_JS(bool, web_sync_profile, (void), {
@@ -510,8 +553,8 @@ static ui_event_type wait_for_input(void)
     bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION;
     bool world_view = map_visible && playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE) &&
         window_flag[MAP_TERM] == PW_OVERHEAD;
-    if (playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_CHARACTER ||
-            world_view || (aiming && map_visible)))
+    if (mode == WEB_INPUT_CHARACTER ||
+            (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
         publish_world();
     if (mode == WEB_INPUT_TARGET || (map_visible &&
             (mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION))) {

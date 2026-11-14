@@ -64,7 +64,7 @@ diff --git a/src/main.c b/src/main.c
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
-@@ -522,6 +522,11 @@
+@@ -522,6 +522,11 @@ void textui_process_command(void)
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -76,7 +76,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		case EVT_RESIZE: do_cmd_redraw(); return;
  		case EVT_MOUSE: textui_process_click(e); return;
  		case EVT_BUTTON:
-@@ -627,10 +632,16 @@
+@@ -627,10 +632,16 @@ errr textui_get_cmd(cmd_context context)
  void check_for_player_interrupt(game_event_type type, game_event_data *data,
  								void *user)
  {
@@ -94,7 +94,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +769,65 @@
+@@ -758,6 +769,65 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
  	mem_free(entries);
  }
  
@@ -160,7 +160,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +835,16 @@
+@@ -765,10 +835,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
@@ -179,7 +179,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +951,29 @@
+@@ -875,11 +951,29 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -210,7 +210,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +990,7 @@
+@@ -896,6 +990,7 @@ static void select_savefile(bool retry, bool *new_game)
  	if (selection.type == EVT_ESCAPE) {
  		quit(NULL);
  	}
@@ -218,7 +218,20 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  }
  
  /**
-@@ -920,7 +1015,9 @@
+@@ -910,6 +1005,12 @@ void play_game(enum game_mode_type mode)
+ 		switch (mode) {
+ 		case GAME_LOAD:
+ 		case GAME_NEW:
++#ifdef __EMSCRIPTEN__
++			if (mode == GAME_NEW) {
++				web_find_free_slot(savefile, sizeof(savefile));
++				arg_name[0] = '\0';
++			}
++#endif
+ 			if (!start_game(mode == GAME_NEW)) {
+ 				quit("Broken savefile");
+ 			}
+@@ -920,7 +1021,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -229,7 +242,22 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -1010,6 +1107,19 @@
+@@ -946,6 +1049,14 @@ void play_game(enum game_mode_type mode)
+ 		/* Close game on death or quitting */
+ 		close_game(true);
+ 
++#ifdef __EMSCRIPTEN__
++		if (player->is_dead) {
++			web_finish_run(play_again);
++			play_again = false;
++			break;
++		}
++#endif
++
+ 		if (!play_again) break;
+ 
+ 		cleanup_angband();
+@@ -1010,6 +1121,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -249,7 +277,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1156,25 @@
+@@ -1046,11 +1170,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -276,7 +304,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1188,6 @@
+@@ -1064,23 +1202,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -300,16 +328,48 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1132,7 +1239,7 @@
+@@ -1094,10 +1215,8 @@ bool save_game_checked(void)
+  * \param prompt_failed_save If true, prompt the user to retry if saving fails.
+  * Otherwise, no prompt is issued.
+  *
+- * Note that the savefile is not saved until the tombstone is
+- * actually displayed and the player has a chance to examine
+- * the inventory and such.  This allows cheating if the game
+- * is equipped with a "quit without save" method.  XXX XXX XXX
++ * Native clients save after the tombstone. PocketBand saves before
++ * showing the outcome because the browser may close while it is open.
+  */
+ void close_game(bool prompt_failed_save)
+ {
+@@ -1129,17 +1248,26 @@ void close_game(bool prompt_failed_save)
+ 	/* Handle death or life */
+ 	if (player->is_dead) {
+ 		death_knowledge(player);
++#ifndef __EMSCRIPTEN__
  		death_screen();
++#endif
  
  		/* Save dead player */
 -		while (prompting && !savefile_save(savefile)) {
 +		while (prompting && !save_player()) {
  			if (!prompt_failed_save
++#ifdef __EMSCRIPTEN__
++					|| !get_check("Could not save the outcome. Try again?")) {
++#else
  					|| !get_check("Saving failed.  Try again? ")) {
++#endif
  				prompting = false;
-@@ -1149,6 +1256,7 @@
+ 				msg("death save failed!");
+ 				event_signal(EVENT_MESSAGE_FLUSH);
+ 			}
+ 		}
++#ifdef __EMSCRIPTEN__
++		death_screen();
++#endif
+ 	} else {
+ 		/* Save the game */
+ 		while (prompting && !save_game_checked()) {
+@@ -1149,6 +1277,7 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -317,7 +377,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1265,7 @@
+@@ -1157,6 +1286,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -683,11 +743,18 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		ke = inkey_ex();
  	if (ke.type == EVT_ESCAPE) {
  		ke.type = EVT_KBRD;
-@@ -389,8 +393,15 @@ static void msg_flush(int x)
+@@ -389,8 +393,22 @@ static void msg_flush(int x)
  	/* Pause for response */
  	Term_putstr(x, 0, -1, a, "-more-");
  
 -	if ((!OPT(player, auto_more)) && !keymap_auto_more)
++#ifdef __EMSCRIPTEN__
++	if (player->is_dead) {
++		Term_erase(0, 0, 255);
++		return;
++	}
++#endif
++
 +	if ((!OPT(player, auto_more)) && !keymap_auto_more) {
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_MORE);
@@ -700,7 +767,17 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the line */
  	Term_erase(0, 0, 255);
-@@ -894,7 +905,24 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
+@@ -496,6 +514,9 @@ void display_message(game_event_type unused, game_event_data *data, void *user)
+ 
+ 	type = data->message.type;
+ 	msg = data->message.msg;
++#ifdef __EMSCRIPTEN__
++	if (type == MSG_DEATH) return;
++#endif
+ 
+ 	if (Term && type == MSG_BELL) {
+ 		Term_xtra(TERM_XTRA_NOISE, 0);
+@@ -894,7 +915,24 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
@@ -725,7 +802,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,6 +1020,9 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -992,6 +1030,9 @@ bool askfor_aux_ext(char *buf, size_t len,
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -735,7 +812,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			in = inkey_ex();
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
-@@ -1171,7 +1202,15 @@ bool get_character_name(char *buf, size_t buflen)
+@@ -1171,7 +1212,15 @@ bool get_character_name(char *buf, size_t buflen)
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -751,7 +828,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1243,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1204,7 +1253,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -765,7 +842,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1265,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1220,6 +1275,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -773,7 +850,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1286,14 @@ static int textui_get_quantity(const char *prompt, int max)
+@@ -1240,7 +1296,14 @@ static int textui_get_quantity(const char *prompt, int max)
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -789,7 +866,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1337,15 @@ static bool textui_get_check(const char *prompt)
+@@ -1284,7 +1347,15 @@ static bool textui_get_check(const char *prompt)
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -805,7 +882,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1513,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
+@@ -1452,7 +1523,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -818,7 +895,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,11 +1590,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,11 +1600,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -842,7 +919,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				int y = KEY_GRID_Y(ke);
  				int x = KEY_GRID_X(ke);
-@@ -1642,9 +1718,28 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1642,9 +1728,28 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -874,7 +951,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1840,6 +1935,13 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +1945,13 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -891,7 +968,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,55 @@
+@@ -24,6 +24,65 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -902,7 +979,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS, WEB_INPUT_DIRECTION, WEB_INPUT_MORE,
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
 +	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER,
-+	WEB_INPUT_BIRTH_ROLL
++	WEB_INPUT_BIRTH_ROLL, WEB_INPUT_VICTORY, WEB_INPUT_RESULTS_LIST,
++	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -919,6 +997,14 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_letter_menu(const char *title);
 +void web_add_letter_choice(char key, const char *name);
 +void web_cancel_birth(void);
++void web_finish_run(bool new_game);
++void web_set_outcome(const char *kind, const char *name, const char *race,
++	const char *class_name, int level, int depth, int32_t exp, int32_t gold,
++	const char *cause, double timestamp);
++void web_set_results_list(const char *title);
++void web_add_results_section(const char *title);
++void web_add_results_entry(const char *text, const char *detail, bool highlighted);
++void web_set_results_file(const char *title, const char *path, const char *filename);
 +void web_set_birth_menu(const char *title, const char *summary, bool preview);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
 +void web_set_birth_roll(bool previous, int hp, int mana, const char *history);
@@ -931,6 +1017,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	const char *value, const char *temporary);
 +void web_poll_interrupt(void);
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
++void web_set_menu_title(const char *title);
 +void web_set_options_title(const char *title);
 +void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
 +bool web_sync_profile(void);
@@ -1437,7 +1524,23 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
 diff --git a/src/ui-command.c b/src/ui-command.c
 --- a/src/ui-command.c
 +++ b/src/ui-command.c
-@@ -195,7 +195,14 @@ void textui_cmd_rest(void)
+@@ -177,7 +177,15 @@ void textui_cmd_retire(void)
+ 		/* Special Verification for retirement */
+ 		prt("Please verify RETIRING THIS CHARACTER by typing the '@' sign: ", 0, 0);
+ 		event_signal(EVENT_INPUT_FLUSH);
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_RETIRE);
++		const char *prompt = web_set_prompt("Retire this character permanently?");
++#endif
+ 		ch = inkey();
++#ifdef __EMSCRIPTEN__
++		web_set_prompt(prompt);
++		web_set_input_mode(previous);
++#endif
+ 		prt("", 0, 0);
+ 		if (ch.code != '@') return;
+ 	}
+@@ -195,7 +203,14 @@ void textui_cmd_rest(void)
  	char out_val[5] = "& ";
  
  	/* Ask for duration */
@@ -1635,7 +1738,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
 diff --git a/src/ui-player.c b/src/ui-player.c
 --- a/src/ui-player.c
 +++ b/src/ui-player.c
-@@ -916,6 +916,105 @@
+@@ -916,6 +916,105 @@ void display_player(int mode)
  	}
  }
  
@@ -1709,7 +1812,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +	mem_free(values);
 +}
 +
-+static void web_character_sheet(void)
++void web_character_sheet(void)
 +{
 +	web_set_character(player->full_name, player->race->name,
 +		player->class->name, player->lev, player->history);
@@ -1741,7 +1844,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  
  /**
   * Write a character dump
-@@ -1238,7 +1337,14 @@
+@@ -1238,7 +1337,14 @@ void do_cmd_change_name(void)
  		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
  
  		/* Query */
@@ -2076,3 +2179,588 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	}
  
  	screen_save();
+diff --git a/src/player-util.c b/src/player-util.c
+--- a/src/player-util.c
++++ b/src/player-util.c
+@@ -190,9 +190,7 @@ int player_apply_damage_reduction(struct player *p, int dam)
+  * \param kb_str is the null-terminated string describing the cause of the
+  * damage.
+  *
+- * This function allows the user to save (or quit) the game
+- * when he dies, since the "You die." message is shown before setting
+- * the player to "dead".
++ * Native clients can pause at "You die." before marking the player dead.
+  */
+ void take_hit(struct player *p, int dam, const char *kb_str)
+ {
+@@ -249,7 +247,9 @@ void take_hit(struct player *p, int dam, const char *kb_str)
+ 			} else {
+ 				/* Note death */
+ 				msgt(MSG_DEATH, "You die.");
++#ifndef __EMSCRIPTEN__
+ 				event_signal(EVENT_MESSAGE_FLUSH);
++#endif
+ 
+ 				/* No longer a winner */
+ 				p->total_winner = false;
+diff --git a/src/ui-death.c b/src/ui-death.c
+--- a/src/ui-death.c
++++ b/src/ui-death.c
+@@ -22,6 +22,13 @@
+ #include "init.h"
+ #include "obj-desc.h"
+ #include "obj-info.h"
++#ifdef __EMSCRIPTEN__
++#include "message.h"
++#include "obj-util.h"
++#include "player-history.h"
++#include "score.h"
++#include "wizard.h"
++#endif
+ #include "savefile.h"
+ #include "store.h"
+ #include "ui-death.h"
+@@ -34,6 +41,7 @@
+ #include "ui-score.h"
+ #include "ui-spoil.h"
+ 
++#ifndef __EMSCRIPTEN__
+ /**
+  * Write formatted string `fmt` on line `y`, centred between points x1 and x2.
+  */
+@@ -156,11 +164,83 @@ static void display_winner(void)
+ }
+ 
+ 
++#else
++static time_t outcome_time;
++
++static void web_exit_summary(void)
++{
++	const char *kind = player->total_winner ? "victory" :
++		streq(player->died_from, "Retiring") ? "retired" : "dead";
++	web_set_outcome(kind, player->full_name, player->race->name,
++		player->class->name, player->lev, player->depth, player->exp,
++		player->au, player->died_from, outcome_time);
++}
++
++static void web_wait_for_back(enum web_input_mode mode)
++{
++	enum web_input_mode previous = web_set_input_mode(mode);
++	while (inkey().code != ESCAPE) {}
++	web_set_input_mode(previous);
++}
++
++static void web_results_item(const struct object *object, const char *slot)
++{
++	char name[256], detail[160];
++	object_desc(name, sizeof(name), object, ODESC_PREFIX | ODESC_FULL, player);
++	int weight = object->number * object_weight_one(object);
++	strnfmt(detail, sizeof(detail), "%s%s%d.%d lb", slot ? slot : "",
++		slot ? " · " : "", weight / 10, weight % 10);
++	web_add_results_entry(name, detail, false);
++}
++
++static void death_possessions(const char *title, int row)
++{
++	struct store *home = &stores[f_info[FEAT_HOME].shopnum - 1];
++	web_set_results_list("Possessions");
++	web_add_results_section("Equipment");
++	for (int i = 0; i < player->body.count; i++) {
++		const struct equip_slot *slot = &player->body.slots[i];
++		if (slot->obj) web_results_item(slot->obj, slot->name);
++	}
++	web_add_results_section("Inventory");
++	for (int i = 0; i < player->upkeep->inven_cnt; i++) {
++		web_results_item(player->upkeep->inven[i], NULL);
++	}
++	web_add_results_section("Quiver");
++	for (int i = 0; i < z_info->quiver_size; i++) {
++		if (player->upkeep->quiver[i])
++			web_results_item(player->upkeep->quiver[i], NULL);
++	}
++	web_add_results_section("Home");
++	for (struct object *obj = home->stock; obj; obj = obj->next) {
++		web_results_item(obj, NULL);
++	}
++	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++}
++
++static void web_show_generated_file(const char *title, const char *path,
++		const char *filename)
++{
++	web_set_results_file(title, path, filename);
++	web_wait_for_back(WEB_INPUT_RESULTS_FILE);
++	if (path) file_delete(path);
++}
++#endif
++
++
+ /**
+  * Menu command: dump character dump to file.
+  */
+ static void death_file(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	char filename[80];
++	const char *path = "/tmp/pocketband-character.txt";
++	player_safe_name(filename, sizeof(filename), player->full_name, false);
++	if (!filename[0]) my_strcpy(filename, "Angband", sizeof(filename));
++	my_strcat(filename, ".txt", sizeof(filename));
++	web_show_generated_file("Character dump", dump_save(path) ? path : NULL, filename);
++#else
+ 	char buf[1024];
+ 	char ftmp[80];
+ 
+@@ -185,6 +265,7 @@ static void death_file(const char *title, int row)
+ 		/* Flush messages */
+ 		event_signal(EVENT_MESSAGE_FLUSH);
+ 	}
++#endif
+ }
+ 
+ /**
+@@ -192,6 +273,13 @@ static void death_file(const char *title, int row)
+  */
+ static void death_info(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CHARACTER);
++	do {
++		web_character_sheet();
++	} while (inkey().code != ESCAPE);
++	web_set_input_mode(previous);
++#else
+ 	struct store *home = &stores[f_info[FEAT_HOME].shopnum - 1];
+ 
+ 	screen_save();
+@@ -275,6 +363,7 @@ static void death_info(const char *title, int row)
+ 	}
+ 
+ 	screen_load();
++#endif
+ }
+ 
+ /**
+@@ -282,9 +371,19 @@ static void death_info(const char *title, int row)
+  */
+ static void death_messages(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	web_set_results_list("Messages");
++	for (int i = 0; i < messages_num(); i++) {
++		int count = message_count(i);
++		const char *detail = count > 1 ? format("Repeated %d times", count) : NULL;
++		web_add_results_entry(message_str(i), detail, false);
++	}
++	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++#else
+ 	screen_save();
+ 	do_cmd_messages();
+ 	screen_load();
++#endif
+ }
+ 
+ /**
+@@ -292,9 +391,43 @@ static void death_messages(const char *title, int row)
+  */
+ static void death_scores(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	struct high_score scores[MAX_HISCORES], current;
++	build_score(&current, player, player->died_from, &outcome_time);
++	size_t count = highscore_read(scores, N_ELEMENTS(scores));
++	bool found = false;
++	web_set_results_list("Hall of Fame");
++	for (size_t i = 0; i < count && scores[i].what[0]; i++) {
++		const struct high_score *score = &scores[i];
++		struct player_race *race = player_id2race(atoi(score->p_r));
++		struct player_class *class = player_id2class(atoi(score->p_c));
++		char heading[128], detail[192], date[32];
++		int depth = atoi(score->cur_dun), best = atoi(score->max_dun);
++		const char *day = score->day;
++		if (*day == '@' && strlen(day) == 9) {
++			strnfmt(date, sizeof(date), "%.4s-%.2s-%.2s", day + 1, day + 5, day + 7);
++			day = date;
++		}
++		strnfmt(heading, sizeof(heading), "#%d · %s · %ld points", (int)i + 1,
++			score->who, atol(score->pts));
++		strnfmt(detail, sizeof(detail), "%s %s · Level %d (max %d)\n%s · %s (max %d ft)\n%s · %ld gold · %ld turns",
++			race ? race->name : "Unknown race", class ? class->name : "Unknown class",
++			atoi(score->cur_lev), atoi(score->max_lev), score->how,
++			depth ? format("%d ft", depth * 50) : "Town", best * 50, day,
++			atol(score->gold), atol(score->turns));
++		bool highlight = !found && streq(score->who, current.who) &&
++			streq(score->pts, current.pts) && streq(score->how, current.how) &&
++			streq(score->turns, current.turns) && streq(score->day, current.day) &&
++			streq(score->p_r, current.p_r) && streq(score->p_c, current.p_c);
++		found |= highlight;
++		web_add_results_entry(heading, detail, highlight);
++	}
++	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++#else
+ 	screen_save();
+ 	show_scores();
+ 	screen_load();
++#endif
+ }
+ 
+ /**
+@@ -305,6 +438,14 @@ static void death_examine(const char *title, int row)
+ 	struct object *obj;
+ 	const char *q, *s;
+ 
++#ifdef __EMSCRIPTEN__
++	if (!player->gear) {
++		web_set_results_list("Examine items");
++		web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++		return;
++	}
++#endif
++
+ 	/* Get an item */
+ 	q = "Examine which item? ";
+ 	s = "You have nothing to examine.";
+@@ -330,17 +471,80 @@ static void death_examine(const char *title, int row)
+  */
+ static void death_history(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	struct history_info *history;
++	size_t count = history_get_list(player, &history);
++	web_set_results_list("Character history");
++	for (size_t i = 0; i < count; i++) {
++		const struct history_info *entry = &history[i];
++		char detail[80];
++		const char *depth = entry->dlev ? format("%d ft", entry->dlev * 50) : "Town";
++		strnfmt(detail, sizeof(detail), "Turn %ld · %s%s", (long)entry->turn, depth,
++			hist_has(entry->type, HIST_ARTIFACT_LOST) ? " · Lost" : "");
++		web_add_results_entry(entry->event, detail, false);
++	}
++	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++#else
+ 	history_display();
++#endif
+ }
+ 
+ /**
+  * Menu command: allow spoiler generation (mainly for randarts).
+  */
++#ifdef __EMSCRIPTEN__
++static const struct {
++	const char *label;
++	const char *filename;
++	bool (*generate)(const char *filename);
++} spoiler_choices[] = {
++	{ "Basic items", "obj-desc.spo", spoil_obj_desc },
++	{ "Artifacts", "artifact.spo", spoil_artifact },
++	{ "Monsters (brief)", "mon-desc.spo", spoil_mon_desc },
++	{ "Monsters (full)", "mon-info.spo", spoil_mon_info },
++};
++
++static void web_render_spoilers(struct menu *menu)
++{
++	web_set_menu(menu, menu->cursor, NULL);
++	web_set_menu_title("Spoilers");
++	for (size_t i = 0; i < N_ELEMENTS(spoiler_choices); i++) {
++		web_add_menu_row(i, spoiler_choices[i].label, spoiler_choices[i].filename,
++			NULL, I2A(i), true);
++	}
++}
++#endif
++
+ static void death_spoilers(const char *title, int row)
+ {
++#ifdef __EMSCRIPTEN__
++	const region area = { 0, 2, 0, N_ELEMENTS(spoiler_choices) };
++	const char *labels[N_ELEMENTS(spoiler_choices)];
++	for (size_t i = 0; i < N_ELEMENTS(spoiler_choices); i++) {
++		labels[i] = spoiler_choices[i].label;
++	}
++	struct menu *menu = menu_new(MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
++	menu_setpriv(menu, N_ELEMENTS(labels), labels);
++	menu->selections = lower_case;
++	menu->web_render = web_render_spoilers;
++	menu_layout(menu, &area);
++	screen_save();
++	Term_clear();
++	while (menu_select(menu, 0, false).type == EVT_SELECT) {
++		int choice = menu->cursor;
++		const char *path = "/tmp/pocketband-spoiler.spo";
++		bool ok = spoiler_choices[choice].generate(path);
++		web_show_generated_file(spoiler_choices[choice].label, ok ? path : NULL,
++			spoiler_choices[choice].filename);
++	}
++	screen_load();
++	menu_free(menu);
++#else
+ 	do_cmd_spoilers();
++#endif
+ }
+ 
++#ifndef __EMSCRIPTEN__
+ /***
+  * Menu command: start a new game
+  */
+@@ -348,6 +552,7 @@ static void death_new_game(const char *title, int row)
+ {
+     play_again = get_check("Start a new game? ");
+ }
++#endif
+ 
+ /**
+  * Menu structures for the death menu. Note that Quit must always be the
+@@ -355,19 +560,44 @@ static void death_new_game(const char *title, int row)
+  */
+ static menu_action death_actions[] =
+ {
++#ifdef __EMSCRIPTEN__
++	{ 0, 'i', "Character",      death_info },
++	{ 0, 'g', "Possessions",    death_possessions },
++	{ 0, 'm', "Messages",       death_messages },
++	{ 0, 'f', "Character dump", death_file },
++	{ 0, 'v', "Hall of Fame",   death_scores },
++#else
+ 	{ 0, 'i', "Information",   death_info      },
+ 	{ 0, 'm', "Messages",      death_messages  },
+ 	{ 0, 'f', "File dump",     death_file      },
+ 	{ 0, 'v', "View scores",   death_scores    },
++#endif
+ 	{ 0, 'x', "Examine items", death_examine   },
+ 	{ 0, 'h', "History",       death_history   },
+ 	{ 0, 's', "Spoilers",      death_spoilers  },
++#ifdef __EMSCRIPTEN__
++	{ 0, 'n', "New game",      NULL            },
++	{ 0, 'q', "Save slots",    NULL            },
++#else
+ 	{ 0, 'n', "New Game",      death_new_game  },
+ 	{ 0, 'q', "Quit",          NULL            },
++#endif
+ };
+ 
+ 
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_death(struct menu *menu)
++{
++	web_set_menu(menu, menu->cursor, NULL);
++	web_exit_summary();
++	for (size_t i = 0; i < N_ELEMENTS(death_actions); i++) {
++		const menu_action *action = &death_actions[i];
++		web_add_menu_row(i, action->name, NULL, NULL, action->tag, true);
++	}
++}
++#endif
++
+ /**
+  * Handle character death
+  */
+@@ -377,6 +607,17 @@ void death_screen(void)
+ 	bool done = false;
+ 	const region area = { 51, 2, 0, N_ELEMENTS(death_actions) };
+ 
++#ifdef __EMSCRIPTEN__
++	outcome_time = time(NULL);
++	if (player->total_winner) {
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_VICTORY);
++		web_exit_summary();
++		event_signal(EVENT_INPUT_FLUSH);
++		(void)inkey();
++		web_set_input_mode(previous);
++	}
++	Term_clear();
++#else
+ 	/* Winner */
+ 	if (player->total_winner)
+ 	{
+@@ -385,6 +626,7 @@ void death_screen(void)
+ 
+ 	/* Tombstone/retiring */
+ 	display_exit_screen();
++#endif
+ 
+ 	/* Flush all input and output */
+ 	event_signal(EVENT_INPUT_FLUSH);
+@@ -395,6 +637,9 @@ void death_screen(void)
+ 			N_ELEMENTS(death_actions));
+ 
+ 	death_menu->flags = MN_CASELESS_TAGS;
++#ifdef __EMSCRIPTEN__
++	death_menu->web_render = web_render_death;
++#endif
+ 
+ 	menu_layout(death_menu, &area);
+ 
+@@ -408,7 +653,15 @@ void death_screen(void)
+ 		}
+ 		else if (e.type == EVT_SELECT)
+ 		{
++#ifdef __EMSCRIPTEN__
++			if (death_actions[death_menu->cursor].tag == 'n') {
++				play_again = get_check("Start a new game?");
++			} else {
++				done = true;
++			}
++#else
+ 			done = get_check("Do you want to quit? ");
++#endif
+ 		}
+ 	}
+ 
+diff --git a/src/ui-player.h b/src/ui-player.h
+--- a/src/ui-player.h
++++ b/src/ui-player.h
+@@ -13,4 +13,8 @@ void write_character_dump(ang_file *fff);
+ bool dump_save(const char *path);
+ void do_cmd_change_name(void);
+ 
++#ifdef __EMSCRIPTEN__
++void web_character_sheet(void);
++#endif
++
+ #endif /* !UI_PLAYER_H */
+diff --git a/src/wiz-spoil.c b/src/wiz-spoil.c
+--- a/src/wiz-spoil.c
++++ b/src/wiz-spoil.c
+@@ -202,7 +202,7 @@ static void kind_info(char *buf, size_t buf_len, char *dam, size_t dam_len,
+ /**
+  * Create a spoiler file for items
+  */
+-void spoil_obj_desc(const char *fname)
++bool spoil_obj_desc(const char *fname)
+ {
+ 	int i, k, s, t, n = 0;
+ 	uint16_t *who;
+@@ -218,7 +218,7 @@ void spoil_obj_desc(const char *fname)
+ 	/* Oops */
+ 	if (!fh) {
+ 		msg("Cannot create spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Allocate the "who" array */
+@@ -328,11 +328,12 @@ void spoil_obj_desc(const char *fname)
+ 	/* Check for errors */
+ 	if (!file_close(fh)) {
+ 		msg("Cannot close spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Message */
+ 	msg("Successfully created a spoiler file.");
++	return true;
+ }
+ 
+ 
+@@ -378,7 +379,7 @@ static const grouper group_artifact[] =
+ /**
+  * Create a spoiler file for artifacts
+  */
+-void spoil_artifact(const char *fname)
++bool spoil_artifact(const char *fname)
+ {
+ 	int i, j;
+ 	char buf[1024];
+@@ -390,7 +391,7 @@ void spoil_artifact(const char *fname)
+ 	/* Oops */
+ 	if (!fh) {
+ 		msg("Cannot create spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Dump to the spoiler file */
+@@ -476,11 +477,12 @@ void spoil_artifact(const char *fname)
+ 	/* Check for errors */
+ 	if (!file_close(fh)) {
+ 		msg("Cannot close spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Message */
+ 	msg("Successfully created a spoiler file.");
++	return true;
+ }
+ 
+ 
+@@ -491,7 +493,7 @@ void spoil_artifact(const char *fname)
+ /**
+  * Create a brief spoiler file for monsters
+  */
+-void spoil_mon_desc(const char *fname)
++bool spoil_mon_desc(const char *fname)
+ {
+ 	int i, n = 0;
+ 
+@@ -515,7 +517,7 @@ void spoil_mon_desc(const char *fname)
+ 	/* Oops */
+ 	if (!fh) {
+ 		msg("Cannot create spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Dump the header */
+@@ -620,11 +622,12 @@ void spoil_mon_desc(const char *fname)
+ 	/* Check for errors */
+ 	if (!file_close(fh)) {
+ 		msg("Cannot close spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Worked */
+ 	msg("Successfully created a spoiler file.");
++	return true;
+ }
+ 
+ 
+@@ -639,7 +642,7 @@ void spoil_mon_desc(const char *fname)
+ /**
+  * Create a spoiler file for monsters (-SHAWN-)
+  */
+-void spoil_mon_info(const char *fname)
++bool spoil_mon_info(const char *fname)
+ {
+ 	char buf[1024];
+ 	int i, n;
+@@ -654,7 +657,7 @@ void spoil_mon_info(const char *fname)
+ 
+ 	if (!fh) {
+ 		msg("Cannot create spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	/* Dump the header */
+@@ -742,8 +745,9 @@ void spoil_mon_info(const char *fname)
+ 	/* Check for errors */
+ 	if (!file_close(fh)) {
+ 		msg("Cannot close spoiler file.");
+-		return;
++		return false;
+ 	}
+ 
+ 	msg("Successfully created a spoiler file.");
++	return true;
+ }
+diff --git a/src/wizard.h b/src/wizard.h
+--- a/src/wizard.h
++++ b/src/wizard.h
+@@ -77,9 +77,9 @@ void stat_grid_counter(struct chunk *c, struct grid_counter_pred *gpreds,
+ void stat_grid_counter_simple(struct chunk *c, struct grid_counts counts[3]);
+ 
+ /* wiz-spoil.c */
+-void spoil_artifact(const char *fname);
+-void spoil_mon_desc(const char *fname);
+-void spoil_mon_info(const char *fname);
+-void spoil_obj_desc(const char *fname);
++bool spoil_artifact(const char *fname);
++bool spoil_mon_desc(const char *fname);
++bool spoil_mon_info(const char *fname);
++bool spoil_obj_desc(const char *fname);
+ 
+ #endif /* !INCLUDED_WIZARD_H */

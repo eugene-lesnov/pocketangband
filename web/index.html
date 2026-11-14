@@ -53,6 +53,18 @@
                     <a href="https://angband.live/forums/" target="_blank" rel="noopener">Forums</a>
                 </nav>
             </section>
+            <section id="victory-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
+                <svg width="100" height="76" viewBox="0 0 100 76" fill="none" aria-hidden="true">
+                    <path d="M50 3v17m-7-9h14M12 26l19 17 19-22 19 22 19-17-12 37H24L12 26Z"
+                        stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+                    <path d="M24 71h52M29 55h42" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                <div class="character-identity">
+                    <h3 id="victory-name"></h3>
+                    <p id="victory-class"></p>
+                </div>
+                <p>Morgoth has fallen. All hail the mighty champion!</p>
+            </section>
             <div id="map-screen" class="screen" role="region" aria-label="Angband map" tabindex="0" hidden>
                 <div class="map-grid">
                     <pre id="map" aria-hidden="true"></pre>
@@ -66,9 +78,16 @@
                 </div>
             </div>
             <div id="menu-screen" class="menu-screen" hidden>
+                <section id="outcome-summary" class="character-identity" aria-label="Run summary" hidden>
+                    <h3 id="outcome-name"></h3>
+                    <p id="outcome-class"></p>
+                    <p id="outcome-cause"></p>
+                    <div id="outcome-stats"></div>
+                    <time id="outcome-date"></time>
+                </section>
                 <div id="menu-summary" hidden></div>
                 <fieldset id="menu-sections" aria-label="Item lists" hidden></fieldset>
-                <fieldset id="menu-rows" class="menu-rows" aria-label="Choices"></fieldset>
+                <fieldset id="menu-rows" class="menu-rows" aria-label="Choices" tabindex="-1"></fieldset>
                 <p id="menu-empty" hidden>No items.</p>
             </div>
             <section id="birth-preview" aria-label="Choice details" hidden>
@@ -117,6 +136,11 @@
                 <p id="edit-value" aria-label="Current value"></p>
             </div>
             <div id="details-screen" class="menu-screen" tabindex="0" hidden></div>
+            <section id="results-list" class="menu-screen" aria-labelledby="view-title" tabindex="0" hidden></section>
+            <section id="results-file" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
+                <p id="results-file-status" role="status"></p>
+                <a id="download-result" download target="_blank" rel="noopener" hidden>Download file</a>
+            </section>
             <p id="input-prompt" role="status" hidden></p>
             <details id="journal" hidden>
                 <summary>
@@ -206,6 +230,7 @@
                 <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
                 <button id="confirm-key" type="button" data-key="Enter">Continue</button>
             </fieldset>
+            <fieldset id="outcome-actions" class="key-row" aria-label="After this run" disabled hidden></fieldset>
         </div>
     </main>
 </body>

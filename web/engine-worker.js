@@ -116,7 +116,7 @@ async function deleteProfileFiles(idbfs, paths) {
     });
 }
 
-async function play(skipSplash) {
+async function play(afterRun) {
     let world;
     let lastError;
     let finish;
@@ -124,7 +124,7 @@ async function play(skipSplash) {
         finish = resolve;
     });
     const game = await createAngband({
-        skipSplash,
+        skipSplash: !!afterRun,
         sendFrame(frame) {
             const buffers = [frame.codepoints.buffer, frame.attributes.buffer, frame.palette.buffer];
             if (frame.terrainAttributes) {
@@ -154,7 +154,9 @@ async function play(skipSplash) {
             }
             return new Promise((resolve) => {
                 waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve };
-                self.postMessage({ type: "waiting", request, mode, region, world, context, menu });
+                const data = context.resultsFile?.data;
+                self.postMessage({ type: "waiting", request, mode, region, world, context, menu },
+                    data ? [data.buffer] : []);
                 world = undefined;
             });
         },
@@ -230,6 +232,14 @@ async function play(skipSplash) {
                 transferError("Could not read the selected save.");
             }
         },
+        readResultsFile(path) {
+            try {
+                return game.FS.readFile(path);
+            } catch (error) {
+                console.error(error);
+                return undefined;
+            }
+        },
         async deleteSaveFile(path, panic) {
             const fs = game.FS;
             const paths = panic ? [path, panic] : [path];
@@ -258,14 +268,14 @@ async function play(skipSplash) {
             self.postMessage({ type: "save-deleted", slot: path.split("/").pop() });
             return 1;
         },
-        async persistProfile(saved) {
+        async persistProfile(saved, outcome) {
             let ok = false;
             if (saved) {
-                self.postMessage({ type: "saving" });
+                self.postMessage({ type: "saving", outcome });
                 ok = await game.syncProfile();
                 if (ok) backgroundSavePending = false;
             }
-            self.postMessage({ type: "saved", ok });
+            self.postMessage({ type: "saved", ok, outcome });
             return ok;
         },
         async syncProfile() {
@@ -282,7 +292,8 @@ async function play(skipSplash) {
             console.error(message);
         },
         onExit(code) {
-            finish({ type: "exit", code, message: lastError, birthCancelled: !!game.birthCancelled });
+            finish({ type: "exit", code, message: lastError,
+                afterRun: game.birthCancelled ? "save-slots" : game.afterRun });
         },
     });
 
@@ -294,7 +305,7 @@ async function play(skipSplash) {
         console.error(error);
         throw new Error("Could not open the Angband profile.");
     }
-    game.callMain(["-c", "-uPLAYER"]);
+    game.callMain([afterRun === "new-game" ? "-n" : "-c", "-uPLAYER"]);
     return exited;
 }
 
@@ -304,9 +315,10 @@ try {
     }
     const result = await navigator.locks.request("pocketband-profile", { ifAvailable: true }, async (lock) => {
         if (!lock) throw new Error("The Angband profile is open in another tab.");
-        let exit = await play(false);
-        while (exit.code === 0 && exit.birthCancelled) {
-            exit = await play(true);
+        let exit = await play();
+        while (exit.code === 0 && exit.afterRun) {
+            self.postMessage({ type: "restarting" });
+            exit = await play(exit.afterRun);
         }
         return exit;
     });

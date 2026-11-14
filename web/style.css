@@ -409,6 +409,45 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 #character-attributes dd { text-align: center; }
 .character-rows small { display: block; color: var(--accent); }
 #character-conditions-title, .character-detail h3 { margin: 0 0 0.25rem; font-size: 0.875rem; }
+#victory-screen {
+    display: grid;
+    align-content: safe center;
+    justify-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+#victory-screen svg { color: var(--accent); }
+#victory-screen > p { max-width: 24ch; line-height: 1.5; }
+#outcome-summary { padding: 0.875rem 0.75rem 0.5rem; }
+#outcome-cause { margin-top: 0.65rem; color: inherit; overflow-wrap: anywhere; }
+#outcome-stats { margin-top: 0.375rem; }
+#outcome-stats .character-rows > div { padding-block: 0.25rem; }
+#outcome-date { display: block; margin-top: 0.4rem; color: var(--muted); font-size: 0.75rem; }
+#outcome-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#outcome-actions button:first-child { border-color: #9c7749; }
+#terminal-keys.results-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#terminal-keys.results-controls > [hidden] { display: none !important; }
+#terminal-keys.results-controls:not(:has(#cancel-key:not([hidden]))) #confirm-key,
+#terminal-keys.results-controls:not(:has(#confirm-key:not([hidden]))) #cancel-key {
+    grid-column: 1 / -1;
+}
+#results-list, #results-file { padding: 0.625rem; overflow-wrap: anywhere; }
+#results-list ul { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+#results-list h3 { margin: 0.75rem 0 0.25rem; font-size: 0.875rem; color: var(--accent); }
+#results-list h3:first-child { margin-top: 0; }
+#results-list li, .results-empty {
+    padding: 0.5rem 0.625rem;
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+#results-list small { display: block; color: var(--muted); white-space: pre-line; }
+#results-list [aria-current="true"] { border-color: var(--accent); }
+.results-empty { color: var(--muted); }
+#results-file-status { margin-bottom: 0.625rem; }
 .character-detail .character-rows + h3 { margin-top: 0.75rem; }
 .character-effects {
     display: flex;
@@ -479,6 +518,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     grid-template-columns: minmax(0, 1fr);
     font-size: 0.9375rem;
 }
+#outcome-actions button[aria-current="true"] { background: #4c3820; }
 #menu-actions.birth-actions button { min-width: 0; overflow-wrap: anywhere; }
 .view > #birth-preview {
     grid-area: prompt;
@@ -535,7 +575,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .options-menu .menu-rows [aria-pressed="true"] .price { color: #cbe7a4; }
 .options-menu .menu-rows [aria-pressed="false"] .price { color: var(--muted); }
 .options-menu .menu-rows button:not([aria-pressed]) .price { white-space: normal; text-align: end; }
-button, #download-save {
+button, #download-save, #download-result {
     min-height: 44px;
     padding: 0 0.2rem;
     border: 1px solid var(--border);
@@ -545,7 +585,7 @@ button, #download-save {
     font: 500 0.8125rem system-ui, sans-serif;
     touch-action: manipulation;
 }
-#download-save {
+#download-save, #download-result {
     display: grid;
     place-items: center;
     text-decoration: none;
