@@ -11,11 +11,7 @@ const saveManagement = document.querySelector("#save-management");
 const deleteSave = document.querySelector("#delete-save");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
-const viewOptions = document.querySelector("#view-options");
-const lookAround = document.querySelector("#look-around");
-const levelMap = document.querySelector("#level-map");
-const toggleTiles = document.querySelector("#toggle-tiles");
-const fitMap = document.querySelector("#fit-map");
+const zoom = document.querySelector("#zoom");
 const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
@@ -113,6 +109,8 @@ const birthRollActions = document.querySelector("#birth-roll-actions");
 const previousRoll = document.querySelector("#previous-roll");
 const birthRollHistory = document.querySelector("#birth-roll-history");
 const actionsScreen = document.querySelector("#actions-screen");
+const toggleTiles = makeInput("toggle-tiles", 0, "Tiles: ASCII");
+toggleTiles.removeAttribute("aria-label");
 const quantity = document.querySelector("#quantity");
 const optionDigits = document.querySelector("#option-digits");
 const rest = document.querySelector("#rest");
@@ -363,7 +361,6 @@ function updateViewZoom(view) {
     const index = view === views.terminal ? view.zoom : zoomIndex(view);
     const fitted = Boolean(view.fit);
     viewport.classList.toggle("fit-map", fitted);
-    fitMap.setAttribute("aria-pressed", String(fitted));
     zoomOut.disabled = fitted || index === 0;
     if (!fitted) {
         viewport.style.setProperty("--zoom", scales[index]);
@@ -718,14 +715,13 @@ function showPanel(panel, trigger) {
     panelTrigger = trigger;
     if (panel) {
         journal.open = false;
-        viewOptions.setAttribute("aria-expanded", "false");
         if (panel === "character") renderCharacter();
         else renderActionsPanel();
     }
     updateView();
     updateControls();
     if (panel === "character") focusCharacter();
-    else if (panel) actionsScreen.querySelector("button").focus({ preventScroll: true });
+    else if (panel) actionsScreen.querySelector("button:enabled")?.focus({ preventScroll: true });
 }
 
 function updateControls() {
@@ -770,11 +766,10 @@ function updateControls() {
     const showRunControls = !openPanel && !showKeyboard && (runDirection || running);
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = targeting && !showKeyboard && !openPanel && !stopVisible;
-    lookAround.hidden = levelMap.hidden = toggleTiles.hidden = !command || !!openPanel;
-    lookAround.disabled = disabled;
-    levelMap.disabled = disabled;
     toggleTiles.disabled = disabled || !tilesReady;
-    toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
+    if (tilesReady && openPanel === "menu") {
+        toggleTiles.textContent = views.map.frame?.terrainAttributes ? "Tiles: Adam Bolt" : "Tiles: ASCII";
+    }
     vitals.disabled = disabled || !(command || ((selecting || aiming || directing) && context.character));
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
@@ -1024,14 +1019,11 @@ function updateView(state = world, region = views.target.crop) {
         showOutcome || showVictory || !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
     main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
-    viewOptions.hidden = !showMap;
-    fitMap.hidden = !showMap;
-    if (!showMap) viewOptions.setAttribute("aria-expanded", "false");
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
         context.resultsList?.title ?? context.resultsFile?.title ??
         (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
         mode === "aim" ? "Aim" : mode === "run-direction" ? "Run" : mode === "direction" ? "Direction" :
-        mode === "overview" ? levelMap.textContent : mode === "details" ? "Details" :
+        mode === "overview" ? "Full dungeon map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
         mode === "birth-roll" ? "Standard roller" :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
@@ -1040,11 +1032,10 @@ function updateView(state = world, region = views.target.crop) {
     viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
         menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label ??
         (menu && !showOutcome ? "Choices" : mode === "details" ? context.prompt || title : title));
-    zoomOut.hidden = zoomIn.hidden = activeView.viewport.hidden;
+    zoom.hidden = activeView.viewport.hidden;
     if (previous !== activeView) {
         if (activeView === views.target) {
             activeView.zoom = views.map.zoom;
-            activeView.fit = views.map.fit;
         }
         centerPending = true;
     }
@@ -1241,7 +1232,6 @@ function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || !messagePause.hidden) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
-    if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
     const movingToCell = input.type === "map-cell" &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
     running = (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
@@ -1380,7 +1370,6 @@ function renderQuickActions({ roguelike, quickActions }) {
         notice.textContent = hint;
         notice.hidden = !hint;
     }
-    lookAround.dataset.key = commandKey(spellCommands.look, roguelike);
 }
 
 function renderActionsPanel() {
@@ -1400,6 +1389,7 @@ function renderActionsPanel() {
         if (openPanel === "commands" && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
         return button;
     });
+    if (openPanel === "menu") rows.unshift(toggleTiles);
     actionsScreen.replaceChildren(...rows);
     actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
     actionsScreen.scrollTop = 0;
@@ -1652,7 +1642,6 @@ function toggleKeyboard() {
             shifted = false;
         }
         journal.open = false;
-        viewOptions.setAttribute("aria-expanded", "false");
         renderKeyboard();
     }
     updateControls();
@@ -1719,12 +1708,6 @@ for (const view of Object.values(views)) {
     });
 }
 
-toggleTiles.addEventListener("click", () => sendInput({ type: "toggle-tiles" }));
-fitMap.addEventListener("click", () => {
-    activeView.fit = !activeView.fit;
-    activeView.fitKey = undefined;
-    recenterView();
-});
 zoomOut.addEventListener("click", () => changeZoom(-1));
 zoomIn.addEventListener("click", () => changeZoom(1));
 
@@ -1763,7 +1746,13 @@ document.addEventListener("touchmove", (event) => {
     if (zoomDistance > 0) {
         const steps = Math.trunc(Math.log(distance / zoomDistance) / Math.log(zoomStepRatio));
         if (steps === 0) return;
+        const beyondMinimum = zoomIndex(views.map) + steps < 0;
         changeZoom(steps);
+        if (beyondMinimum && mode === "command" && !keyboardOpen &&
+            sendInput({ type: "key", code: keyCode("M") })) {
+            zoomDistance = undefined;
+            return;
+        }
     }
     zoomDistance = distance;
 }, touchOptions);
@@ -1781,13 +1770,8 @@ for (const type of ["gesturestart", "gesturechange"]) {
     document.addEventListener(type, (event) => event.preventDefault());
 }
 
-viewOptions.addEventListener("click", () => {
-    journal.open = false;
-    viewOptions.setAttribute("aria-expanded", String(viewOptions.getAttribute("aria-expanded") !== "true"));
-});
 journal.addEventListener("toggle", () => {
     if (!journal.open) return;
-    viewOptions.setAttribute("aria-expanded", "false");
     messages.scrollTop = messages.scrollHeight;
 });
 
@@ -1831,12 +1815,6 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && journal.open) {
         journal.open = false;
         journal.querySelector("summary").focus();
-        event.preventDefault();
-        return;
-    }
-    if (event.key === "Escape" && viewOptions.getAttribute("aria-expanded") === "true") {
-        viewOptions.setAttribute("aria-expanded", "false");
-        viewOptions.focus();
         event.preventDefault();
         return;
     }

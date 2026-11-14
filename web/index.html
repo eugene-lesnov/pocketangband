@@ -26,18 +26,9 @@
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
-                <button id="view-options" type="button" aria-controls="view-controls" aria-expanded="false" hidden>
-                    View
-                </button>
-                <div id="view-controls">
-                    <button id="look-around" type="button" data-key="l" hidden>Look around</button>
-                    <button id="level-map" type="button" data-key="M" hidden>Full dungeon map</button>
-                    <button id="toggle-tiles" type="button" aria-pressed="false" disabled hidden>Tiles</button>
-                    <button id="fit-map" type="button" aria-pressed="false" hidden>Fit</button>
-                    <div class="zoom" role="group" aria-label="Zoom">
-                        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
-                        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
-                    </div>
+                <div id="zoom" role="group" aria-label="Zoom" hidden>
+                    <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+                    <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
                 </div>
             </div>
             <div id="terminal-screen" class="screen" role="region" aria-label="Angband terminal" tabindex="0">

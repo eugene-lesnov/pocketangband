@@ -578,8 +578,9 @@ void web_inspect_cell(int x, int y)
         }
     }
 
-    char description[192];
-    strnfmt(description, sizeof(description), "%s%s%s.", phrase, article, name);
+    char coordinates[32], description[224];
+    coords_desc(coordinates, sizeof(coordinates), grid.y, grid.x);
+    strnfmt(description, sizeof(description), "%s%s%s, %s.", phrase, article, name, coordinates);
     set_map_cell(x, y, description);
 }
 
