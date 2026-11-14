@@ -964,7 +964,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,67 @@
+@@ -24,6 +24,68 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -976,13 +976,14 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
 +	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER,
 +	WEB_INPUT_BIRTH_ROLL, WEB_INPUT_VICTORY, WEB_INPUT_RESULTS_LIST,
-+	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE, WEB_INPUT_BIRTH_REVIEW
++	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE, WEB_INPUT_BIRTH_REVIEW,
++	WEB_INPUT_RUN_DIRECTION
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
-+cmd_code web_set_aim_command(cmd_code code);
++cmd_code web_set_direction_command(cmd_code code);
 +void web_set_aim_options(bool current, bool nearest, int x, int y);
 +void web_set_edit_value(const char *value, int cursor, bool initial);
 +void web_set_direction_center(bool available);
@@ -1408,17 +1409,33 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  
  errr (*cmd_get_hook)(cmd_context c);
  
-@@ -961,7 +964,14 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+@@ -905,7 +908,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
+ 	}
+ 
+ 	/* We need to do extra work */
+-	if (get_rep_dir(dir, allow_5)) {
++#ifdef __EMSCRIPTEN__
++	cmd_code previous = web_set_direction_command(cmd->code);
++#endif
++	bool directed = get_rep_dir(dir, allow_5);
++#ifdef __EMSCRIPTEN__
++	web_set_direction_command(previous);
++#endif
++	if (directed) {
+ 		cmd_set_arg_direction(cmd, arg, *dir);
+ 		return CMD_OK;
+ 	}
+@@ -961,7 +971,14 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
  			return CMD_OK;
  	}
  
 -	if (get_aim_dir(target)) {
 +#ifdef __EMSCRIPTEN__
-+	cmd_code previous = web_set_aim_command(cmd->code);
++	cmd_code previous = web_set_direction_command(cmd->code);
 +#endif
 +	bool aimed = get_aim_dir(target);
 +#ifdef __EMSCRIPTEN__
-+	web_set_aim_command(previous);
++	web_set_direction_command(previous);
 +#endif
 +	if (aimed) {
  		cmd_set_arg_target(cmd, arg, *target);

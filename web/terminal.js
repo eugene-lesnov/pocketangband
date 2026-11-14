@@ -12,6 +12,7 @@ const deleteSave = document.querySelector("#delete-save");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
 const viewOptions = document.querySelector("#view-options");
+const lookAround = document.querySelector("#look-around");
 const levelMap = document.querySelector("#level-map");
 const toggleTiles = document.querySelector("#toggle-tiles");
 const fitMap = document.querySelector("#fit-map");
@@ -49,6 +50,8 @@ const cancelKey = document.querySelector("#cancel-key");
 const confirmKey = document.querySelector("#confirm-key");
 const worldActions = document.querySelector("#world-actions");
 const playKeys = document.querySelector("#play-keys");
+const runAction = document.querySelector("#run-action");
+const otherPlayKeys = [...playKeys.children].filter((button) => button !== runAction);
 const playKeyboard = document.querySelector("#play-keyboard");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
@@ -108,25 +111,34 @@ const specialKeys = new Map([
     ["Enter", 13], ["Backspace", 8], ["Escape", 27], ["Save", 19], ["SaveAndQuit", 24], ["Tab", 9],
     ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83], ["CtrlT", 20],
 ]);
-
 const gameMenu = [
     ["Save", "Save and don't quit"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
     ["Q", "Retire character and quit"],
 ];
 const quickCommands = [
-    ["r", "Read a scroll"], ["q", "Quaff a potion"], ["u", "Use a staff", "Z"],
-    ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"], ["i", "Inventory"],
-    ["m", "Cast a spell"], ["f", "Fire your missile weapon", "t"], ["R", "Rest"],
+    ["r", "Read a scroll", null, "Scroll"], ["q", "Quaff a potion", null, "Potion"],
+    ["u", "Use a staff", "Z", "Staff"], ["a", "Aim a wand", "z", "Wand"],
+    ["z", "Zap a rod", "a", "Rod"], ["i", "Display inventory listing", null, "Pack"],
 ];
+const spellCommands = {
+    look: ["l", "Look around", "x", "Look"],
+    browse: ["b", "Browse a book", "P", "Browse"],
+    study: ["G", "Gain new spells", null, "Study"],
+    cast: ["m", "Cast a spell", null, "Cast"],
+};
+const fireCommand = ["f", "Fire your missile weapon", "t", "Fire"];
+const throwCommand = ["v", "Throw an item", null, "Throw"];
+const restCommand = ["R", "Rest for a while", null, "Rest"];
+const runCommand = [".", "Start running", ","];
+const stealCommand = ["s", "Steal from a monster"];
 const extraCommands = [
-    [".", "Start running", ","], ["l", "Look around", "x"], ["U", "Use an item", "X"],
-    ["G", "Gain new spells"], ["b", "Browse a book", "P"], ["v", "Throw an item"],
+    runCommand, spellCommands.look, ["U", "Use an item", "X"],
+    spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
     ["*", "Target monster or location"], ["[", "Display visible monster list"], ["]", "Display visible item list"],
     ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
-    ["Enter", "All Angband commands"],
 ];
 const panelTitles = { menu: "Menu", commands: "Commands", conditions: "Conditions" };
 const commandFaces = new Map([["CtrlT", "^T"]]);
@@ -171,6 +183,7 @@ let panelTrigger;
 let characterTrigger;
 let pendingInput;
 let stopTimer;
+let running = false;
 let saving = false;
 let deletingSave = false;
 let resultURL;
@@ -682,6 +695,7 @@ function showPanel(panel, trigger) {
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped;
     const command = mode === "command";
+    const runDirection = mode === "run-direction";
     const selecting = mode === "target";
     const aiming = mode === "aim";
     const directing = mode === "direction";
@@ -706,30 +720,40 @@ function updateControls() {
     const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Create spoilers";
     const retiring = mode === "retire";
     const hasTarget = aiming && context.current;
-    const canOpenKeyboard = !counting && !optionNumber && !splash && !resting && !confirming && !history &&
+    const canOpenKeyboard = !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
         !more && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
-    const stopVisible = !stopAction.hidden;
-    levelMap.hidden = toggleTiles.hidden = !command || !!openPanel;
+    const showRunControls = !openPanel && !showKeyboard && (runDirection || running);
+    const stopVisible = running || !stopAction.hidden;
+    lookAround.hidden = levelMap.hidden = toggleTiles.hidden = !command || !!openPanel;
+    lookAround.disabled = disabled;
     levelMap.disabled = disabled;
     toggleTiles.disabled = disabled || !tilesReady;
     toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
     openCharacter.disabled = !command || disabled;
-    vitals.disabled = disabled || !(selecting || aiming || directing || command);
+    vitals.disabled = disabled || runDirection || !(selecting || aiming || directing || command);
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu && !letterMenu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
     const playPad = command || selecting || aiming || directing;
-    const padVisible = !openPanel && !showKeyboard && !stopVisible &&
-        (playPad || (isMenu() && !menu && !letterMenu));
-    setActions(directionPad, padVisible, disabled);
+    const padVisible = showRunControls || (!openPanel && !showKeyboard && !stopVisible &&
+        (playPad || (isMenu() && !menu && !letterMenu)));
+    setActions(directionPad, padVisible, disabled || running);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
-    directionCenter.disabled = !command && !(directing && context.center);
+    directionPad.classList.toggle("run-direction", runDirection);
+    directionCenter.disabled = !running && !command && !(directing && context.center);
     centerCaption.textContent = directing ? "Here" : "Stand still";
     directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Stand still");
-    setActions(playKeys, playing && !stopVisible, disabled);
-    setActions(terminalKeys, !playing && !stopVisible && !outcome && !(command && showKeyboard), disabled);
+    setActions(playKeys, showRunControls || (playing && !stopVisible), disabled && !running);
+    playKeys.classList.toggle("run-controls", showRunControls);
+    for (const button of otherPlayKeys) button.disabled = showRunControls;
+    const runLabel = running ? "Stop" : runDirection ? "Cancel" : "Run";
+    if (runAction.textContent !== runLabel) runAction.textContent = runLabel;
+    if (running) delete runAction.dataset.key;
+    else runAction.dataset.key = runDirection ? "Escape" : commandKey(runCommand, world?.roguelike);
+    setActions(terminalKeys, !showRunControls && !playing && !stopVisible && !outcome &&
+        !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("letter-controls", letterMenu);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
@@ -758,7 +782,7 @@ function updateControls() {
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     cancelKey.hidden = more || character || victory;
-    setActions(worldActions, playing && !stopVisible, disabled);
+    setActions(worldActions, showRunControls || (playing && !stopVisible), disabled || showRunControls);
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
     previousRoll.disabled = !context.birthStats?.roll?.previous;
@@ -817,7 +841,8 @@ function terminalLine(row) {
 function updatePrompt() {
     let text = context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
-    if (mode === "direction") text = "Choose a direction.";
+    if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
+    if (running) text = "Running…";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
     if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
     if (mode === "rest" && !stopAction.hidden) text = "Resting…";
@@ -838,7 +863,7 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     world = state;
     views.target.crop = region;
-    const map = (mode === "command" || mode === "more") && context.worldView;
+    const map = (mode === "command" || mode === "more" || mode === "run-direction") && context.worldView;
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
     activeView = aiming && region ? views.target : world && map ? views.map : views.terminal;
     const editing = context.value !== undefined && !openPanel;
@@ -910,7 +935,7 @@ function updateView(state = world, region = views.target.crop) {
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
         context.resultsList?.title ?? context.resultsFile?.title ??
         (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
-        mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
+        mode === "aim" ? "Aim" : mode === "run-direction" ? "Run" : mode === "direction" ? "Direction" :
         mode === "overview" ? levelMap.textContent : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
         mode === "birth-roll" ? "Standard roller" :
@@ -962,7 +987,15 @@ function handleWorkerMessage({ data }) {
             if (view === activeView || view === views.terminal) draw();
             break;
         }
+        case "run-position":
+            if (running && data.request === pendingInput && world) {
+                world = { ...world, x: data.x, y: data.y };
+                draw();
+            }
+            break;
         case "waiting": {
+            const restoreRunFocus = document.activeElement === runAction ||
+                ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.birth?.title !== menu?.birth?.title ||
                 data.context.letterMenu?.title !== context.letterMenu?.title ||
@@ -1031,6 +1064,9 @@ function handleWorkerMessage({ data }) {
                 characterTrigger.focus({ preventScroll: true });
                 characterTrigger = undefined;
             }
+            if ((changed && mode === "run-direction") || (mode === "command" && restoreRunFocus)) {
+                runAction.focus({ preventScroll: true });
+            }
             break;
         }
         case "saving":
@@ -1096,6 +1132,8 @@ function keyCode(key) {
 function clearPendingInput() {
     clearTimeout(stopTimer);
     pendingInput = undefined;
+    running = false;
+    runAction.disabled = false;
     stopAction.hidden = true;
     stopAction.disabled = false;
 }
@@ -1105,20 +1143,24 @@ function sendInput(input) {
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     if (input.type !== "toggle-tiles") viewOptions.setAttribute("aria-expanded", "false");
+    running = mode === "run-direction" && input.type === "key" && input.code !== keyCode("Escape");
     worker.postMessage({ ...input, request });
-    if ((mode === "command" || !hud.hidden || mode === "rest" ||
+    if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.letterMenu && !context.outcome && !menu?.title)) &&
         ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
         pendingInput = request;
-        stopTimer = setTimeout(() => {
-            stopAction.hidden = false;
-            updateControls();
-            updatePrompt();
-        }, 150);
+        if (!running) {
+            stopTimer = setTimeout(() => {
+                stopAction.hidden = false;
+                updateControls();
+                updatePrompt();
+            }, 150);
+        }
     }
     request = undefined;
     toggleTiles.disabled = true;
     deleteSave.disabled = true;
+    if (running) updateControls();
     updatePrompt();
     return true;
 }
@@ -1204,22 +1246,46 @@ function commandKey([key, , alternative], roguelike) {
     return roguelike && alternative ? alternative : key;
 }
 
-function renderQuickActions({ roguelike }) {
-    const keyset = roguelike ? "roguelike" : "original";
-    if (worldActions.dataset.keyset === keyset) return;
-    worldActions.dataset.keyset = keyset;
-    worldActions.replaceChildren(...quickCommands.map((entry) => {
+function renderQuickActions({ roguelike, quickActions }) {
+    const { spell, spellHint, launcher, hasAmmo } = quickActions;
+    const commands = [...quickCommands, spellCommands[spell], launcher ? fireCommand : throwCommand, restCommand];
+    for (let i = 0; i < commands.length; i++) {
+        const entry = commands[i];
+        const [, label, , face] = entry;
         const key = commandKey(entry, roguelike);
-        const label = entry[1];
-        const button = makeKey(key, "", `${label} (${key})`);
+        const hint = i === quickCommands.length ? spellHint : entry === fireCommand && !hasAmmo ? "No ammo" : "";
+        let button = worldActions.children[i];
+        if (!button) {
+            button = makeButton("");
+            button.className = "shortcut";
+            button.append(document.createElement("span"), keyBadge(""), document.createElement("small"));
+            worldActions.append(button);
+        }
+        if (button.dataset.key === key && button.dataset.hint === hint) continue;
+        button.dataset.key = key;
+        button.dataset.hint = hint;
+        button.disabled = !!hint;
         button.title = label;
-        button.append(keyBadge(key));
-        return button;
-    }));
+        button.setAttribute("aria-label", hint ? `${label} (${key}). ${hint}` : `${label} (${key})`);
+        const [name, badge, notice] = button.children;
+        name.textContent = face;
+        badge.textContent = key;
+        badge.hidden = !!hint;
+        notice.textContent = hint;
+        notice.hidden = !hint;
+    }
+    lookAround.dataset.key = commandKey(spellCommands.look, roguelike);
 }
 
 function renderActionsPanel() {
-    const commands = openPanel === "menu" ? gameMenu : openPanel === "commands" ? extraCommands : null;
+    let commands;
+    if (openPanel === "menu") {
+        commands = gameMenu;
+    } else if (openPanel === "commands") {
+        commands = [...extraCommands];
+        if (world.quickActions?.canSteal) commands.push(stealCommand);
+        commands.push(["Enter", "All Angband commands"]);
+    }
     if (!commands) return;
     const rows = commands.map((entry) => {
         const key = commandKey(entry, world.roguelike);
@@ -1495,10 +1561,15 @@ openCharacter.addEventListener("click", () => {
 vitals.addEventListener("click", () => {
     if (request !== undefined) showPanel("conditions", vitals);
 });
-stopAction.addEventListener("click", () => {
-    if (pendingInput === undefined) return;
+function interruptAction(button) {
+    if (pendingInput === undefined || button.disabled) return;
     worker.postMessage({ type: "interrupt", request: pendingInput });
-    stopAction.disabled = true;
+    button.disabled = true;
+}
+
+stopAction.addEventListener("click", () => interruptAction(stopAction));
+runAction.addEventListener("click", () => {
+    if (running) interruptAction(runAction);
 });
 
 for (const view of [views.terminal, views.target]) {
@@ -1640,8 +1711,8 @@ window.addEventListener("pageshow", () => {
 
 document.addEventListener("keydown", (event) => {
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
-    if (event.key === "Escape" && pendingInput !== undefined && !stopAction.hidden) {
-        stopAction.click();
+    if (event.key === "Escape" && pendingInput !== undefined && (running || !stopAction.hidden)) {
+        interruptAction(running ? runAction : stopAction);
         event.preventDefault();
         return;
     }

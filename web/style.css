@@ -124,7 +124,9 @@ dt { color: var(--muted); }
 }
 .in-world :is(#view-options, #view-controls) { pointer-events: auto; }
 #view-options { min-width: 44px; }
-#level-map { padding-inline: 0.5rem; }
+#view-controls { flex-wrap: wrap; justify-content: flex-end; }
+.in-world #view-controls { max-width: calc(100vw - 1.5rem); }
+:is(#level-map, #look-around) { padding-inline: 0.5rem; }
 .in-world #view-options[aria-expanded="false"] + #view-controls { display: none; }
 .in-world #view-controls {
     border: 1px solid var(--border);
@@ -337,14 +339,27 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .direction-pad, .key-row, #world-actions, #play-keys, #terminal-keys { display: grid; gap: 0.25rem; }
 .direction-pad { grid-template-columns: repeat(3, 44px); }
 .direction-pad button { padding: 0; font: 1.25rem var(--mono); }
+.direction-pad.run-direction button:enabled { border-color: var(--accent); }
 #direction-center { line-height: 1; }
 #center-caption { display: block; margin-top: 0.1rem; font: 0.625rem system-ui, sans-serif; }
 .direction-pad.cardinal :is(.diagonal, #direction-center), #direction-center:disabled { visibility: hidden; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #world-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #stop-action { align-self: end; min-width: 88px; border-color: #9c7749; }
-#play-keys { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-:is(#world-actions, #play-keys) kbd { font: 1.125rem var(--mono); color: var(--accent); }
+#play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+#play-keys button { padding-inline: 0.125rem; font-size: 0.75rem; white-space: nowrap; }
+#run-action { border-color: #9c7749; }
+#play-keys.run-controls #run-action { border-color: var(--accent); background: #4c3820; }
+.shortcut {
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 0.0625rem;
+    min-width: 0;
+    text-align: center;
+}
+.shortcut kbd { font: 0.75rem var(--mono); color: var(--accent); }
+.shortcut small { font: 0.625rem/1.2 system-ui, sans-serif; white-space: nowrap; }
 #aim-actions { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys { grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr); }
 #confirm-key { border-color: #9c7749; }

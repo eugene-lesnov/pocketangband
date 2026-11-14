@@ -132,6 +132,9 @@ async function play(afterRun) {
         sendWorld(state) {
             world = state;
         },
+        sendRunPosition(x, y) {
+            self.postMessage({ type: "run-position", x, y, request: runningRequest });
+        },
         takeInput() {
             return input.shift();
         },

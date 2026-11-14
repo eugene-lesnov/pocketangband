@@ -11,7 +11,11 @@
 #include "monster.h"
 #include "obj-desc.h"
 #include "obj-gear.h"
+#include "obj-ignore.h"
+#include "obj-util.h"
+#include "object.h"
 #include "player.h"
+#include "player-spell.h"
 #include "player-timed.h"
 #include "player-util.h"
 #include "target.h"
@@ -21,11 +25,12 @@
 #include "ui-prefs.h"
 #include <emscripten.h>
 
-enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2 };
+enum { MAP_TERM = 6, LOG_LIMIT = 40, ADAM_BOLT_GRAPHICS = 2, RUN_STEP_DELAY_MS = 80 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
-static cmd_code aim_command;
+static cmd_code direction_command;
+static bool pace_run;
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -38,6 +43,7 @@ static const char *const input_modes[] = {
     [WEB_INPUT_TARGET] = "target",
     [WEB_INPUT_SAVE_SLOTS] = "save-slots",
     [WEB_INPUT_DIRECTION] = "direction",
+    [WEB_INPUT_RUN_DIRECTION] = "run-direction",
     [WEB_INPUT_MORE] = "more",
     [WEB_INPUT_REST] = "rest",
     [WEB_INPUT_OVERVIEW] = "overview",
@@ -69,10 +75,10 @@ const char *web_set_prompt(const char *prompt)
     return previous;
 }
 
-cmd_code web_set_aim_command(cmd_code code)
+cmd_code web_set_direction_command(cmd_code code)
 {
-    cmd_code previous = aim_command;
-    aim_command = code;
+    cmd_code previous = direction_command;
+    direction_command = code;
     return previous;
 }
 
@@ -326,9 +332,69 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
     Module['sendFrame'](frame);
 });
 
+EM_JS(void, send_quick_actions, (const char *spell_action, const char *spell_hint,
+        bool launcher, bool has_ammo, bool can_steal), {
+    Module['worldQuickActions'] = {
+        spell: UTF8ToString(spell_action),
+        spellHint: spell_hint ? UTF8ToString(spell_hint) : "",
+        launcher: !!launcher, hasAmmo: !!has_ammo, canSteal: !!can_steal,
+    };
+});
+
+static bool has_quick_action_item(item_tester eligible, bool include_quiver)
+{
+    for (int i = 0; i < z_info->pack_size; i++) {
+        if (object_test(eligible, player->upkeep->inven[i])) return true;
+    }
+    if (include_quiver) {
+        for (int i = 0; i < z_info->quiver_size; i++) {
+            if (object_test(eligible, player->upkeep->quiver[i])) return true;
+        }
+    }
+    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next) {
+        if (obj->known && obj->known->kind == obj->kind &&
+                !ignore_item_ok(player, obj) && object_test(eligible, obj)) return true;
+    }
+    return false;
+}
+
+static bool has_learned_spell(void)
+{
+    for (int i = 0; i < player->class->magic.total_spells; i++) {
+        if (spell_okay_to_cast(player, i)) return true;
+    }
+    return false;
+}
+
+static void publish_quick_actions(void)
+{
+    bool launcher = player_can_fire(player, false);
+    const char *spell_action = "look";
+    const char *spell_hint = NULL;
+
+    if (player->class->magic.total_spells) {
+        if (has_learned_spell()) {
+            spell_action = "cast";
+            if (!has_quick_action_item(obj_can_cast_from, false)) spell_hint = "No book";
+            else if (!player_can_cast(player, false)) {
+                if (player->timed[TMD_BLIND]) spell_hint = "Blind";
+                else if (no_light(player)) spell_hint = "Darkness";
+                else if (player->timed[TMD_CONFUSED]) spell_hint = "Confused";
+            }
+        } else if (player_can_study(player, false) && has_quick_action_item(obj_can_study, false)) {
+            spell_action = "study";
+        } else if (has_quick_action_item(obj_can_browse, false)) {
+            spell_action = "browse";
+        }
+    }
+
+    send_quick_actions(spell_action, spell_hint, launcher,
+        launcher && has_quick_action_item(obj_can_fire, true), player_has(player, PF_STEAL));
+}
+
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool roguelike), {
+        int count, const char *const *lines, const int *repeats, bool roguelike, bool commands), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -339,7 +405,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
-        conditions: Module['worldConditions'],
+        conditions: Module['worldConditions'], quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
 });
 
@@ -351,7 +417,7 @@ EM_JS(void, add_world_condition, (const char *label, int priority), {
     Module['worldConditions'].push({ label: UTF8ToString(label), priority });
 });
 
-static void publish_world(void)
+static void publish_world(bool commands)
 {
     const term *map = angband_term[MAP_TERM];
     const char *lines[LOG_LIMIT];
@@ -418,11 +484,12 @@ static void publish_world(void)
         lines[i] = message_str(i);
         repeats[i] = message_count(i);
     }
+    if (commands) publish_quick_actions();
     send_world(player->depth, player->chp, player->mhp, player->csp, player->msp,
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands));
+        OPT(player, rogue_like_commands), commands);
 }
 
 static double last_interrupt_poll;
@@ -431,11 +498,20 @@ EM_JS(bool, take_interrupt, (void), {
     return Module['takeInterrupt']();
 });
 
+EM_JS(void, send_run_position, (int x, int y), {
+    Module['sendRunPosition'](x, y);
+});
+
 void web_poll_interrupt(void)
 {
     if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
     double now = emscripten_get_now();
-    if (now - last_interrupt_poll >= 16) {
+    if (pace_run && player->upkeep->running) {
+        const term *map = angband_term[MAP_TERM];
+        send_run_position(player->grid.x - map->offset_x, player->grid.y - map->offset_y);
+        last_interrupt_poll = now;
+        emscripten_sleep(RUN_STEP_DELAY_MS);
+    } else if (now - last_interrupt_poll >= 16) {
         last_interrupt_poll = now;
         emscripten_sleep(1);
     }
@@ -480,7 +556,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     if (prompt) context.prompt = UTF8ToString(prompt);
     if (verb) context.verb = UTF8ToString(verb);
     if (player_x >= 0) context.player = { x: player_x, y: player_y };
-    if (modeName === "command" || modeName === "more") context.worldView = !!world_view;
+    context.worldView = !!world_view;
     const action = await Module['waitForInput'](modeName, region, !!playing,
         context, menu);
     switch (action) {
@@ -528,15 +604,17 @@ static ui_event_type wait_for_input(void)
         mode = WEB_INPUT_COMMAND;
     }
     if (mode == WEB_INPUT_TARGET && !map_visible) mode = WEB_INPUT_DETAILS;
+    if (mode == WEB_INPUT_DIRECTION && direction_command == CMD_RUN) mode = WEB_INPUT_RUN_DIRECTION;
+    pace_run = mode == WEB_INPUT_RUN_DIRECTION;
 
     bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION;
-    bool world_view = map_visible && playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE) &&
+    bool world_view = map_visible && playing &&
+        (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE || mode == WEB_INPUT_RUN_DIRECTION) &&
         window_flag[MAP_TERM] == PW_OVERHEAD;
     if (mode == WEB_INPUT_CHARACTER ||
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
-        publish_world();
-    if (mode == WEB_INPUT_TARGET || (map_visible &&
-            (mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION))) {
+        publish_world(mode == WEB_INPUT_COMMAND);
+    if (mode == WEB_INPUT_TARGET || (map_visible && aiming)) {
         x = COL_MAP;
         y = ROW_MAP;
         width = SCREEN_WID * tile_width;
@@ -549,8 +627,8 @@ static ui_event_type wait_for_input(void)
         width = Term->wid;
         height = Term->hgt;
     }
-    const char *verb = aim_command == CMD_FIRE ? "Fire" :
-        aim_command == CMD_THROW ? "Throw" : aim_command == CMD_CAST ? "Cast" : "Use";
+    const char *verb = direction_command == CMD_FIRE ? "Fire" :
+        direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
     return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view,
