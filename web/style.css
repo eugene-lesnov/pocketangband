@@ -113,7 +113,7 @@ dt { color: var(--muted); }
 .view-bar { min-height: 44px; padding-inline: 0.625rem 0.25rem; }
 .view:has(.menu-screen:not([hidden])) .view-bar { min-height: 2rem; }
 .view {
-    --message-row-height: 46px;
+    --message-row-height: 54px;
     position: relative;
     display: grid;
     grid-template: "bar" auto "content" minmax(0, 1fr) "prompt" auto "journal" auto "save" auto / minmax(0, 1fr);
@@ -284,6 +284,7 @@ dt { color: var(--muted); }
 
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
 
+:is(#journal, #message-pause) { margin: 0.25rem; }
 #journal {
     grid-area: journal;
     position: relative;
@@ -353,13 +354,16 @@ dt { color: var(--muted); }
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
     align-items: center;
-    padding-inline-start: 0.5rem;
+    padding: 4px 4px 4px 0.5rem;
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     background: var(--panel);
 }
-.view:has(#journal:not([hidden])) #message-pause { grid-area: journal; }
-.view:has(#message-pause:not([hidden])) #journal { visibility: hidden; }
+.view:has(#journal:not([hidden])) #message-pause {
+    grid-area: journal;
+    position: static;
+}
+.view:has(#message-pause:not([hidden])) #journal { display: none; }
 #paused-message {
     max-height: 100%;
     overflow: auto;
