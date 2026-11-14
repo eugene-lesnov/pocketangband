@@ -1,3 +1,28 @@
+diff --git a/src/list-options.h b/src/list-options.h
+--- a/src/list-options.h
++++ b/src/list-options.h
+@@ -34,16 +34,16 @@
+ OP(disturb_near,          "Disturb whenever viewable monster moves",
+ INTERFACE, true)
+ OP(solid_walls,           "Show walls as solid blocks",
+-INTERFACE, false)
++INTERFACE, true)
+ OP(hybrid_walls,          "Show walls with shaded background",
+ INTERFACE, false)
+ OP(view_yellow_light,     "Color: Illuminate torchlight in yellow",
+-INTERFACE, false)
++INTERFACE, true)
+ OP(animate_flicker,       "Color: Shimmer multi-colored things",
+-INTERFACE, false)
++INTERFACE, true)
+ OP(center_player,         "Center map continuously",
+-INTERFACE, false)
++INTERFACE, true)
+ OP(purple_uniques,        "Color: Show unique monsters in purple",
+-INTERFACE, false)
++INTERFACE, true)
+ OP(auto_more,             "Automatically clear '-more-' prompts",
+ INTERFACE, false)
 diff --git a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
