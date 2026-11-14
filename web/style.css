@@ -393,8 +393,7 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 
 .menu-screen { overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); }
 #actions-screen button:not(:has(kbd)) { display: block; }
-#character-screen, #conditions-screen { padding: 0.625rem; }
-#character-screen { display: grid; align-content: start; gap: 0.625rem; }
+#character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }
 .character-identity h3 { margin: 0; font-size: 1.25rem; color: var(--accent); overflow-wrap: anywhere; }
 .character-identity p { margin-top: 0.125rem; font-size: 0.875rem; color: var(--muted); }
 #character-summary .character-rows {
@@ -502,6 +501,12 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .birth-attributes th:first-child { text-align: left; }
 .birth-attributes td:last-child { color: var(--accent); }
 main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys { grid-template-columns: 60px minmax(0, 1fr); }
+main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#cancel-key:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr);
+}
+main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#cancel-key:not([hidden])) > [hidden] {
+    display: none !important;
+}
 #terminal-keys.birth-review-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !important; }
 #edit-screen { padding: 0.75rem 0.625rem; }

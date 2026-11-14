@@ -23,6 +23,7 @@
 #include "ui-input.h"
 #include "ui-map.h"
 #include "ui-output.h"
+#include "ui-player.h"
 #include "ui-prefs.h"
 #include <emscripten.h>
 
@@ -197,29 +198,29 @@ EM_JS(void, web_set_results_file, (const char *title, const char *path, const ch
 
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
         int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic), {
-    Module['inputContext'] = { character: {
+    Module['characterSheet'] = {
         name: UTF8ToString(name), race: UTF8ToString(race), className: UTF8ToString(class_name),
         level, history: UTF8ToString(history), hp, maxHp: max_hp, sp, maxSp: max_sp,
         magic: !!magic, rows: [], defenses: [],
-    } };
+    };
 });
 
 EM_JS(void, web_character_row, (int section, const char *label, const char *value), {
-    Module['inputContext'].character.rows.push({
+    Module['characterSheet'].rows.push({
         section, label: UTF8ToString(label), value: UTF8ToString(value).trim().replace(/ +/g, " "),
     });
 });
 
 EM_JS(void, web_character_stat_breakdown, (const char *base, int race_bonus, int class_bonus,
         int equipment_bonus, const char *best), {
-    const row = Module['inputContext'].character.rows.at(-1);
+    const row = Module['characterSheet'].rows.at(-1);
     row.breakdown = { base: UTF8ToString(base).trim(), raceBonus: race_bonus, classBonus: class_bonus,
         equipmentBonus: equipment_bonus, best: UTF8ToString(best).trim() };
 });
 
 EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int length,
         const char *value, const char *temporary), {
-    Module['inputContext'].character.defenses.push({
+    Module['characterSheet'].defenses.push({
         group: UTF8ToString(group),
         label: String.fromCodePoint(...HEAPU32.subarray(label >>> 2, (label >>> 2) + length)).trim(),
         value: UTF8ToString(value), temporary: temporary ? UTF8ToString(temporary) : "",
@@ -582,7 +583,10 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     const store = modeName === "more" ? stores?.at(-1) : null;
     const menu = modeName === "menu" || modeName === "save-slots" ? Module['inputMenu'] :
         store ? { ...store, store: { ...store.store, gold } } : undefined;
-    if (modeName !== "more") Module['inputContext'] = Module['inputMenu'] = undefined;
+    if (modeName !== "more") {
+        if (Module['characterSheet']) context.character = Module['characterSheet'];
+        Module['inputContext'] = Module['inputMenu'] = Module['characterSheet'] = undefined;
+    }
     if (modeName === "menu" && menu?.store) {
         menu.store.gold = gold;
         if (stores?.length) stores[stores.length - 1] = menu;
@@ -650,6 +654,7 @@ static ui_event_type wait_for_input(void)
     if (mode == WEB_INPUT_CHARACTER ||
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
         publish_world(mode == WEB_INPUT_COMMAND);
+    if (playing && aiming && map_visible) web_character_sheet(false);
     if (mode == WEB_INPUT_TARGET || (map_visible && aiming)) {
         x = COL_MAP;
         y = ROW_MAP;
