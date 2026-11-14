@@ -343,7 +343,7 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 #stop-action { align-self: end; min-width: 88px; border-color: #9c7749; }
 #play-keys { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 :is(#world-actions, #play-keys) kbd { font: 1.125rem var(--mono); color: var(--accent); }
-#aim-actions, #stat-actions { grid-template-columns: minmax(0, 1fr); }
+#aim-actions { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys { grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr); }
 #confirm-key { border-color: #9c7749; }
 #keyboard-toggle[aria-expanded="true"] { color: #171612; background: var(--accent); }
@@ -352,6 +352,11 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 #terminal-keys.letter-controls #confirm-key { display: none !important; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr) 60px; }
 #terminal-keys.options-controls #confirm-key { display: none !important; }
+#terminal-keys.birth-choice-controls { grid-template-columns: minmax(0, 1fr); }
+#terminal-keys.birth-stat-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#terminal-keys.birth-choice-controls > [hidden], #terminal-keys.birth-stat-controls > [hidden] {
+    display: none !important;
+}
 main:has(#option-digits:not([hidden])) #terminal-keys { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !important; }
 
@@ -470,6 +475,54 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .menu-rows kbd { color: var(--accent); font-family: var(--mono); }
 .menu-rows small { display: block; color: var(--muted); }
 .menu-rows .price { color: var(--accent); white-space: nowrap; }
+.birth-menu .menu-rows button {
+    grid-template-columns: minmax(0, 1fr);
+    font-size: 0.9375rem;
+}
+#menu-actions.birth-actions button { min-width: 0; overflow-wrap: anywhere; }
+.view > #birth-preview {
+    grid-area: prompt;
+    min-width: 0;
+    max-height: 32dvh;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.5rem 0.625rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+#birth-choice { color: var(--accent); }
+.birth-preview-hint { display: block; color: var(--muted); font-size: 0.8125rem; }
+#birth-bonuses { margin-top: 0.25rem; white-space: pre-line; overflow-wrap: anywhere; }
+.birth-stats-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+}
+#birth-identity { color: var(--muted); font-size: 0.8125rem; }
+#birth-points { color: var(--accent); font-size: 0.875rem; }
+#reset-stats { flex: none; padding-inline: 0.625rem; }
+#birth-stat-rows { padding: 0 0.5rem; }
+.birth-stat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px 3.75rem 44px;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+}
+.birth-stat.current { background: #332a1d; }
+.birth-stat small { display: block; color: var(--muted); }
+.birth-stat button { padding: 0; font-size: 1.125rem; }
+.birth-stat-value { text-align: center; font-variant-numeric: tabular-nums; }
 .options-menu .menu-rows button { font-size: 0.9375rem; }
 .options-menu .menu-rows .read-only { opacity: 1; color: var(--muted); }
 .options-menu .menu-rows [aria-pressed="true"] .price { color: #cbe7a4; }

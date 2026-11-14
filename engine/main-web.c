@@ -215,6 +215,22 @@ void web_add_option_toggle(int row, const char *label, bool checked, bool enable
     }, checked);
 }
 
+EM_JS(void, web_set_birth_menu, (const char *title, const char *summary, bool preview), {
+    Module['inputMenu'].birth = { title: UTF8ToString(title),
+        summary: summary ? UTF8ToString(summary) : "", preview: !!preview };
+});
+
+EM_JS(void, web_set_birth_stats, (const char *race, const char *class_name, int remaining, int cursor), {
+    Module['inputContext'] = { birthStats: { race: UTF8ToString(race), className: UTF8ToString(class_name),
+        remaining, cursor, rows: [] } };
+});
+
+EM_JS(void, web_add_birth_stat, (const char *label, int base, const char *value, int cost,
+        bool can_decrease, bool can_increase), {
+    Module['inputContext'].birthStats.rows.push({ label: UTF8ToString(label), base,
+        value: UTF8ToString(value).trim(), cost, canDecrease: !!can_decrease, canIncrease: !!can_increase });
+});
+
 void web_toggle_tiles(void)
 {
     bool tiles = use_graphics == GRAPHICS_NONE;
@@ -369,7 +385,7 @@ void web_poll_interrupt(void)
 }
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
-        int store_action, int aim_cell, int target_cell), {
+        int store_action, int aim_cell, int target_cell, int buy_stat, int sell_stat), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -387,6 +403,8 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
         case "target-cell": return target_cell;
+        case "buy-stat": return buy_stat;
+        case "sell-stat": return sell_stat;
         default: return 0;
     }
 });
@@ -514,7 +532,8 @@ static errr queue_input(void)
 {
     int code = 0, x = 0, y = 0;
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
-        EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL);
+        EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
+        EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT);
 
     switch (type) {
         case EVT_NONE: return 1;

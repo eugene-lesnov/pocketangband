@@ -64,6 +64,11 @@ self.addEventListener("message", ({ data }) => {
         const { region } = waiting;
         if (!region || data.x < region.x || data.y < region.y ||
             data.x >= region.x + region.width || data.y >= region.y + region.height) return;
+    } else if (data.type === "buy-stat" || data.type === "sell-stat") {
+        if (waiting?.mode !== "birth-stats" || data.request !== waiting.request ||
+            !Number.isInteger(data.code) || data.code < 0) return;
+        const stat = waiting.context.birthStats?.rows[data.code];
+        if (!(data.type === "buy-stat" ? stat?.canIncrease : stat?.canDecrease)) return;
     } else if (["menu-row", "menu-section", "store-action"].includes(data.type)) {
         if (!waiting?.menu || data.request !== waiting.request) return;
         const { rows, sections, actions } = waiting.menu;
@@ -148,7 +153,7 @@ async function play(skipSplash) {
                 return "background-save";
             }
             return new Promise((resolve) => {
-                waiting = { request: ++request, mode, region, playing, menu, wake: resolve };
+                waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve };
                 self.postMessage({ type: "waiting", request, mode, region, world, context, menu });
                 world = undefined;
             });
