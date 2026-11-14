@@ -113,8 +113,9 @@ const specialKeys = new Map([
     ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83], ["CtrlT", 20],
 ]);
 const gameMenu = [
-    ["Save", "Save and don't quit"], ["SaveAndQuit", "Save and quit"], ["=", "Options"], ["?", "Help"],
+    ["=", "Options"], ["?", "Help"],
     ["Q", "Retire character and quit"],
+    ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
 ];
 const quickCommands = [
     ["r", "Read a scroll", null, "Scroll"], ["q", "Quaff a potion", null, "Potion"],
