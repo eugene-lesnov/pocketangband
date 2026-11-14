@@ -23,6 +23,160 @@ diff --git a/src/list-options.h b/src/list-options.h
 +INTERFACE, true)
  OP(auto_more,             "Automatically clear '-more-' prompts",
  INTERFACE, false)
+diff --git a/src/ui-curse.c b/src/ui-curse.c
+--- a/src/ui-curse.c
++++ b/src/ui-curse.c
+@@ -22,6 +22,9 @@
+ #include "obj-curse.h"
+ #include "obj-knowledge.h"
+ #include "ui-curse.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ #include "ui-menu.h"
+ #include "ui-output.h"
+ 
+@@ -61,6 +64,7 @@ static bool get_curse_action(struct menu
+ 	return false;
+ }
+ 
++#ifndef __EMSCRIPTEN__
+ /**
+  * Show spell long description when browsing
+  */
+@@ -84,6 +88,28 @@ static void curse_menu_browser(int oid,
+ 	text_out_pad = 0;
+ 	text_out_indent = 0;
+ }
++#else
++static void web_render_curses(struct menu *m)
++{
++	const struct curse_menu_data *choices = menu_priv(m);
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->header + 1);
++	for (int i = 0; i < m->count; i++) {
++		web_add_menu_row(i, curses[choices[i].index].name,
++			format("Curse strength %d", choices[i].power), NULL, 0, true);
++	}
++	if (m->cursor >= 0 && m->cursor < m->count) {
++		char description[80];
++		my_strcpy(description, curses[choices[m->cursor].index].desc, sizeof(description));
++		my_strcap(description);
++		textblock *text = textblock_new();
++		textblock_append(text, "%s.", description);
++		web_set_menu_description(textblock_text(text));
++		textblock_free(text);
++	}
++}
++#endif
+ 
+ /**
+  * Display list of curses to choose from
+@@ -124,7 +150,11 @@ static int curse_menu(struct object *obj
+ 	m->header = header;
+ 	m->selections = all_letters_nohjkl;
+ 	m->flags = (MN_PVT_TAGS | MN_KEYMAP_ESC);
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_curses;
++#else
+ 	m->browse_hook = curse_menu_browser;
++#endif
+ 
+ 	/* Set up the item list variables */
+ 	selection = 0;
+diff --git a/src/ui-effect.c b/src/ui-effect.c
+--- a/src/ui-effect.c
++++ b/src/ui-effect.c
+@@ -19,6 +19,9 @@
+ #include "angband.h"
+ #include "effects-info.h"
+ #include "ui-effect.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ #include "ui-menu.h"
+ 
+ 
+@@ -107,7 +110,13 @@ static int effect_menu_select(struct men
+ 	screen_save();
+ 	region_erase_bordered(&m->active);
+ 	prt((prompt) ? prompt : "Which effect? ", 0, 0);
++#ifdef __EMSCRIPTEN__
++	const char *previous_prompt = web_set_prompt(prompt ? prompt : "Which effect?");
++#endif
+ 	out = menu_select(m, 0, false);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
++#endif
+ 	if (out.type & EVT_SELECT) {
+ 		selection = m->cursor;
+ 		if (allow_random) {
+diff --git a/src/ui-player-properties.c b/src/ui-player-properties.c
+--- a/src/ui-player-properties.c
++++ b/src/ui-player-properties.c
+@@ -78,6 +78,7 @@ static void view_ability_display(struct
+ }
+ 
+ 
++#ifndef __EMSCRIPTEN__
+ /**
+  * Show ability long description when browsing
+  */
+@@ -100,6 +101,30 @@ static void view_ability_menu_browser(in
+ 	text_out_indent = 0;
+ 	text_out_wrap = 0;
+ }
++#else
++static bool web_browse_ability(struct menu *m, const ui_event *event, int oid)
++{
++	return event->type == EVT_SELECT;
++}
++
++static void web_render_abilities(struct menu *m)
++{
++	const struct player_ability *choices = menu_priv(m);
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title("Race and class abilities");
++	for (int i = 0; i < m->count; i++) {
++		const char *group = choices[i].group == PLAYER_FLAG_CLASS ? "Class" : "Racial";
++		web_add_menu_row(i, choices[i].name, group, NULL, view_ability_tag(m, i), true);
++	}
++	if (m->cursor >= 0 && m->cursor < m->count) {
++		textblock *text = textblock_new();
++		textblock_append(text, "%s", choices[m->cursor].desc);
++		web_set_menu_description(textblock_text(text));
++		textblock_free(text);
++	}
++}
++#endif
+ 
+ /**
+  * Display list available specialties.
+@@ -112,6 +137,9 @@ void textui_view_ability_menu(struct pla
+ 	region loc = { 0, 0, 70, -99 };
+ 	char buf[80];
+ 
++#ifdef __EMSCRIPTEN__
++	menu_f.row_handler = web_browse_ability;
++#endif
+ 	/* Save the screen and clear it */
+ 	screen_save();
+ 
+@@ -125,8 +153,12 @@ void textui_view_ability_menu(struct pla
+ 	menu.header = buf;
+ 	menu_setpriv(&menu, num_abilities, ability_list);
+ 	loc.page_rows = num_abilities + 1;
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_abilities;
++#else
+ 	menu.flags = MN_DBL_TAP;
+ 	menu.browse_hook = view_ability_menu_browser;
++#endif
+ 	region_erase_bordered(&loc);
+ 	menu_layout(&menu, &loc);
+ 
 diff --git a/src/main.c b/src/main.c
 --- a/src/main.c
 +++ b/src/main.c
@@ -964,7 +1118,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,69 @@
+@@ -24,6 +24,70 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -992,8 +1146,6 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	bool can_inspect, bool attack);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
-+void web_set_letter_menu(const char *title);
-+void web_add_letter_choice(char key, const char *name);
 +void web_cancel_birth(void);
 +void web_finish_run(bool new_game);
 +void web_set_outcome(const char *kind, const char *name, const char *race,
@@ -1024,9 +1176,12 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_option_notice(const char *message);
 +void web_set_menu_sections(int current, int available);
 +void web_set_store(const char *name, bool home);
++void web_enter_store_menu(void);
++void web_leave_store_menu(void);
 +void web_set_confirmation_price(int32_t price);
 +void web_add_menu_row(int index, const char *name, const char *detail,
 +	const char *price, char key, bool enabled);
++void web_set_menu_description(const wchar_t *description);
 +void web_menu_action(int key, const char *label);
 +void web_toggle_tiles(void);
 +#endif
@@ -1037,18 +1192,20 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
-@@ -769,6 +769,10 @@
+@@ -769,6 +769,12 @@ ui_event menu_select(struct menu *menu,
  {
  	ui_event in = EVENT_EMPTY;
  	bool no_act = (menu->flags & MN_NO_ACTION) ? true : false;
 +#ifdef __EMSCRIPTEN__
 +	bool save_slots = notify & EVT_WEB_DELETE;
-+	bool web_rows = menu->web_render || (save_slots && menu->row_funcs == &menu_iter_strings);
++	bool strings = menu->row_funcs == &menu_iter_strings;
++	bool actions = menu->row_funcs == &menu_iter_actions;
++	bool web_rows = menu->web_render || strings || actions;
 +#endif
  
  	assert(menu->active.width != 0 && menu->active.page_rows != 0);
  
-@@ -782,7 +786,51 @@
+@@ -782,7 +788,65 @@ ui_event menu_select(struct menu *menu,
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
@@ -1059,12 +1216,26 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +			menu->web_render(menu);
 +		else if (web_rows) {
 +			int count = menu->filter_list ? menu->filter_count : menu->count;
-+			const char **items = menu_priv(menu);
++			const char **items = strings ? menu_priv(menu) : NULL;
++			const menu_action *entries = actions ? menu_priv(menu) : NULL;
 +
-+			web_set_menu(menu, menu->cursor, menu->title);
++			web_set_menu(menu, menu->cursor, menu->prompt);
++			if (menu->title) web_set_menu_title(menu->title);
 +			for (int pos = 0; pos < count; pos++) {
 +				int oid = menu->filter_list ? menu->filter_list[pos] : pos;
-+				web_add_menu_row(pos, items[oid], NULL, NULL, 0, true);
++				char key = 0;
++				if (!(menu->flags & (MN_NO_TAGS | MN_REL_TAGS))) {
++					if (menu->selections && !(menu->flags & MN_PVT_TAGS) &&
++							(size_t)pos < strlen(menu->selections))
++						key = menu->selections[pos];
++					else if (menu->row_funcs->get_tag)
++						key = menu->row_funcs->get_tag(menu, oid);
++				}
++				if (strings)
++					web_add_menu_row(pos, items[oid], NULL, NULL, key, true);
++				else if (entries[oid].name && !(entries[oid].flags & MN_ACT_HIDDEN))
++					web_add_menu_row(pos, entries[oid].name, NULL, NULL, key,
++						!(entries[oid].flags & MN_ACT_GRAYED));
 +			}
 +		}
 +#endif
@@ -1100,7 +1271,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -1052,10 +1100,29 @@
+@@ -1052,10 +1116,29 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
  
@@ -1133,7 +1304,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
-@@ -458,21 +458,40 @@ static void store_redraw(struct store_context *ctx)
+@@ -458,21 +458,40 @@ static void store_redraw(struct store_co
  	}
  }
  
@@ -1176,7 +1347,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Success */
  	return (true);
-@@ -563,8 +582,10 @@ static bool store_sell(struct store_context *ctx)
+@@ -563,8 +582,10 @@ static bool store_sell(struct store_cont
  			prt(format("Price: %ld", (long)price), 1, 0);
  
  		/* Confirm sale */
@@ -1189,7 +1360,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  			screen_load();
  			return false;
  		}
-@@ -713,10 +734,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -713,10 +734,10 @@ static bool store_purchase(struct store_
  		prt(format("Price: %ld", (long)price), 1, 0);
  
  		/* Confirm purchase */
@@ -1204,10 +1375,11 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  		screen_load();
  
-@@ -865,6 +886,44 @@ static bool store_process_command_key(struct keypress kp)
+@@ -865,15 +886,61 @@ static bool store_process_command_key(st
  /**
   * Select an item from the store's stock, and return the stock index
   */
+-static int store_get_stock(struct menu *m, int oid)
 +#ifdef __EMSCRIPTEN__
 +static void web_render_store(struct menu *m)
 +{
@@ -1246,10 +1418,27 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +}
 +#endif
 +
- static int store_get_stock(struct menu *m, int oid)
++static int store_get_stock(struct menu *m, int oid, const char *prompt)
  {
  	ui_event e;
-@@ -1007,7 +1066,13 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+ 	int no_act = m->flags & MN_NO_ACTION;
+ 
++	prt(format("%s (ESC to cancel, Enter to select)", prompt), 0, 0);
+ 	/* Set a flag to make sure that we get the selection or escape
+ 	 * without running the menu handler */
+ 	m->flags |= MN_NO_ACTION;
++#ifdef __EMSCRIPTEN__
++	const char *previous_prompt = web_set_prompt(prompt);
++#endif
+ 	e = menu_select(m, 0, true);
++#ifdef __EMSCRIPTEN__
++	web_set_prompt(previous_prompt);
++#endif
++	prt("", 0, 0);
+ 	if (!no_act) {
+ 		m->flags &= ~MN_NO_ACTION;
+ 	}
+@@ -1007,7 +1074,13 @@ static bool context_menu_store_item(stru
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -1263,7 +1452,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1034,6 +1099,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1034,6 +1107,30 @@ static bool store_menu_handle(struct men
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
@@ -1294,7 +1483,37 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1199,6 +1288,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1103,15 +1200,8 @@ static bool store_menu_handle(struct men
+ 			case 'g':
+ 				/* use the old way of purchasing items */
+ 				msg_flag = false;
+-				if (store->feat != FEAT_HOME) {
+-					prt("Purchase which item? (ESC to cancel, Enter to select)",
+-						0, 0);
+-				} else {
+-					prt("Get which item? (Esc to cancel, Enter to select)",
+-						0, 0);
+-				}
+-				oid = store_get_stock(m, oid);
+-				prt("", 0, 0);
++				oid = store_get_stock(m, oid, store->feat != FEAT_HOME ?
++					"Purchase which item?" : "Get which item?");
+ 				if (oid >= 0) {
+ 					store_purchase(ctx, oid, false);
+ 				}
+@@ -1120,10 +1210,7 @@ static bool store_menu_handle(struct men
+ 			case 'x':
+ 				/* use the old way of examining items */
+ 				msg_flag = false;
+-				prt("Examine which item? (ESC to cancel, Enter to select)",
+-					0, 0);
+-				oid = store_get_stock(m, oid);
+-				prt("", 0, 0);
++				oid = store_get_stock(m, oid, "Examine which item?");
+ 				if (oid >= 0) {
+ 					store_examine(ctx, oid);
+ 				}
+@@ -1199,6 +1286,9 @@ static void store_menu_init(struct store
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
@@ -1304,6 +1523,37 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	menu_setpriv(menu, 0, ctx);
  
  	/* Calculate the positions of things and draw */
+@@ -1222,10 +1312,16 @@ void textui_store_knowledge(int n)
+ 	clear_from(0);
+ 
+ 	store_menu_init(&ctx, &stores[n], true);
++#ifdef __EMSCRIPTEN__
++	web_enter_store_menu();
++#endif
+ 	menu_select(&ctx.menu, 0, false);
+ 
+ 	/* Flush messages XXX XXX XXX */
+ 	event_signal(EVENT_MESSAGE_FLUSH);
++#ifdef __EMSCRIPTEN__
++	web_leave_store_menu();
++#endif
+ 
+ 	screen_load();
+ 
+@@ -1294,7 +1390,13 @@ void use_store(game_event_type type, gam
+ 		prt_welcome(store->owner);
+ 
+ 	/* Shopping */
++#ifdef __EMSCRIPTEN__
++	web_enter_store_menu();
++#endif
+ 	menu_select(&ctx.menu, 0, false);
++#ifdef __EMSCRIPTEN__
++	web_leave_store_menu();
++#endif
+ 
+ 	/* Shopping's done */
+ 	event_remove_handler(EVENT_STORECHANGED, refresh_stock, &ctx);
 diff --git a/src/ui-target.c b/src/ui-target.c
 --- a/src/ui-target.c
 +++ b/src/ui-target.c
@@ -1521,7 +1771,7 @@ diff --git a/src/ui-command.c b/src/ui-command.c
 diff --git a/src/ui-context.c b/src/ui-context.c
 --- a/src/ui-context.c
 +++ b/src/ui-context.c
-@@ -795,7 +795,13 @@ int context_menu_object(struct object *obj)
+@@ -795,7 +795,13 @@ int context_menu_object(struct object *o
  	region_erase_bordered(&r);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -1535,6 +1785,62 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
+@@ -1153,6 +1159,34 @@ static void cmd_sub_entry(struct menu *m
+ 	}
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_subcommands(struct menu *m)
++{
++	const struct cmd_info *commands = menu_priv(m);
++	int keyset = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->title);
++	for (int i = 0; i < m->count; i++) {
++		char key[16] = "";
++		if (commands[i].key[keyset]) {
++			struct keypress kp = { EVT_KBRD, commands[i].key[keyset], 0 };
++			keypress_to_readable(key, sizeof(key), kp);
++		}
++		web_add_menu_row(i, commands[i].desc, NULL, key, 0, true);
++	}
++}
++
++static void web_render_commands(struct menu *m)
++{
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title("Commands");
++	for (int i = 0; i < m->count; i++) {
++		web_add_menu_row(i, cmds_all[i].name, NULL, NULL, 0, true);
++	}
++}
++#endif
++
+ /**
+  * Display a list of commands.
+  */
+@@ -1177,6 +1211,10 @@ static bool cmd_menu(struct command_list
+ 	area.row -= list->menu_level;
+ 	assert(area.row > 1);
+ 	menu_layout(&menu, &area);
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_subcommands;
++	menu.title = list->name;
++#endif
+ 
+ 	/* Set up the screen */
+ 	screen_save();
+@@ -1278,6 +1316,9 @@ struct cmd_info *textui_action_menu_choo
+ 
+ 	if (!command_menu)
+ 		command_menu = menu_new(MN_SKIN_SCROLL, &command_menu_iter);
++#ifdef __EMSCRIPTEN__
++	command_menu->web_render = web_render_commands;
++#endif
+ 
+ 	while (cmds_all[len].len && cmds_all[len].menu_level == 0) {
+ 		len++;
 diff --git a/src/ui-map.c b/src/ui-map.c
 --- a/src/ui-map.c
 +++ b/src/ui-map.c
@@ -1882,34 +2188,232 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	int selected_spell;
  };
  
-@@ -215,6 +219,34 @@
+@@ -58,6 +62,30 @@ static int spell_menu_valid(struct menu
+ 	return d->is_valid(player, spells[oid]);
+ }
+ 
++static const char *spell_menu_info(int index, const struct class_spell *spell,
++		char *info, size_t size, int *attr)
++{
++	if (player->spell_flags[index] & PY_SPELL_FORGOTTEN) {
++		*attr = COLOUR_YELLOW;
++		return " forgotten";
++	}
++	if (player->spell_flags[index] & PY_SPELL_LEARNED) {
++		if (player->spell_flags[index] & PY_SPELL_WORKED) {
++			*attr = COLOUR_WHITE;
++			get_spell_info(index, info, size);
++			return info;
++		}
++		*attr = COLOUR_L_GREEN;
++		return " untried";
++	}
++	if (spell->slevel <= player->lev) {
++		*attr = COLOUR_L_BLUE;
++		return " unknown";
++	}
++	*attr = COLOUR_RED;
++	return " difficult";
++}
++
+ /**
+  * Display a row of the spell menu
+  */
+@@ -81,25 +109,8 @@ static void spell_menu_display(struct me
+ 	if (spell->slevel >= 99) {
+ 		illegible = "(illegible)";
+ 		attr = COLOUR_L_DARK;
+-	} else if (player->spell_flags[spell_index] & PY_SPELL_FORGOTTEN) {
+-		comment = " forgotten";
+-		attr = COLOUR_YELLOW;
+-	} else if (player->spell_flags[spell_index] & PY_SPELL_LEARNED) {
+-		if (player->spell_flags[spell_index] & PY_SPELL_WORKED) {
+-			/* Get extra info */
+-			get_spell_info(spell_index, help, sizeof(help));
+-			comment = help;
+-			attr = COLOUR_WHITE;
+-		} else {
+-			comment = " untried";
+-			attr = COLOUR_L_GREEN;
+-		}
+-	} else if (spell->slevel <= player->lev) {
+-		comment = " unknown";
+-		attr = COLOUR_L_BLUE;
+ 	} else {
+-		comment = " difficult";
+-		attr = COLOUR_RED;
++		comment = spell_menu_info(spell_index, spell, help, sizeof(help), &attr);
+ 	}
+ 
+ 	/* Dump the spell --(-- */
+@@ -141,14 +152,60 @@ static bool spell_menu_handler(struct me
+ 	return false;
+ }
+ 
++static void spell_describe(int spell_index)
++{
++	const struct class_spell *spell = spell_by_index(player, spell_index);
++
++	/* Spell description */
++	text_out("%s", spell->text);
++
++	/* To summarize average damage, count the damaging effects */
++	int num_damaging = 0;
++	for (struct effect *e = spell->effect; e != NULL; e = effect_next(e)) {
++		if (effect_damages(e)) {
++			num_damaging++;
++		}
++	}
++	/* Now enumerate the effects' damage and type if not forgotten */
++	if (num_damaging > 0
++		&& (player->spell_flags[spell_index] & PY_SPELL_WORKED)
++		&& !(player->spell_flags[spell_index] & PY_SPELL_FORGOTTEN)) {
++		dice_t *shared_dice = NULL;
++		int i = 0;
++
++		text_out("  Inflicts an average of");
++		for (struct effect *e = spell->effect; e != NULL; e = effect_next(e)) {
++			if (e->index == EF_SET_VALUE) {
++				shared_dice = e->dice;
++			} else if (e->index == EF_CLEAR_VALUE) {
++				shared_dice = NULL;
++			}
++			if (effect_damages(e)) {
++				if (num_damaging > 2 && i > 0) {
++					text_out(",");
++				}
++				if (num_damaging > 1 && i == num_damaging - 1) {
++					text_out(" and");
++				}
++				text_out_c(COLOUR_L_GREEN, " %d", effect_avg_damage(e, shared_dice));
++				const char *projection = effect_projection(e);
++				if (strlen(projection) > 0) {
++					text_out(" %s", projection);
++				}
++				i++;
++			}
++		}
++		text_out(" damage.");
++	}
++}
++
++#ifndef __EMSCRIPTEN__
+ /**
+  * Show spell long description when browsing
+  */
+ static void spell_menu_browser(int oid, void *data, const region *loc)
+ {
+ 	struct spell_menu_data *d = data;
+-	int spell_index = d->spells[oid];
+-	const struct class_spell *spell = spell_by_index(player, spell_index);
+ 
+ 	if (d->show_description) {
+ 		/* Redirect output to the screen */
+@@ -158,47 +215,8 @@ static void spell_menu_browser(int oid,
+ 		text_out_pad = 1;
+ 
+ 		Term_gotoxy(loc->col, loc->row + loc->page_rows);
+-		/* Spell description */
+-		text_out("\n%s", spell->text);
+-
+-		/* To summarize average damage, count the damaging effects */
+-		int num_damaging = 0;
+-		for (struct effect *e = spell->effect; e != NULL; e = effect_next(e)) {
+-			if (effect_damages(e)) {
+-				num_damaging++;
+-			}
+-		}
+-		/* Now enumerate the effects' damage and type if not forgotten */
+-		if (num_damaging > 0
+-			&& (player->spell_flags[spell_index] & PY_SPELL_WORKED)
+-			&& !(player->spell_flags[spell_index] & PY_SPELL_FORGOTTEN)) {
+-			dice_t *shared_dice = NULL;
+-			int i = 0;
+-
+-			text_out("  Inflicts an average of");
+-			for (struct effect *e = spell->effect; e != NULL; e = effect_next(e)) {
+-				if (e->index == EF_SET_VALUE) {
+-					shared_dice = e->dice;
+-				} else if (e->index == EF_CLEAR_VALUE) {
+-					shared_dice = NULL;
+-				}
+-				if (effect_damages(e)) {
+-					if (num_damaging > 2 && i > 0) {
+-						text_out(",");
+-					}
+-					if (num_damaging > 1 && i == num_damaging - 1) {
+-						text_out(" and");
+-					}
+-					text_out_c(COLOUR_L_GREEN, " %d", effect_avg_damage(e, shared_dice));
+-					const char *projection = effect_projection(e);
+-					if (strlen(projection) > 0) {
+-						text_out(" %s", projection);
+-					}
+-					i++;
+-				}
+-			}
+-			text_out(" damage.");
+-		}
++		text_out("\n");
++		spell_describe(d->spells[oid]);
+ 		text_out("\n\n");
+ 
+ 		/* XXX */
+@@ -206,6 +224,7 @@ static void spell_menu_browser(int oid,
+ 		text_out_indent = 0;
+ 	}
+ }
++#endif
+ 
+ static const menu_iter spell_menu_iter = {
+ 	NULL,	/* get_tag = NULL, just use lowercase selections */
+@@ -215,6 +234,53 @@ static const menu_iter spell_menu_iter =
  	NULL	/* no resize hook */
  };
  
 +#ifdef __EMSCRIPTEN__
++static textblock *web_spell_text;
++
++static void web_spell_text_out(uint8_t attr, const char *text)
++{
++	textblock_append(web_spell_text, "%s", text);
++}
++
 +static void web_render_spell_choices(struct menu *m)
 +{
 +	struct spell_menu_data *d = menu_priv(m);
-+	bool letter_menu = d->browse || d->show_description;
-+	if (letter_menu)
-+		web_set_letter_menu(d->web_title);
-+	else
-+		web_set_menu(m, m->cursor, NULL);
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(d->web_title);
++	web_menu_action('?', d->show_description ? "Hide description" : "Show description");
 +	for (int i = 0; i < d->n_spells; ++i) {
 +		int index = d->spells[i];
 +		const struct class_spell *spell = spell_by_index(player, index);
 +		if (!spell) continue;
 +		bool valid = spell_menu_valid(m, i);
-+		if (letter_menu) {
-+			if (valid) web_add_letter_choice(m->selections[i], spell->name);
-+			continue;
++		char detail[100];
++		char info[30];
++		int attr;
++		bool legible = spell->slevel < 99;
++		if (legible) {
++			const char *status = spell_menu_info(index, spell, info, sizeof(info), &attr);
++			strnfmt(detail, sizeof(detail), "Lv %d · Mana %d · Fail %d%%%s",
++				spell->slevel, spell->smana, spell_chance(index), status);
 +		}
-+		char detail[80];
-+		strnfmt(detail, sizeof(detail), "Lv %d · Mana %d · Fail %d%%",
-+			spell->slevel, spell->smana, spell_chance(index));
-+		web_add_menu_row(i, spell->slevel >= 99 ? "(illegible)" : spell->name,
-+			spell->slevel >= 99 ? NULL : detail, NULL, m->selections[i],
-+			valid);
++		web_add_menu_row(i, legible ? spell->name : "(illegible)",
++			legible ? detail : NULL, NULL, m->selections[i], valid);
++	}
++	if (d->show_description && m->cursor >= 0 && m->cursor < d->n_spells) {
++		int index = d->spells[m->cursor];
++		if (spell_okay_to_browse(player, index)) {
++			void (*previous_hook)(uint8_t, const char *) = text_out_hook;
++			web_spell_text = textblock_new();
++			text_out_hook = web_spell_text_out;
++			spell_describe(index);
++			text_out_hook = previous_hook;
++			web_set_menu_description(textblock_text(web_spell_text));
++			textblock_free(web_spell_text);
++			web_spell_text = NULL;
++		}
 +	}
 +}
 +#endif
@@ -1917,30 +2421,35 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -287,7 +319,16 @@
+@@ -249,7 +315,11 @@ static struct menu *spell_menu_new(const
+ 	m->header = "Name                             Lv Mana Fail Info";
+ 	m->flags = MN_CASELESS_TAGS | MN_KEYMAP_ESC;
+ 	m->selections = all_letters_nohjkl;
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_spell_choices;
++#else
+ 	m->browse_hook = spell_menu_browser;
++#endif
+ 	m->cmd_keys = "?";
+ 
+ 	/* Set size */
+@@ -287,6 +357,10 @@ static int spell_menu_select(struct menu
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
 +#ifdef __EMSCRIPTEN__
 +	strnfmt(d->web_title, sizeof(d->web_title), "%s which %s?", verb, noun);
 +	my_strcap(d->web_title);
-+	m->web_render = web_render_spell_choices;
-+	const char *previous = web_set_prompt(buf);
 +#endif
  	menu_select(m, 0, true);
-+#ifdef __EMSCRIPTEN__
-+	web_set_prompt(previous);
-+#endif
  	screen_load();
  
- 	return d->selected_spell;
-@@ -306,6 +347,10 @@
+@@ -306,6 +380,9 @@ static void spell_menu_browse(struct men
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;
 +#ifdef __EMSCRIPTEN__
 +	strnfmt(d->web_title, sizeof(d->web_title), "Browsing %ss", noun);
-+	m->web_render = web_render_spell_choices;
 +#endif
  	menu_select(m, 0, true);
  
@@ -1948,7 +2457,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 diff --git a/src/ui-options.c b/src/ui-options.c
 --- a/src/ui-options.c
 +++ b/src/ui-options.c
-@@ -138,6 +138,18 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
+@@ -138,6 +138,18 @@ static void option_toggle_display(struct
  		option_name(oid)), row, col + 45);
  }
  
@@ -1967,7 +2476,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Handle keypresses for an option entry.
   */
-@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct
  		} else if (event->key.code == 't' || event->key.code == 'T') {
  			option_set(option_name(oid), !player->opts.opt[oid]);
  		} else if (event->key.code == 's' || event->key.code == 'S') {
@@ -1991,7 +2500,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  			screen_load();
  		/*
  		 * For birth options, only allow restore from custom defaults
-@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct
  				screen_load();
  				menu_refresh(m, false);
  			} else {
@@ -2005,7 +2514,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  				screen_load();
  			}
  		/*
-@@ -318,6 +342,26 @@ static const menu_iter option_toggle_iter = {
+@@ -318,6 +342,26 @@ static const menu_iter option_toggle_ite
  };
  
  
@@ -2032,7 +2541,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Interact with some options
   */
-@@ -358,6 +402,12 @@ static void option_toggle_menu(const char *name, int page)
+@@ -358,6 +402,12 @@ static void option_toggle_menu(const cha
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
  	menu_set_filter(m, option_page[page], i);
@@ -2045,7 +2554,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -453,7 +503,13 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -453,7 +503,13 @@ static void do_cmd_options_win(const cha
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -2059,7 +2568,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf
  }
  
  
@@ -2080,7 +2589,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *nam
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -2089,7 +2598,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *nam
   */
  static void do_cmd_sidebar_mode(const char *name, int unused)
  {
@@ -2099,7 +2608,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const ch
  	}
  
  	screen_load();
@@ -2107,7 +2616,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  }
  
  
-@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
+@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *n
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -2116,7 +2625,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
+@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -2125,7 +2634,157 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -2056,6 +2130,29 @@ static menu_action option_actions[] =
+@@ -1396,6 +1470,22 @@ static bool ego_action(struct menu * men
+ 	return false;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_ego_ignore(struct menu *m)
++{
++	const struct ego_desc *choices = menu_priv(m);
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title("Ego item ignore menu");
++	for (int i = 0; i < m->count; i++) {
++		const struct ego_desc *choice = &choices[i];
++		web_add_option_toggle(i, format("%s %s", quality_choices[choice->itype].name,
++			e_info[choice->e_idx].name),
++			ego_is_ignored(choice->e_idx, choice->itype), true);
++	}
++}
++#endif
++
+ /**
+  * Display list of ego items to be ignored.
+  */
+@@ -1471,6 +1561,9 @@ static void ego_menu(const char *unused,
+ 	memset(&menu, 0, sizeof(menu));
+ 	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
+ 	menu_setpriv(&menu, max_num, choice);
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_ego_ignore;
++#endif
+ 	menu_layout(&menu, &area);
+ 
+ 	/* Select an entry */
+@@ -1574,6 +1667,25 @@ static void quality_subdisplay(struct me
+ 	c_put_str(attr, name, row, col);
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_quality_levels(struct menu *m)
++{
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->title);
++	for (int i = 0; i < m->count; i++)
++		web_add_menu_row(i, quality_values[i].name, NULL, NULL, 0, true);
++}
++
++static void web_render_quality_ignore(struct menu *m)
++{
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->title);
++	for (int i = 1; i < m->count; i++)
++		web_add_menu_row(i, quality_choices[i].name, NULL,
++			quality_values[ignore_level[i]].name, 0, true);
++}
++#endif
++
+ 
+ /**
+  * Handle keypresses.
+@@ -1606,6 +1718,11 @@ static bool quality_action(struct menu *
+ 		area.row += Term->hgt - 1 - area.row - menu.count;
+ 
+ 	menu_layout(&menu, &area);
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_quality_levels;
++	menu.title = quality_choices[oid].name;
++	menu.cursor = ignore_level[oid];
++#endif
+ 
+ 	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
+ 				area.row + area.page_rows);
+@@ -1638,6 +1755,9 @@ static void quality_menu(const char *unu
+ 	/* Set up the menu */
+ 	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
+ 	menu.title = "Quality ignore menu";
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_quality_ignore;
++#endif
+ 	menu_setpriv(&menu, ITYPE_MAX, quality_values);
+ 	menu_layout(&menu, &area);
+ 
+@@ -1767,6 +1887,23 @@ static const menu_iter ignore_sval_menu
+ 	NULL,
+ };
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_item_kinds(struct menu *m)
++{
++	const ignore_choice *choices = menu_priv(m);
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->title);
++	for (int i = 0; i < m->count; i++) {
++		const ignore_choice *choice = &choices[i];
++		char name[80];
++		object_kind_name(name, sizeof(name), choice->kind, choice->aware);
++		web_add_option_toggle(i, name, choice->kind->ignore &
++			(choice->aware ? IGNORE_IF_AWARE : IGNORE_IF_UNAWARE), true);
++	}
++}
++#endif
++
+ 
+ /**
+  * Collect all tvals in the big ignore_choice array
+@@ -1860,6 +1997,12 @@ static bool sval_menu(int tval, const ch
+ 	menu_setpriv(menu, n_choices, choices);
+ 	menu->cmd_keys = "Tt";
+ 	menu_layout(menu, &area);
++#ifdef __EMSCRIPTEN__
++	char title[80];
++	strnfmt(title, sizeof(title), "Ignore the following %s:", desc);
++	menu->title = title;
++	menu->web_render = web_render_item_kinds;
++#endif
+ 	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
+ 	menu_select(menu, 0, false);
+ 
+@@ -1998,6 +2141,21 @@ static const menu_iter options_item_iter
+ 	NULL
+ };
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_item_options(struct menu *m)
++{
++	web_set_menu(m, m->cursor, NULL);
++	web_set_menu_title(m->title);
++	for (int i = 0; i < m->count; i++) {
++		if (!valid_options_item(m, i)) continue;
++		const char *name = i < N_ELEMENTS(sval_dependent) ?
++			sval_dependent[i].desc :
++			extra_item_options[i - N_ELEMENTS(sval_dependent) - 1].name;
++		web_add_menu_row(i, name, NULL, NULL, tag_options_item(m, i), true);
++	}
++}
++#endif
++
+ 
+ /**
+  * Display and handle the main ignoring menu.
+@@ -2011,6 +2169,9 @@ void do_cmd_options_item(const char *tit
+ 				 N_ELEMENTS(extra_item_options) + 1, NULL);
+ 
+ 	menu.title = title;
++#ifdef __EMSCRIPTEN__
++	menu.web_render = web_render_item_options;
++#endif
+ 	menu_layout(&menu, &SCREEN_REGION);
+ 
+ 	screen_save();
+@@ -2056,6 +2217,29 @@ static menu_action option_actions[] =
  };
  
  
@@ -2155,7 +2814,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display the options main menu.
   */
-@@ -2068,6 +2165,9 @@ void do_cmd_options(void)
+@@ -2068,6 +2252,9 @@ void do_cmd_options(void)
  
  		option_menu->title = "Options Menu";
  		option_menu->flags = MN_CASELESS_TAGS;

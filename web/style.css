@@ -374,8 +374,6 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 #terminal-keys > #birth-start-over[hidden], #terminal-keys.birth-review-controls > [hidden] {
     display: none !important;
 }
-#terminal-keys.letter-controls { grid-template-columns: repeat(2, 60px); justify-content: center; }
-#terminal-keys.letter-controls #confirm-key { display: none !important; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr) 60px; }
 #terminal-keys.options-controls #confirm-key { display: none !important; }
 #terminal-keys.birth-choice-controls { grid-template-columns: minmax(0, 1fr); }
@@ -387,13 +385,6 @@ main:has(#option-digits:not([hidden])) #terminal-keys { grid-template-columns: r
 main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !important; }
 
 .key-panel { display: grid; gap: 0.25rem; }
-#letter-choices {
-    display: flex;
-    flex-wrap: wrap;
-}
-#letter-choices > button {
-    flex: 1 0 max(min(44px, 100%), calc(100% / var(--choices-per-row, 1) - 0.25rem));
-}
 .keyboard-row { display: flex; gap: 0.25rem; }
 .keyboard-row button { flex: 1; min-width: 0; padding-inline: 0; }
 .keyboard-row .space-key { flex: 1.5; }
@@ -560,7 +551,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 }
 #outcome-actions button[aria-current="true"] { background: #4c3820; }
 #menu-actions.birth-actions button { min-width: 0; overflow-wrap: anywhere; }
-.view > #birth-preview {
+.view > :is(#birth-preview, #menu-description) {
     grid-area: prompt;
     min-width: 0;
     max-height: 32dvh;
@@ -571,6 +562,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     font-size: 0.875rem;
     line-height: 1.4;
 }
+#menu-description { white-space: pre-line; overflow-wrap: anywhere; }
 #birth-choice { color: var(--accent); }
 .birth-preview-hint { display: block; color: var(--muted); font-size: 0.8125rem; }
 #birth-bonuses { margin-top: 0.25rem; white-space: pre-line; overflow-wrap: anywhere; }

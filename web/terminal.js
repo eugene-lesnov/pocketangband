@@ -90,6 +90,7 @@ const menuSections = document.querySelector("#menu-sections");
 const menuRows = document.querySelector("#menu-rows");
 const menuEmpty = document.querySelector("#menu-empty");
 const menuActions = document.querySelector("#menu-actions");
+const menuDescription = document.querySelector("#menu-description");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
@@ -101,7 +102,6 @@ const resetStats = document.querySelector("#reset-stats");
 const birthRollActions = document.querySelector("#birth-roll-actions");
 const previousRoll = document.querySelector("#previous-roll");
 const birthRollHistory = document.querySelector("#birth-roll-history");
-const letterChoices = document.querySelector("#letter-choices");
 const actionsScreen = document.querySelector("#actions-screen");
 const quantity = document.querySelector("#quantity");
 const optionDigits = document.querySelector("#option-digits");
@@ -729,7 +729,6 @@ function updateControls() {
     const reviewing = mode === "birth-review";
     const stats = mode === "birth-stats" || rolling;
     const birthChoiceMenu = !!menu?.birth;
-    const letterMenu = !!context.letterMenu;
     const more = mode === "more";
     const overview = mode === "overview";
     const details = mode === "details";
@@ -753,11 +752,11 @@ function updateControls() {
     toggleTiles.setAttribute("aria-pressed", String(!!views.map.frame?.terrainAttributes));
     vitals.setAttribute("aria-controls", command ? "character-screen" : "conditions-screen");
     vitals.disabled = disabled || runDirection || !(selecting || aiming || directing || command);
-    views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu && !letterMenu);
+    views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
     const playPad = command || selecting || aiming || directing;
     const padVisible = showRunControls || (!openPanel && !showKeyboard && !stopVisible &&
-        (playPad || (isMenu() && !menu && !letterMenu)));
+        (playPad || (isMenu() && !menu)));
     setActions(directionPad, padVisible, disabled || running);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
@@ -774,14 +773,12 @@ function updateControls() {
     setActions(terminalKeys, !showRunControls && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
-    terminalKeys.classList.toggle("letter-controls", letterMenu);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
     terminalKeys.classList.toggle("birth-review-controls", reviewing);
     birthStartOver.hidden = !reviewing;
     terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
-    setActions(letterChoices, letterMenu && !showKeyboard, disabled);
     confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" : aiming ?
         hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming || history ? "n" : "Escape";
@@ -793,9 +790,9 @@ function updateControls() {
         aiming ? hasTarget ? useTarget : "Target monster or location" :
         editing || counting || optionNumber || resting ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options || birthChoiceMenu || resultChild;
+    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
-        (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
+        (!more && !!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
         history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
         "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
@@ -825,8 +822,8 @@ function updateControls() {
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
     setActions(actionsScreen, !!openPanel && openPanel !== "conditions", disabled);
-    setActions(menuActions, !!menu?.actions.length, disabled);
-    menuRows.disabled = menuSections.disabled = disabled;
+    setActions(menuActions, !more && !!menu?.actions.length, disabled);
+    menuRows.disabled = menuSections.disabled = disabled || more;
     saveManagement.hidden = mode !== "save-slots";
     deleteSave.disabled = disabled || !(menuCursor > 0);
 }
@@ -959,7 +956,6 @@ function updateView(state = world, region = views.target.crop) {
         mode === "overview" ? levelMap.textContent : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
         mode === "birth-roll" ? "Standard roller" :
-        context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title);
     const activeSection = menu?.sections?.find((section) => section.active);
@@ -1018,7 +1014,6 @@ function handleWorkerMessage({ data }) {
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.birth?.title !== menu?.birth?.title ||
-                data.context.letterMenu?.title !== context.letterMenu?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
             if (mode === "results-file") clearResultFile();
             if (changed) {
@@ -1042,10 +1037,6 @@ function handleWorkerMessage({ data }) {
             request = data.request;
             context = data.context;
             menu = data.menu;
-            if (changed && context.letterMenu) {
-                letterChoices.replaceChildren(...context.letterMenu.choices.map(({ key, name }) =>
-                    makeKey(key, key, `${name} (${key})`)));
-            }
             deletingSave = false;
             if (changed && isTextEntry(mode)) renderKeyboard();
             launch.hidden = true;
@@ -1072,7 +1063,6 @@ function handleWorkerMessage({ data }) {
                     selected.scrollIntoView({ block: "nearest" });
                 }
             }
-            if (changed && context.letterMenu) layoutLetterChoices(letterChoices.clientWidth);
             if (changed && (mode === "character" || mode === "birth-review")) {
                 for (const detail of characterScreen.querySelectorAll(".character-detail")) {
                     detail.open = mode === "birth-review" && detail.id !== "character-defenses-section";
@@ -1166,7 +1156,7 @@ function sendInput(input) {
     running = mode === "run-direction" && input.type === "key" && input.code !== keyCode("Escape");
     worker.postMessage({ ...input, request });
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
-        (mode === "menu" && !menu?.store && !menu?.birth && !context.letterMenu && !context.outcome && !menu?.title)) &&
+        (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
         ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
@@ -1201,7 +1191,7 @@ main.addEventListener("click", (event) => {
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
     if (button === cancelKey && closeInputPanel()) return;
-    if (button === confirmKey && menu) {
+    if (button === confirmKey && menu && mode !== "more") {
         sendInput({ type: "menu-row", code: menuCursor });
         return;
     }
@@ -1377,6 +1367,12 @@ function renderBirthStats(stats, changed) {
 
 function renderMenu(state) {
     menuScreen.hidden = !state;
+    const description = state?.description ?? "";
+    menuDescription.hidden = !description;
+    if (menuDescription.textContent !== description) {
+        menuDescription.textContent = description;
+        menuDescription.scrollTop = 0;
+    }
     menuScreen.classList.toggle("options-menu", Boolean(state?.options));
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
     const outcome = !!context.outcome;
@@ -1451,8 +1447,8 @@ function renderMenu(state) {
     }
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
-    menuActions.replaceChildren(...state.actions.map((action) => state.options || state.birth ?
-        makeKey(String.fromCharCode(action.key), action.label) : makeInput("store-action", action.key, action.label)));
+    menuActions.replaceChildren(...state.actions.map((action) => state.store ?
+        makeInput("store-action", action.key, action.label) : makeKey(String.fromCharCode(action.key), action.label)));
     renderBirthPreview();
     menuScreen.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
@@ -1489,7 +1485,7 @@ function renderKeyboard() {
         makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
         makeKey("ArrowRight", "→", "Move text cursor right")]);
-    if (mode === "terminal" || (isMenu() && !menu && !context.letterMenu)) rows.unshift([
+    if (mode === "terminal" || (isMenu() && !menu)) rows.unshift([
         makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
         makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
     ]);
@@ -1606,7 +1602,7 @@ for (const view of [views.terminal, views.target]) {
     view.viewport.addEventListener("click", (event) => {
         const type = view === views.target ? mode === "target" ? "target-cell" :
             mode === "aim" || mode === "direction" ? "aim-cell" : undefined :
-            isMenu() && !menu && !context.letterMenu ? "tap" : undefined;
+            isMenu() && !menu ? "tap" : undefined;
         if (event.detail === 0 || !request || tap?.request !== request || activeView !== view ||
             !type || !view.grid || !view.gridElement.contains(event.target) ||
             view.rendered !== views.terminal.frame || !sameRegion(view.region, view.crop)) return;
@@ -1691,22 +1687,6 @@ journal.addEventListener("toggle", () => {
     viewOptions.setAttribute("aria-expanded", "false");
     messages.scrollTop = messages.scrollHeight;
 });
-function layoutLetterChoices(width) {
-    const count = letterChoices.childElementCount;
-    if (!width || !count) return;
-    const gap = parseFloat(getComputedStyle(letterChoices).columnGap);
-    const capacity = Math.max(1, Math.floor((width + gap) / (44 + gap)));
-    const rows = Math.ceil(count / capacity);
-    const shorterRow = Math.floor(count / rows);
-    const longerRow = shorterRow + 1;
-    const choicesInLongerRows = (count % rows) * longerRow;
-    for (let i = 0; i < count; i++) {
-        const columns = i < choicesInLongerRows ? longerRow : shorterRow;
-        letterChoices.children[i].style.setProperty("--choices-per-row", columns);
-    }
-}
-
-new ResizeObserver(([entry]) => layoutLetterChoices(entry.contentRect.width)).observe(letterChoices);
 
 const viewResize = new ResizeObserver((entries) => {
     if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;
@@ -1769,7 +1749,7 @@ document.addEventListener("keydown", (event) => {
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 
     if (event.key === "Tab") return;
-    if (menu && event.key === "Enter") {
+    if (menu && mode !== "more" && event.key === "Enter") {
         event.preventDefault();
         if (menu.rows.some((row) => row.index === menuCursor && row.enabled)) {
             sendInput({ type: "menu-row", code: menuCursor });

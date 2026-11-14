@@ -67,7 +67,7 @@ self.addEventListener("message", ({ data }) => {
         const stat = waiting.context.birthStats?.rows[data.code];
         if (!(data.type === "buy-stat" ? stat?.canIncrease : stat?.canDecrease)) return;
     } else if (["menu-row", "menu-section", "store-action"].includes(data.type)) {
-        if (!waiting?.menu || data.request !== waiting.request) return;
+        if (!waiting?.menu || waiting.mode === "more" || data.request !== waiting.request) return;
         const { rows, sections, actions } = waiting.menu;
         if (data.type === "menu-row" && !rows.some((row) => row.index === data.code && row.enabled)) return;
         if (data.type === "menu-section" &&

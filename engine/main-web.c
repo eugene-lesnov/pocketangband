@@ -133,14 +133,6 @@ EM_JS(void, web_set_history, (const char *text), {
     Module['inputContext'] = { detail: UTF8ToString(text) };
 });
 
-EM_JS(void, web_set_letter_menu, (const char *title), {
-    Module['inputContext'] = { letterMenu: { title: UTF8ToString(title), choices: [] } };
-});
-
-EM_JS(void, web_add_letter_choice, (char key, const char *name), {
-    Module['inputContext'].letterMenu.choices.push({ key: String.fromCharCode(key), name: UTF8ToString(name) });
-});
-
 EM_JS(bool, skip_splash, (void), {
     return !!Module['skipSplash'];
 });
@@ -263,6 +255,20 @@ void web_set_menu_sections(int current, int available)
 
 EM_JS(void, web_set_store, (const char *name, bool home), {
     Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home };
+});
+
+EM_JS(void, web_enter_store_menu, (void), {
+    if (!Module['storeMenus']) Module['storeMenus'] = [];
+    Module['storeMenus'].push(null);
+});
+
+EM_JS(void, web_leave_store_menu, (void), {
+    Module['storeMenus'].pop();
+});
+
+EM_JS_DEPS(menu_description, "$UTF32ToString");
+EM_JS(void, web_set_menu_description, (const wchar_t *description), {
+    Module['inputMenu'].description = UTF32ToString(description);
 });
 
 EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
@@ -572,9 +578,15 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     const modeName = UTF8ToString(mode);
     const context = modeName === "target" ? { ...Module['targetOptions'] } :
         modeName === "more" ? {} : Module['inputContext'] ?? {};
-    const menu = modeName === "menu" || modeName === "save-slots" ? Module['inputMenu'] : undefined;
+    const stores = Module['storeMenus'];
+    const store = modeName === "more" ? stores?.at(-1) : null;
+    const menu = modeName === "menu" || modeName === "save-slots" ? Module['inputMenu'] :
+        store ? { ...store, store: { ...store.store, gold } } : undefined;
     if (modeName !== "more") Module['inputContext'] = Module['inputMenu'] = undefined;
-    if (menu?.store) menu.store.gold = gold;
+    if (modeName === "menu" && menu?.store) {
+        menu.store.gold = gold;
+        if (stores?.length) stores[stores.length - 1] = menu;
+    }
     if (prompt) context.prompt = UTF8ToString(prompt);
     if (warning) context.castWarning = UTF8ToString(warning);
     if (verb) context.verb = UTF8ToString(verb);
