@@ -21,6 +21,7 @@ const viewTitle = document.querySelector("#view-title");
 const viewOptions = document.querySelector("#view-options");
 const levelMap = document.querySelector("#level-map");
 const toggleTiles = document.querySelector("#toggle-tiles");
+const fitMap = document.querySelector("#fit-map");
 const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
@@ -68,6 +69,8 @@ const inputPrompt = document.querySelector("#input-prompt");
 const editScreen = document.querySelector("#edit-screen");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
+const splashScreen = document.querySelector("#splash-screen");
+const angbandVersion = document.querySelector("#angband-version");
 const menuScreen = document.querySelector("#menu-screen");
 const menuSummary = document.querySelector("#menu-summary");
 const menuSections = document.querySelector("#menu-sections");
@@ -77,6 +80,7 @@ const menuActions = document.querySelector("#menu-actions");
 const letterChoices = document.querySelector("#letter-choices");
 const actionsScreen = document.querySelector("#actions-screen");
 const quantity = document.querySelector("#quantity");
+const optionDigits = document.querySelector("#option-digits");
 const rest = document.querySelector("#rest");
 const keyboard = document.querySelector("#keyboard");
 const keyboardToggle = document.querySelector("#keyboard-toggle");
@@ -109,7 +113,8 @@ const commandFaces = new Map([["CtrlT", "^T"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and MP"], ["!", "HP or MP"]]);
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
-const defaultMapZoom = scales.indexOf(1.5);
+const defaultAsciiZoom = scales.indexOf(1.5);
+const defaultTileZoom = scales.indexOf(1);
 const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
@@ -122,14 +127,12 @@ const views = {
         pre: document.querySelector("#map"),
         canvas: document.querySelector("#map-tiles"),
         title: "Map",
-        zoom: defaultMapZoom,
     },
     target: {
         viewport: document.querySelector("#target-screen"),
         pre: document.querySelector("#target"),
         canvas: document.querySelector("#target-tiles"),
         title: "Targeting",
-        zoom: defaultMapZoom,
     },
 };
 
@@ -251,11 +254,13 @@ function draw() {
             view.region = region;
             view.cursor = cursor;
         }
+        updateViewZoom(view);
         updatePrompt();
         if (view === views.terminal) {
-            if ((centerPending || changed) && !menu &&
+            if (!view.fit && (centerPending || changed) && !menu &&
                 (isMenu() || isTextEntry(mode) || mode === "quantity" || mode === "rest")) showCursor(view);
-        } else if (cell && (centerPending || focusChanged || regionChanged || previousGrid !== view.gridElement)) {
+        } else if (!view.fit && cell &&
+            (centerPending || focusChanged || regionChanged || previousGrid !== view.gridElement)) {
             centerCell(view, cell);
         }
         view.focusCell = cell;
@@ -299,13 +304,48 @@ function showCursor({ viewport, pre }) {
     }
 }
 
-function setZoom(index) {
-    activeView.zoom = index;
-    activeView.viewport.style.setProperty("--zoom", scales[index]);
-    zoomOut.disabled = index === 0;
-    zoomIn.disabled = index === scales.length - 1;
+function zoomIndex(view) {
+    return view.zoom ?? (view.gridElement === view.canvas ? defaultTileZoom : defaultAsciiZoom);
+}
+
+function updateViewZoom(view) {
+    const { viewport, gridElement, grid } = view;
+    const index = view === views.terminal ? view.zoom : zoomIndex(view);
+    const fitted = Boolean(view.fit);
+    viewport.classList.toggle("fit-map", fitted);
+    fitMap.setAttribute("aria-pressed", String(fitted));
+    zoomOut.disabled = fitted || index === 0;
+    if (!fitted) {
+        viewport.style.setProperty("--zoom", scales[index]);
+        zoomIn.disabled = index === scales.length - 1;
+        return;
+    }
+    const { clientWidth, clientHeight } = viewport;
+    if (clientWidth <= 1 || clientHeight <= 1) return;
+    const key = `${clientWidth}/${clientHeight}/${grid.columns}/${grid.rows}/${gridElement.id}`;
+    viewport.style.setProperty("--zoom", 1);
+    if (key !== view.fitKey) {
+        view.fitScale = Math.min((clientWidth - 1) / gridElement.offsetWidth,
+            (clientHeight - 1) / gridElement.offsetHeight, 1);
+        view.fitKey = key;
+    }
+    viewport.style.setProperty("--fit-scale", view.fitScale);
+    zoomIn.disabled = false;
+}
+
+function recenterView() {
     centerPending = true;
     draw();
+}
+
+function changeZoom(step) {
+    if (activeView.fit) {
+        activeView.zoom = scales.findIndex((scale) => scale > activeView.fitScale);
+        activeView.fit = false;
+    } else {
+        activeView.zoom = zoomIndex(activeView) + step;
+    }
+    recenterView();
 }
 
 function renderWorld(state) {
@@ -494,6 +534,8 @@ function updateControls() {
     const directing = mode === "direction";
     const editing = isTextEntry(mode);
     const counting = mode === "quantity";
+    const optionNumber = mode === "option-number";
+    const splash = mode === "splash";
     const resting = mode === "rest";
     const confirming = mode === "confirm";
     const history = mode === "history";
@@ -504,7 +546,7 @@ function updateControls() {
     const details = mode === "details";
     const character = mode === "character";
     const hasTarget = aiming && context.current;
-    const canOpenKeyboard = !counting && !resting && !confirming && !history &&
+    const canOpenKeyboard = !counting && !optionNumber && !splash && !resting && !confirming && !history &&
         !more && !overview && !details && !openPanel;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
@@ -528,6 +570,7 @@ function updateControls() {
     setActions(playKeys, playing && !stopVisible, disabled);
     setActions(terminalKeys, !playing && !stopVisible && !(command && showKeyboard), disabled);
     terminalKeys.classList.toggle("letter-controls", letterMenu);
+    terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     setActions(letterChoices, letterMenu && !showKeyboard, disabled);
     confirmKey.dataset.key = confirming || history ? "y" : selecting ? "t" : aiming ?
         hasTarget ? "5" : "*" : details || character || overview ? "Escape" : "Enter";
@@ -537,13 +580,13 @@ function updateControls() {
     confirmKey.textContent = confirming ? "Yes" : history ? "Keep history" :
         selecting ? context.attack ? context.verb : "Select target" :
         aiming ? hasTarget ? useTarget : "Choose target" :
-        editing || counting || resting || stats ? "Done" : isMenu() ? "Select" :
+        editing || counting || optionNumber || resting || stats ? "Done" : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel || letterMenu;
+    confirmKey.hidden = !!openPanel || letterMenu || !!menu?.options;
     confirmKey.disabled = directing || (selecting && !context.canSelect) ||
         (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
     cancelKey.textContent = confirming ? "No" : history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
-        "Back" : selecting || aiming || directing || editing || counting || resting ?
+        "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     cancelKey.hidden = more || character;
@@ -560,6 +603,7 @@ function updateControls() {
     targetMode.disabled = context.freeAim && !context.targetCount;
     targetInspect.disabled = !context.canInspect;
     setActions(quantity, counting, disabled);
+    setActions(optionDigits, optionNumber, disabled);
     setActions(rest, resting && !stopVisible, disabled);
     setActions(keyboard, showKeyboard && !stopVisible, disabled);
     keyboardToggle.hidden = !canOpenKeyboard;
@@ -650,7 +694,7 @@ function terminalLine(row) {
 }
 
 function updatePrompt() {
-    let text = context.prompt || menu?.prompt;
+    let text = context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
     if (mode === "direction") text = "Choose a direction.";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
@@ -661,7 +705,7 @@ function updatePrompt() {
         text = terminalLine(0);
         if (mode === "more") text = text.replace(/\s*-more-\s*$/, "");
     }
-    if (mode === "confirm" && context.prompt) text = "";
+    if ((mode === "confirm" || mode === "details") && context.prompt) text = "";
     inputPrompt.hidden = !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -680,6 +724,9 @@ function updateView(state = world, region = views.target.crop) {
     const question = mode === "confirm" && context.prompt;
     const showDetails = context.detail !== undefined;
     const showCharacter = mode === "character" && !!context.character;
+    const showSplash = mode === "splash";
+    splashScreen.hidden = !showSplash;
+    if (showSplash) angbandVersion.textContent = context.version;
     characterScreen.hidden = !showCharacter;
     conditionsScreen.hidden = openPanel !== "conditions";
     detailsScreen.hidden = !showDetails;
@@ -688,6 +735,7 @@ function updateView(state = world, region = views.target.crop) {
         detailsScreen.scrollTop = 0;
     }
     editScreen.hidden = !editing && !question;
+    editValue.classList.toggle("confirmation", !editing && Boolean(question));
     if (editing) {
         const value = mode === "rest" ? restLabels.get(context.value.trim()) ?? context.value :
             mode === "quantity" && context.value === "*" ? "All" : context.value;
@@ -714,29 +762,35 @@ function updateView(state = world, region = views.target.crop) {
         }
     }
     for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || !!menu || !!openPanel || editing || !!question || showDetails || showCharacter;
+        view !== activeView || !!menu || !!openPanel || editing || !!question || showDetails || showCharacter || showSplash;
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
     const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
     main.classList.toggle("in-world", showMap);
-    main.classList.toggle("in-game-panel", !!openPanel || showCharacter);
+    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || !!menu?.options || mode === "option-number");
+    main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
     viewOptions.hidden = !showMap;
+    fitMap.hidden = !showMap;
     if (!showMap) viewOptions.setAttribute("aria-expanded", "false");
-    const title = showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
+    const title = showSplash ? "Angband" : showCharacter ? "Character" : mode === "aim" ? "Aim" : mode === "direction" ? "Direction" :
         mode === "overview" ? "Level map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Allocate stats" :
         context.letterMenu ? context.letterMenu.title :
         question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
-            mode === "rest" ? "Rest" : "Text entry" : activeView.title;
+            mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title;
     const activeSection = menu?.sections?.find((section) => section.active);
     viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
-        menu?.store?.name ?? activeSection?.label ?? (menu ? "Choices" : mode === "details" ? context.prompt || title : title));
-    zoomOut.hidden = zoomIn.hidden = !!menu || !!openPanel || editing || !!question || showDetails || showCharacter;
+        menu?.options ?? menu?.store?.name ?? activeSection?.label ??
+        (menu ? "Choices" : mode === "details" ? context.prompt || title : title));
+    zoomOut.hidden = zoomIn.hidden = activeView.viewport.hidden;
     if (previous !== activeView) {
-        if (activeView === views.target) activeView.zoom = views.map.zoom;
-        setZoom(activeView.zoom);
+        if (activeView === views.target) {
+            activeView.zoom = views.map.zoom;
+            activeView.fit = views.map.fit;
+        }
+        centerPending = true;
     }
     renderMenu(menu);
     updatePrompt();
@@ -787,6 +841,10 @@ function handleWorkerMessage({ data }) {
                     shifted = data.mode === "name";
                     keyboardOpen = true;
                 }
+            }
+            if (changed) {
+                views.terminal.fit = data.mode === "overview";
+                views.terminal.fitKey = undefined;
             }
             mode = data.mode;
             request = data.request;
@@ -1011,6 +1069,7 @@ function renderActionsPanel() {
 
 function renderMenu(state) {
     menuScreen.hidden = !state;
+    menuScreen.classList.toggle("options-menu", Boolean(state?.options));
     if (!state) {
         renderedMenu = undefined;
         menuCursor = undefined;
@@ -1022,6 +1081,7 @@ function renderMenu(state) {
     const active = state.sections?.find((section) => section.active)?.id;
     const previousActive = previous?.sections?.find((section) => section.active)?.id;
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
+        state.options !== previous.options ||
         state.prompt !== previous.prompt;
     const previousScroll = menuScreen.scrollTop;
     menuCursor = state.cursor;
@@ -1041,6 +1101,10 @@ function renderMenu(state) {
     menuRows.replaceChildren(...state.rows.map((row) => {
         const button = makeInput("menu-row", row.index, row.name);
         button.disabled = !row.enabled;
+        if (row.checked !== undefined) {
+            button.setAttribute("aria-pressed", String(row.checked));
+            button.classList.toggle("read-only", !row.enabled);
+        }
         if (row.index === menuCursor && row.enabled) {
             current = button;
             button.setAttribute("aria-current", "true");
@@ -1057,11 +1121,12 @@ function renderMenu(state) {
         price.textContent = row.price;
         button.replaceChildren(keyBadge(row.key ? String.fromCharCode(row.key) : ""),
             description, price);
-        button.setAttribute("aria-label", [row.name, row.detail, row.price].filter(Boolean).join(", "));
+        button.setAttribute("aria-label",
+            [row.name, row.detail, row.checked === undefined ? row.price : ""].filter(Boolean).join(", "));
         return button;
     }));
-    menuActions.replaceChildren(...state.actions.map((action) =>
-        makeInput("store-action", action.key, action.label)));
+    menuActions.replaceChildren(...state.actions.map((action) => state.options ?
+        makeKey(String.fromCharCode(action.key), action.label) : makeInput("store-action", action.key, action.label)));
     menuScreen.scrollTop = differentList ? 0 : previousScroll;
     if (current && !differentList && state.cursor !== previous.cursor) {
         const bounds = current.getBoundingClientRect();
@@ -1143,6 +1208,11 @@ showKeys(quantity, [
     ...digits(),
     [makeKey("*", "All"), makeKey("Backspace", "⌫", "Delete digit")],
 ]);
+showKeys(optionDigits, [
+    ...digits(),
+    [makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right"),
+        makeKey("Backspace", "⌫", "Delete digit")],
+]);
 showKeys(rest, [
     [makeKey("&", "As needed"), makeKey("*", "HP and MP"), makeKey("!", "HP or MP")],
     ...digits(),
@@ -1219,8 +1289,13 @@ for (const view of [views.terminal, views.target]) {
 }
 
 toggleTiles.addEventListener("click", () => sendInput({ type: "toggle-tiles" }));
-zoomOut.addEventListener("click", () => setZoom(activeView.zoom - 1));
-zoomIn.addEventListener("click", () => setZoom(activeView.zoom + 1));
+fitMap.addEventListener("click", () => {
+    activeView.fit = !activeView.fit;
+    activeView.fitKey = undefined;
+    recenterView();
+});
+zoomOut.addEventListener("click", () => changeZoom(-1));
+zoomIn.addEventListener("click", () => changeZoom(1));
 viewOptions.addEventListener("click", () => {
     journal.open = false;
     viewOptions.setAttribute("aria-expanded", String(viewOptions.getAttribute("aria-expanded") !== "true"));
@@ -1247,13 +1322,11 @@ function layoutLetterChoices(width) {
 
 new ResizeObserver(([entry]) => layoutLetterChoices(entry.contentRect.width)).observe(letterChoices);
 
-const mapResize = new ResizeObserver(() => {
-    if (activeView === views.terminal || activeView.viewport.hidden) return;
-    centerPending = true;
-    draw();
+const viewResize = new ResizeObserver((entries) => {
+    if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;
+    recenterView();
 });
-mapResize.observe(views.map.viewport);
-mapResize.observe(views.target.viewport);
+for (const { viewport } of Object.values(views)) viewResize.observe(viewport);
 
 function requestBackgroundSave() {
     if (!worker || stopped || backgroundSaveRequested) return;
@@ -1321,7 +1394,9 @@ document.addEventListener("keydown", (event) => {
     if (code) {
         event.preventDefault();
         if (!event.repeat || (mode === "command" && event.key.startsWith("Arrow")) ||
-            (isTextEntry(mode) && event.key === "Backspace")) sendInput({ type: "key", code });
+            ((isTextEntry(mode) || mode === "option-number") && event.key === "Backspace")) {
+            sendInput({ type: "key", code });
+        }
     }
 });
 

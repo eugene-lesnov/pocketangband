@@ -32,7 +32,7 @@ diff --git a/src/main.c b/src/main.c
  
 +#ifdef __EMSCRIPTEN__
 +extern errr init_web(int argc, char **argv);
-+extern bool web_skip_splash(void);
++extern void web_show_splash(void);
 +#endif
 +
  /**
@@ -49,15 +49,15 @@ diff --git a/src/main.c b/src/main.c
  };
  
  /**
-@@ -540,7 +549,10 @@
+@@ -540,7 +549,11 @@
  	textui_init();
  
  	/* Wait for response */
--	pause_line(Term);
 +#ifdef __EMSCRIPTEN__
-+	if (!web_skip_splash())
++	web_show_splash();
++#else
+ 	pause_line(Term);
 +#endif
-+		pause_line(Term);
  
  	/* Play the game */
  	play_game((select_game) ?
@@ -558,13 +558,14 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the line */
  	Term_erase(0, 0, 255);
-@@ -894,7 +905,23 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
+@@ -894,7 +905,24 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
-+		if (previous == WEB_INPUT_QUANTITY || previous == WEB_INPUT_REST)
++		if (previous == WEB_INPUT_QUANTITY || previous == WEB_INPUT_REST ||
++			previous == WEB_INPUT_OPTION_NUMBER)
 +			web_set_input_mode(previous);
 +		web_set_edit_value(buf, k, firsttime);
 +#endif
@@ -582,7 +583,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,6 +1019,9 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -992,6 +1020,9 @@ bool askfor_aux_ext(char *buf, size_t len,
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -592,7 +593,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			in = inkey_ex();
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
-@@ -1171,7 +1201,15 @@ bool get_character_name(char *buf, size_t buflen)
+@@ -1171,7 +1202,15 @@ bool get_character_name(char *buf, size_t buflen)
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -608,7 +609,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1242,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1204,7 +1243,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -622,7 +623,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1264,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1220,6 +1265,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -630,7 +631,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1285,14 @@ static int textui_get_quantity(const char *prompt, int max)
+@@ -1240,7 +1286,14 @@ static int textui_get_quantity(const char *prompt, int max)
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -646,7 +647,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1336,15 @@ static bool textui_get_check(const char *prompt)
+@@ -1284,7 +1337,15 @@ static bool textui_get_check(const char *prompt)
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -662,7 +663,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1512,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
+@@ -1452,7 +1513,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -675,7 +676,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,11 +1589,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,11 +1590,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -699,7 +700,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				int y = KEY_GRID_Y(ke);
  				int x = KEY_GRID_X(ke);
-@@ -1642,9 +1717,28 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1642,9 +1718,28 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -731,7 +732,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1840,6 +1934,13 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +1935,13 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -748,7 +749,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,45 @@
+@@ -24,6 +24,49 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -758,7 +759,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_TEXT, WEB_INPUT_QUANTITY, WEB_INPUT_CONFIRM, WEB_INPUT_AIM,
 +	WEB_INPUT_TARGET, WEB_INPUT_SAVE_SLOTS, WEB_INPUT_DIRECTION, WEB_INPUT_MORE,
 +	WEB_INPUT_REST, WEB_INPUT_OVERVIEW, WEB_INPUT_DETAILS, WEB_INPUT_HISTORY,
-+	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER
++	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -782,6 +783,10 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	const char *value, const char *temporary);
 +void web_poll_interrupt(void);
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
++void web_set_options_title(const char *title);
++void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
++bool web_sync_profile(void);
++void web_set_option_notice(const char *message);
 +void web_set_menu_sections(int current, int available);
 +void web_set_store(const char *name, bool home);
 +void web_set_confirmation_price(int32_t price);
@@ -844,8 +849,8 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +				menu->row_funcs->valid_row(menu, oid) != MN_ROW_VALID)
 +				continue;
 +			menu->cursor = pos;
-+			out.type = (menu->flags & MN_DBL_TAP) && cursor != pos ?
-+				EVT_MOVE : EVT_SELECT;
++			out.type = (menu->flags & MN_DBL_TAP) &&
++				!menu->web_select_once && cursor != pos ? EVT_MOVE : EVT_SELECT;
 +		} else if (in.type == EVT_WEB_MENU_SECTION || in.type == EVT_WEB_STORE_ACTION) {
 +			if (!menu->web_render)
 +				continue;
@@ -1337,12 +1342,13 @@ diff --git a/src/ui-map.c b/src/ui-map.c
 diff --git a/src/ui-menu.h b/src/ui-menu.h
 --- a/src/ui-menu.h
 +++ b/src/ui-menu.h
-@@ -274,6 +274,9 @@ struct menu
+@@ -274,6 +274,10 @@ struct menu
  	int top;                /* Position in list for partial display */
  	region active;          /* Subregion actually active for selection */
  	int cursor_x_offset;    /* Adjustment to the default position of the cursor on a line. */
 +#ifdef __EMSCRIPTEN__
 +	void (*web_render)(struct menu *menu);
++	bool web_select_once;
 +#endif
  };
  
@@ -1702,3 +1708,223 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	menu_select(m, 0, true);
  
  	screen_load();
+diff --git a/src/ui-options.c b/src/ui-options.c
+--- a/src/ui-options.c
++++ b/src/ui-options.c
+@@ -138,6 +138,18 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
+ 		option_name(oid)), row, col + 45);
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_option_notice(const char *message)
++{
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
++	const char *previous_prompt = web_set_prompt("Options");
++	web_set_option_notice(message);
++	(void)anykey();
++	web_set_prompt(previous_prompt);
++	web_set_input_mode(previous);
++}
++#endif
++
+ /**
+  * Handle keypresses for an option entry.
+  */
+@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ 		} else if (event->key.code == 't' || event->key.code == 'T') {
+ 			option_set(option_name(oid), !player->opts.opt[oid]);
+ 		} else if (event->key.code == 's' || event->key.code == 'S') {
++#ifndef __EMSCRIPTEN__
+ 			char dummy;
++#endif
+ 
+ 			screen_save();
+-			if (options_save_custom(&player->opts, page)) {
++			bool saved = options_save_custom(&player->opts, page);
++#ifdef __EMSCRIPTEN__
++			saved = saved && web_sync_profile();
++			web_option_notice(saved ? "Saved as defaults." : "Could not save defaults.");
++#else
++			if (saved) {
+ 				get_com("Successfully saved.  Press any key to continue.", &dummy);
+ 			} else {
+ 				get_com("Save failed.  Press any key to continue.", &dummy);
+ 			}
++#endif
+ 			screen_load();
+ 		/*
+ 		 * For birth options, only allow restore from custom defaults
+@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ 				screen_load();
+ 				menu_refresh(m, false);
+ 			} else {
++#ifdef __EMSCRIPTEN__
++				web_option_notice("Could not restore defaults.");
++#else
+ 				char dummy;
+ 
+ 				get_com("Restore failed.  Press any key to continue.", &dummy);
++#endif
+ 				screen_load();
+ 			}
+ 		/*
+@@ -318,6 +342,26 @@ static const menu_iter option_toggle_iter = {
+ };
+ 
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_option_toggles(struct menu *m)
++{
++	bool *options = menu_priv(m);
++	bool enabled = m->flags != MN_NO_TAGS;
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_options_title(m->title);
++	for (int pos = 0; pos < m->filter_count; pos++) {
++		int oid = m->filter_list[pos];
++		web_add_option_toggle(pos, option_desc(oid), options[oid], enabled);
++	}
++	if (m->context_hook) {
++		web_menu_action('s', "Save as defaults");
++		web_menu_action('r', "Restore defaults");
++		web_menu_action('x', "Reset to factory defaults");
++	}
++}
++#endif
++
+ /**
+  * Interact with some options
+  */
+@@ -358,6 +402,12 @@ static void option_toggle_menu(const char *name, int page)
+ 	/* Set the data to the player's options */
+ 	menu_setpriv(m, OPT_MAX, &player->opts.opt);
+ 	menu_set_filter(m, option_page[page], i);
++#ifdef __EMSCRIPTEN__
++	m->web_render = web_render_option_toggles;
++	m->web_select_once = true;
++	if (page == OP_BIRTH && m->flags == MN_NO_TAGS)
++		m->title = "Birth options (read-only)";
++#endif
+ 	menu_layout(m, &SCREEN_REGION);
+ 
+ 	/* Run the menu */
+@@ -453,7 +503,13 @@ static void do_cmd_options_win(const char *name, int row)
+ 		Term_gotoxy(35 + x * 5, y + 5);
+ 
+ 		/* Get key */
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_MENU);
++#endif
+ 		ke = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++#endif
+ 
+ 		/* Mouse or keyboard interaction */
+ 		if (ke.type == EVT_MOUSE) {
+@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+ }
+ 
+ 
++#ifdef __EMSCRIPTEN__
++static bool edit_option_number(char *buf, size_t size, const char *prompt)
++{
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_OPTION_NUMBER);
++	const char *previous_prompt = web_set_prompt(prompt);
++	bool accepted = askfor_aux(buf, size, askfor_aux_numbers);
++	web_set_prompt(previous_prompt);
++	web_set_input_mode(previous);
++	return accepted;
++}
++#else
++#define edit_option_number(buf, size, prompt) askfor_aux(buf, size, askfor_aux_numbers)
++#endif
++
+ /**
+  * Set base delay factor
+  */
+@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *name, int unused)
+ 	prt("", 23, 0);
+ 
+ 	/* Ask for a numeric value */
+-	if (askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers)) {
++	if (edit_option_number(tmp, sizeof(tmp), "Base delay (0–255 ms)")) {
+ 		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
+ 		player->opts.delay_factor = MIN(val, 255);
+ 	}
+@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *name, int unused)
+  */
+ static void do_cmd_sidebar_mode(const char *name, int unused)
+ {
++#ifdef __EMSCRIPTEN__
++	SIDEBAR_MODE = (SIDEBAR_MODE + 1) % SIDEBAR_MAX;
++#else
+ 	char tmp[20] = "";	
+ 	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
+ 	struct keypress cx = KEYPRESS_NULL;
+@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+ 	}
+ 
+ 	screen_load();
++#endif
+ }
+ 
+ 
+@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
+ 	prt("", 23, 0);
+ 
+ 	/* Ask the user for a string */
+-	res = askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers);
++	res = edit_option_number(tmp, sizeof(tmp), "Low HP warning (0–9, in steps of 10%)");
+ 
+ 	/* Process input */
+ 	if (res) {
+@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
+ 	prt("", 23, 0);
+ 
+ 	/* Ask the user for a string */
+-	res = askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers);
++	res = edit_option_number(tmp, sizeof(tmp), "Movement delay (0–255, in steps of 10 ms)");
+ 
+ 	/* Process input */
+ 	if (res) {
+@@ -2056,6 +2130,29 @@ static menu_action option_actions[] =
+ };
+ 
+ 
++#ifdef __EMSCRIPTEN__
++static void web_render_options(struct menu *m)
++{
++	static const char *const sidebar_names[] = { "Left", "Top", "None" };
++	menu_action *actions = menu_priv(m);
++
++	web_set_menu(m, m->cursor, NULL);
++	web_set_options_title("Options");
++	for (int pos = 0; pos < m->count; pos++) {
++		menu_action *action = &actions[pos];
++		const char *value = NULL;
++		if (!action->name) continue;
++		switch (action->tag) {
++			case 'd': value = format("%d ms", player->opts.delay_factor); break;
++			case 'h': value = format("%d%%", player->opts.hitpoint_warn * 10); break;
++			case 'm': value = format("%d ms", player->opts.lazymove_delay * 10); break;
++			case 'o': value = sidebar_names[SIDEBAR_MODE % SIDEBAR_MAX]; break;
++		}
++		web_add_menu_row(pos, action->name, NULL, value, action->tag, true);
++	}
++}
++#endif
++
+ /**
+  * Display the options main menu.
+  */
+@@ -2068,6 +2165,9 @@ void do_cmd_options(void)
+ 
+ 		option_menu->title = "Options Menu";
+ 		option_menu->flags = MN_CASELESS_TAGS;
++#ifdef __EMSCRIPTEN__
++		option_menu->web_render = web_render_options;
++#endif
+ 	}
+ 
+ 	screen_save();

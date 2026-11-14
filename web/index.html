@@ -32,6 +32,7 @@
                 <div id="view-controls">
                     <button id="level-map" type="button" data-key="M" hidden>Level map</button>
                     <button id="toggle-tiles" type="button" aria-pressed="false" disabled hidden>Tiles</button>
+                    <button id="fit-map" type="button" aria-pressed="false" hidden>Fit</button>
                     <div class="zoom" role="group" aria-label="Zoom">
                         <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
                         <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
@@ -41,6 +42,17 @@
             <div id="terminal-screen" class="screen" role="region" aria-label="Angband terminal" tabindex="0">
                 <pre id="terminal"></pre>
             </div>
+            <section id="splash-screen" class="menu-screen" aria-labelledby="view-title" hidden>
+                <img src="icon-192.png" width="96" height="96" alt="">
+                <h3>Angband <span id="angband-version"></span></h3>
+                <blockquote>When the world is old and the Powers grow weary, then Morgoth, seeing that the
+                    guard sleepeth, shall come back through the Door of Night out of the Timeless Void. Then shall the
+                    Last Battle be gathered…</blockquote>
+                <nav aria-label="Angband links">
+                    <a href="https://rephial.org/" target="_blank" rel="noopener">Angband website</a>
+                    <a href="https://angband.live/forums/" target="_blank" rel="noopener">Forums</a>
+                </nav>
+            </section>
             <div id="map-screen" class="screen" role="region" aria-label="Angband map" tabindex="0" hidden>
                 <div class="map-grid">
                     <pre id="map" aria-hidden="true"></pre>
@@ -161,6 +173,7 @@
                 </div>
             </section>
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
+            <fieldset id="option-digits" class="key-panel" aria-label="Enter a number" disabled hidden></fieldset>
             <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>
             <fieldset id="keyboard" class="key-panel" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
             <fieldset id="play-keys" aria-label="Game controls" disabled hidden>

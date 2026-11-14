@@ -257,16 +257,20 @@ async function play(skipSplash) {
             let ok = false;
             if (saved) {
                 self.postMessage({ type: "saving" });
-                try {
-                    await syncProfile(game.FS, false);
-                    backgroundSavePending = false;
-                    ok = true;
-                } catch (error) {
-                    console.error(error);
-                }
+                ok = await game.syncProfile();
+                if (ok) backgroundSavePending = false;
             }
             self.postMessage({ type: "saved", ok });
             return ok;
+        },
+        async syncProfile() {
+            try {
+                await syncProfile(game.FS, false);
+                return true;
+            } catch (error) {
+                console.error(error);
+                return false;
+            }
         },
         printErr(message) {
             lastError = message;

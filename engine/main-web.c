@@ -1,6 +1,7 @@
 /* Copyright (C) 2026 PocketBand contributors. SPDX-License-Identifier: GPL-2.0-only */
 
 #include "main.h"
+#include "buildid.h"
 #include "cave.h"
 #include "game-input.h"
 #include "game-world.h"
@@ -45,6 +46,8 @@ static const char *const input_modes[] = {
     [WEB_INPUT_HISTORY] = "history",
     [WEB_INPUT_BIRTH_STATS] = "birth-stats",
     [WEB_INPUT_CHARACTER] = "character",
+    [WEB_INPUT_SPLASH] = "splash",
+    [WEB_INPUT_OPTION_NUMBER] = "option-number",
 };
 
 enum web_input_mode web_set_input_mode(enum web_input_mode mode)
@@ -100,6 +103,10 @@ EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
     Module['inputContext'] = { detail };
 });
 
+EM_JS(void, web_set_option_notice, (const char *message), {
+    Module['inputContext'] = { detail: UTF8ToString(message) };
+});
+
 EM_JS(void, web_set_history, (const char *text), {
     Module['inputContext'] = { detail: UTF8ToString(text) };
 });
@@ -112,9 +119,22 @@ EM_JS(void, web_add_letter_choice, (char key, const char *name), {
     Module['inputContext'].letterMenu.choices.push({ key: String.fromCharCode(key), name: UTF8ToString(name) });
 });
 
-EM_JS(bool, web_skip_splash, (void), {
+EM_JS(bool, skip_splash, (void), {
     return !!Module['skipSplash'];
 });
+
+EM_JS(void, set_splash_version, (const char *version), {
+    Module['inputContext'] = { version: UTF8ToString(version) };
+});
+
+void web_show_splash(void)
+{
+    if (skip_splash()) return;
+    enum web_input_mode previous = web_set_input_mode(WEB_INPUT_SPLASH);
+    set_splash_version(buildver);
+    (void)inkey();
+    web_set_input_mode(previous);
+}
 
 EM_JS(void, cancel_birth, (void), {
     Module['birthCancelled'] = true;
@@ -154,6 +174,10 @@ EM_JS(void, web_set_menu, (const struct menu *menu, int cursor, const char *prom
         rows: [], actions: [] };
 });
 
+EM_JS(void, web_set_options_title, (const char *title), {
+    Module['inputMenu'].options = UTF8ToString(title);
+});
+
 EM_JS(void, set_menu_sections, (int current, int available, int equipment,
         int inventory, int floor, int quiver, int throwing), {
     const sections = [[inventory, "Inventory"], [equipment, "Equipment"],
@@ -182,6 +206,14 @@ EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
 EM_JS(void, web_menu_action, (int key, const char *label), {
     Module['inputMenu'].actions.push({ key, label: UTF8ToString(label) });
 });
+
+void web_add_option_toggle(int row, const char *label, bool checked, bool enabled)
+{
+    web_add_menu_row(row, label, NULL, checked ? "On" : "Off", 0, enabled);
+    EM_ASM({
+        Module['inputMenu'].rows.at(-1).checked = !!$0;
+    }, checked);
+}
 
 void web_toggle_tiles(void)
 {
@@ -397,6 +429,10 @@ bool web_persist_profile(bool saved)
 {
     return persist_profile(saved);
 }
+
+EM_ASYNC_JS(bool, web_sync_profile, (void), {
+    return await Module['syncProfile']();
+});
 
 EM_ASYNC_JS(int, stage_save_import, (const char *path), {
     return await Module['stageSaveImport'](UTF8ToString(path));
