@@ -1,8 +1,14 @@
 # PocketBand
 
-PocketBand brings the classic single-player dungeon roguelike Angband to iPhone and Android. It runs the original Angband 4.2.6 engine in the browser with a portrait layout, touch controls, and a choice of ASCII or tiles. Download the game once and play offline.
+PocketBand brings the classic single-player dungeon roguelike [Angband](https://rephial.org/) to iPhone and Android. It runs the original Angband 4.2.6 engine in the browser with a portrait layout, touch controls, and a choice of ASCII or tiles. Download the game once and play offline.
 
-PocketBand was inspired by [PocketZot](https://github.com/eugene-lesnov/pocketzot).
+PocketBand’s ideas were inspired by [PocketZot](https://github.com/pocketzot/pocketzot).
+
+<p>
+  <a href="screenshots/hello.jpg"><img src="screenshots/hello.jpg" width="220" alt="PocketBand dungeon started"></a>
+  <a href="screenshots/ascii.jpg"><img src="screenshots/ascii.jpg" width="220" alt="PocketBand dungeon in ASCII mode"></a>
+  <a href="screenshots/tiles.jpg"><img src="screenshots/tiles.jpg" width="220" alt="PocketBand dungeon in tile mode"></a>
+</p>
 
 ## Play on GitHub Pages
 
@@ -18,8 +24,6 @@ Download `pocketband-web.zip` from [GitHub Releases](https://github.com/eugene-l
 python3 -m zipfile -e pocketband-web.zip dist
 python3 -m http.server 8749 --bind 127.0.0.1 --directory dist
 ```
-
-[Open PocketBand locally](http://127.0.0.1:8749/).
 
 ## Build and run locally
 
