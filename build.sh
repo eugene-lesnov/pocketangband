@@ -84,7 +84,7 @@ tar --format=gnu --sort=name --mtime=@0 --numeric-owner --owner=0 --group=0 \
 
 mkdir site
 cp "$source_dir"/web/* site/
-sed -i "s/__POCKETBAND_VERSION__/$pocketband_version/" site/licenses.html
+sed -i "s/__POCKETBAND_VERSION__/$pocketband_version/" site/{index,licenses}.html
 cp "$source_dir/COPYING" site/gpl-2.0.txt
 cp "$source_dir/emscripten/LICENSE" site/emscripten-license.txt
 cp "$source_dir/emscripten/AUTHORS" site/emscripten-authors.txt
