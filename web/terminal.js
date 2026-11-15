@@ -842,8 +842,10 @@ function updateControls() {
     vitals.disabled = disabled || !(command || ((selecting || aiming || directing) && context.character));
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", targeting || directing || runDirection);
-    const usingPad = command || directing || runDirection || targeting || (isMenu() && !menu);
-    setActions(directionPad, !naming && (playingGame || usingPad), disabled || !usingPad || !!openPanel || stopVisible);
+    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
+    const usingPad = !openPanel && (command || directing || runDirection || targeting || (isMenu() && !menu));
+    const showPad = usingPad || (playingGame && main.classList.contains("in-world"));
+    setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
     const here = (directing && context.center) || mapDirectionAction?.targets.some(({ direction }) => direction === 5);
@@ -865,6 +867,7 @@ function updateControls() {
     setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
+    terminalKeys.classList.toggle("full-screen-controls", playingGame && !showPad);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
@@ -885,7 +888,6 @@ function updateControls() {
         saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
     setKeyHint(confirmKey);
-    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
     confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild || directing || runDirection ||
         pickingOnMap || directMenu ||
         showTargetControls || (aiming && targetUnavailable);

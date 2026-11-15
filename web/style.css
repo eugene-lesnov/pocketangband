@@ -525,7 +525,11 @@ button > .key-hint {
     padding-inline: 0.125rem;
     overflow-wrap: anywhere;
 }
-.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys > [hidden] { display: none !important; }
+.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys > [hidden],
+#terminal-keys.full-screen-controls > [hidden] { display: none !important; }
+#terminal-keys.full-screen-controls:not([hidden]) { display: flex; }
+#terminal-keys.full-screen-controls > button { flex: 1; }
+#terminal-keys.full-screen-controls > #keyboard-toggle { flex: 0 0 60px; }
 #terminal-keys.aim-controls #confirm-key { grid-column: 1 / -1; grid-row: 1; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr) 60px; }
 #terminal-keys.options-controls #confirm-key { display: none !important; }
