@@ -58,6 +58,7 @@ a { color: var(--muted); font-size: 0.75rem; }
 .status { padding: 0.5rem 0.625rem; font-size: 0.875rem; }
 .status.error { color: #ffb3a0; }
 #launch { display: grid; gap: 0.5rem; }
+#app-update { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 #download-progress { width: 100%; accent-color: var(--accent); }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }

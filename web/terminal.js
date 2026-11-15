@@ -1,4 +1,4 @@
-import { prepareOffline } from "./offline.js";
+import { applyOfflineUpdate, prepareOffline, watchOfflineUpdates } from "./offline.js";
 import { graphicsModes, loadTiles, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
 
 const main = document.querySelector("main");
@@ -6,6 +6,9 @@ const launch = document.querySelector("#launch");
 const status = document.querySelector("#status");
 const progress = document.querySelector("#download-progress");
 const retry = document.querySelector("#retry");
+const appUpdate = document.querySelector("#app-update");
+const updateApp = document.querySelector("#update-app");
+const updateStatus = document.querySelector("#update-status");
 const saveStatus = document.querySelector("#save-status");
 const saveManagement = document.querySelector("#save-management");
 const manageSave = document.querySelector("#manage-save");
@@ -230,6 +233,8 @@ let running = false;
 let playingGame = false;
 let saving = false;
 let deletingSave = false;
+let availableUpdate;
+let applyingUpdate = false;
 let resultURL;
 let outcomeSaveFailed = false;
 let stopped = false;
@@ -791,7 +796,8 @@ function showPanel(panel, trigger) {
 }
 
 function updateControls() {
-    const disabled = request === undefined || saving || deletingSave || stopped;
+    const disabled = request === undefined || saving || deletingSave || stopped || applyingUpdate;
+    renderAppUpdate();
     const pickingOnMap = Boolean(menu?.onMap);
     mapPicker.hidden = !pickingOnMap;
     const command = mode === "command";
@@ -937,6 +943,27 @@ function updateControls() {
     manageSave.disabled = deleteSave.disabled = disabled || !existingSave;
     if (manageSave.disabled) setSaveManagementOpen(false);
 }
+
+function renderAppUpdate() {
+    const updateScreen = !playingGame && (mode === "splash" || mode === "save-slots");
+    appUpdate.hidden = !updateScreen || (!availableUpdate && !applyingUpdate);
+    updateApp.disabled = applyingUpdate || request === undefined || saving || deletingSave || !messagePause.hidden;
+}
+
+updateApp.addEventListener("click", async () => {
+    if (appUpdate.hidden || updateApp.disabled || !availableUpdate) return;
+    applyingUpdate = true;
+    updateStatus.textContent = "Applying update…";
+    updateControls();
+    try {
+        await applyOfflineUpdate(availableUpdate);
+        window.location.reload();
+    } catch (error) {
+        updateStatus.textContent = error.message;
+        applyingUpdate = false;
+        updateControls();
+    }
+});
 
 function setSaveManagementOpen(open) {
     deleteSave.hidden = !open;
@@ -1340,7 +1367,7 @@ function clearPendingInput() {
 }
 
 function sendInput(input) {
-    if (request === undefined || saving || deletingSave || stopped || !messagePause.hidden) return false;
+    if (request === undefined || saving || deletingSave || stopped || applyingUpdate || !messagePause.hidden) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
@@ -1367,6 +1394,7 @@ function sendInput(input) {
         }
     }
     request = undefined;
+    renderAppUpdate();
     if (mode === "aim") draw();
     manageSave.disabled = deleteSave.disabled = true;
     setSaveManagementOpen(false);
@@ -2231,6 +2259,12 @@ async function start() {
             console.error(event.message);
             stop("Could not start Angband.", true);
         });
+        void watchOfflineUpdates((update) => {
+            if (availableUpdate === update) return;
+            availableUpdate = update;
+            if (!applyingUpdate) updateStatus.textContent = "";
+            renderAppUpdate();
+        }).catch(console.error);
     } catch (error) {
         console.error(error);
         status.textContent = "Could not start Angband.";

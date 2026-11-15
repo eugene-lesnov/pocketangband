@@ -101,6 +101,19 @@ self.addEventListener("install", (event) => {
     event.waitUntil(downloadPackage());
 });
 
+self.addEventListener("message", (event) => {
+    const { source, ports: [reply] } = event;
+    if (event.data?.type !== "pocketband-apply-update" || !reply || !source?.url?.startsWith(scope.href)) return;
+    event.waitUntil((async () => {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        if (windows.some((client) => client.id !== source.id && client.url.startsWith(scope.href))) {
+            reply.postMessage("other-windows");
+        } else if (windows.some((client) => client.id === source.id)) {
+            await self.skipWaiting();
+        }
+    })());
+});
+
 self.addEventListener("activate", (event) => {
     event.waitUntil((async () => {
         await self.clients.claim();
