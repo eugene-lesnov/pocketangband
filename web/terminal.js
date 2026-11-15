@@ -50,12 +50,16 @@ const directionCenter = document.querySelector("#direction-center");
 const centerCaption = document.querySelector("#center-caption");
 const terminalKeys = document.querySelector("#terminal-keys");
 const cancelKey = document.querySelector("#cancel-key");
+const editHistory = document.querySelector("#edit-history");
 const confirmKey = document.querySelector("#confirm-key");
-const worldActions = document.querySelector("#world-actions");
 const playKeys = document.querySelector("#play-keys");
+const heroActions = document.querySelector("#hero-actions");
+const useAction = document.querySelector("#use-action");
+const combatAction = document.querySelector("#combat-action");
+const repeatAction = document.querySelector("#repeat-action");
 const runAction = document.querySelector("#run-action");
-const otherPlayKeys = [...playKeys.children].filter((button) => button !== runAction);
-const playKeyboard = document.querySelector("#play-keyboard");
+const mapCellActions = document.querySelector("#map-cell-actions");
+const closeMapCellActions = document.querySelector("#close-map-cell-actions");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
 const nearest = document.querySelector("#nearest");
@@ -101,7 +105,6 @@ const menuActions = document.querySelector("#menu-actions");
 const menuDescription = document.querySelector("#menu-description");
 const mapPicker = document.querySelector("#map-picker");
 const mapPickerTitle = document.querySelector("#map-picker-title");
-const mapPickerCancel = document.querySelector("#map-picker-cancel");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
@@ -124,6 +127,7 @@ const quantity = document.querySelector("#quantity");
 const optionDigits = document.querySelector("#option-digits");
 const rest = document.querySelector("#rest");
 const keyboard = document.querySelector("#keyboard");
+const keyboardUtilities = document.querySelector("#keyboard-utilities");
 const keyboardToggle = document.querySelector("#keyboard-toggle");
 
 const specialKeys = new Map([
@@ -137,11 +141,7 @@ const gameMenu = [
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
 ];
 const useCommand = ["U", "Use an item", "X", "Use"];
-const quickCommands = [
-    ["r", "Read a scroll", null, "Scroll"], ["q", "Quaff a potion", null, "Potion"], useCommand,
-    ["n", "Repeat previous command", "Ctrl+V", "Repeat"], ["d", "Drop an item", null, "Drop"],
-    ["i", "Display inventory listing", null, "Pack"],
-];
+const repeatCommand = ["n", "Repeat previous command", "Ctrl+V"];
 const spellCommands = {
     look: ["l", "Look around", "x", "Look"],
     browse: ["b", "Browse a book", "P", "Browse"],
@@ -154,7 +154,9 @@ const restCommand = ["R", "Rest for a while", null, "Rest"];
 const runCommand = [".", "Start running", ","];
 const stealCommand = ["s", "Steal from a monster"];
 const extraCommands = [
-    runCommand, spellCommands.look, useCommand,
+    runCommand, restCommand, spellCommands.look, useCommand, repeatCommand,
+    ["r", "Read a scroll"], ["q", "Quaff a potion"], ["d", "Drop an item"],
+    ["g", "Pick up objects"], ["<", "Go up staircase"], [">", "Go down staircase"],
     ["u", "Use a staff", "Z"], ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"],
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
@@ -209,6 +211,7 @@ let characterTrigger;
 let pendingInput;
 let stopTimer;
 let running = false;
+let playingGame = false;
 let saving = false;
 let deletingSave = false;
 let resultURL;
@@ -247,7 +250,7 @@ function render(view, frame, region = {}) {
 }
 
 function renderText(pre, frame, grid, colors, tiles) {
-    const { width, codepoints, attributes, backgroundStride, shade, cursor } = frame;
+    const { width, codepoints, attributes, backgroundStride, shade, cursor, aimPath } = frame;
     const { x, y, columns, rows } = grid;
     const fragment = document.createDocumentFragment();
     for (let row = 0; row < rows; row++) {
@@ -258,6 +261,7 @@ function renderText(pre, frame, grid, colors, tiles) {
         for (let start = rowStart; start < rowEnd;) {
             const attr = attributes[start];
             const span = document.createElement("span");
+            const onPath = aimPath?.has(start) ?? false;
             const tile = tiles && tileAt(tiles, attr, codepoints[start]);
             let end = start + 1;
             if (tile) {
@@ -265,6 +269,7 @@ function renderText(pre, frame, grid, colors, tiles) {
             } else {
                 if (start !== cursor) {
                     while (end < rowEnd && attributes[end] === attr && end !== cursor &&
+                        (aimPath?.has(end) ?? false) === onPath &&
                         !(tiles && tileAt(tiles, attr, codepoints[end]))) end++;
                 }
                 span.textContent = String.fromCodePoint(...codepoints.subarray(start, end));
@@ -279,6 +284,7 @@ function renderText(pre, frame, grid, colors, tiles) {
                 }
             }
             if (start === cursor) span.classList.add("cursor");
+            if (onPath) span.classList.add("aim-path");
             line.append(span);
             start = end;
         }
@@ -297,25 +303,30 @@ function draw() {
         const region = view === views.target ? view.crop : undefined;
         const source = view === views.map ? views.map.frame : views.terminal.frame;
         if (!source) return;
-        const target = mode === "aim" && context.target && containsCell(region, context.target) ?
+        const aiming = mode === "aim" && request !== undefined;
+        const target = aiming && context.target &&
+            (view === views.map || containsCell(region, context.target)) ?
             context.target : undefined;
-        const selected = view === views.map ? context.mapCell : target;
+        const selected = target ?? (view === views.map ? context.mapCell : undefined);
         const cursor = selected ? selected.y * source.width + selected.x : source.cursor;
-        const frame = cursor === source.cursor ? source : { ...source, cursor };
+        const path = aiming && view !== views.terminal ? context.aimPath : undefined;
         const previousGrid = view.gridElement;
         const cursorCell = mode === "target" && cursor >= 0 ?
-            { x: cursor % frame.width, y: Math.floor(cursor / frame.width) } : undefined;
+            { x: cursor % source.width, y: Math.floor(cursor / source.width) } : undefined;
         const cell = view === views.map ? world : cursorCell ?? target ?? context.player;
         const focusChanged = cell?.x !== view.focusCell?.x || cell?.y !== view.focusCell?.y ||
             cell?.depth !== view.focusCell?.depth;
         const regionChanged = !sameRegion(region, view.region);
-        const graphicsChanged = frame.graphicsMode !== view.rendered?.graphicsMode;
-        const changed = source !== view.rendered || cursor !== view.cursor || regionChanged;
+        const graphicsChanged = source.graphicsMode !== view.rendered?.graphicsMode;
+        const changed = source !== view.rendered || cursor !== view.cursor || regionChanged || path !== view.path;
         if (changed) {
+            const frame = cursor === source.cursor && !path ? source :
+                { ...source, cursor, aimPath: path && new Set(path) };
             render(view, frame, region);
             view.rendered = source;
             view.region = region;
             view.cursor = cursor;
+            view.path = path;
         }
         updateViewZoom(view);
         updatePrompt();
@@ -324,7 +335,7 @@ function draw() {
                 (isMenu() || isTextEntry(mode) || mode === "quantity" || mode === "rest")) showCursor(view);
         } else if (!view.fit && cell &&
             (centerPending || focusChanged || regionChanged || graphicsChanged || previousGrid !== view.gridElement)) {
-            centerCell(view, cell);
+            centerCell(view, (view === views.map && selected?.actions) ? selected : cell);
         }
         view.focusCell = cell;
         centerPending = false;
@@ -717,13 +728,17 @@ function isTextEntry(state) {
     return state === "name" || state === "text";
 }
 
-function closeInputPanel() {
+function closeInputPanel(closeKeyboard = true) {
     if (!deleteSave.hidden) {
         setSaveManagementOpen(false);
         manageSave.focus({ preventScroll: true });
         return true;
     }
-    if (openPanel === "tiles") {
+    if (!mapCellActions.hidden) {
+        dismissMapActions();
+        return true;
+    }
+    if (openPanel === "tiles" || (openPanel === "commands" && panelTrigger === openMenu)) {
         showPanel("menu", panelTrigger);
         return true;
     }
@@ -733,7 +748,7 @@ function closeInputPanel() {
         trigger?.focus({ preventScroll: true });
         return true;
     }
-    if (!keyboardOpen || isTextEntry(mode)) return false;
+    if (!closeKeyboard || !keyboardOpen || isTextEntry(mode)) return false;
     toggleKeyboard();
     return true;
 }
@@ -755,11 +770,7 @@ function showPanel(panel, trigger) {
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped;
     const pickingOnMap = Boolean(menu?.onMap);
-    if (pickingOnMap && mapPicker.hidden && !playKeys.hidden) {
-        mapPicker.style.setProperty("--map-picker-height", `${playKeys.parentElement.getBoundingClientRect().height}px`);
-    }
     mapPicker.hidden = !pickingOnMap;
-    mapPickerCancel.disabled = disabled;
     const command = mode === "command";
     const runDirection = mode === "run-direction";
     const selecting = mode === "target";
@@ -795,43 +806,42 @@ function updateControls() {
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
-    const showRunControls = !openPanel && !showKeyboard && (runDirection || running);
     const stopVisible = running || !stopAction.hidden;
-    const showTargetControls = targeting && !showKeyboard && !openPanel && !stopVisible;
+    stopAction.hidden = !stopVisible;
+    const inspectingCell = playing && !stopVisible && !!context.mapCell?.actions;
+    const showTargetControls = selecting && !showKeyboard && !openPanel && !stopVisible;
     vitals.disabled = disabled || !(command || ((selecting || aiming || directing) && context.character));
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
-    views.target.viewport.classList.toggle("selectable", selecting || aiming || directing);
-    const playPad = command || selecting || aiming || directing;
-    const padVisible = showRunControls || (!openPanel && !showKeyboard && !stopVisible &&
-        (playPad || (isMenu() && !menu)));
-    setActions(directionPad, padVisible, disabled || running);
+    views.target.viewport.classList.toggle("selectable", targeting || directing || runDirection);
+    const usingPad = command || directing || runDirection || targeting || (isMenu() && !menu);
+    setActions(directionPad, !naming && (playingGame || usingPad), disabled || !usingPad || !!openPanel || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
-    directionCenter.disabled = !running && !command && !(directing && context.center);
-    centerCaption.textContent = directing ? "Here" : "Stand still";
-    directionCenter.setAttribute("aria-label", directing ? "Choose your cell" : "Stand still");
-    setActions(playKeys, showRunControls || (playing && !stopVisible), disabled && !running);
-    playKeys.classList.toggle("run-controls", showRunControls);
-    for (const button of otherPlayKeys) button.disabled = showRunControls;
-    const runLabel = running ? "Stop" : runDirection ? "Cancel" : "Run";
-    if (runAction.textContent !== runLabel) runAction.textContent = runLabel;
-    if (running) delete runAction.dataset.key;
-    else runAction.dataset.key = runDirection ? "Escape" : commandKey(runCommand, world?.roguelike);
+    const here = directing && context.center;
+    directionCenter.disabled = !command && !here;
+    centerCaption.hidden = directionCenter.disabled;
+    centerCaption.textContent = here ? "Here" : "Stand still";
+    directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
+    const showPlayActions = playing && !stopVisible && !inspectingCell;
+    setActions(playKeys, showPlayActions, disabled);
+    setActions(openMenu, showPlayActions, disabled);
+    heroActions.disabled = !context.worldView;
+    setActions(mapCellActions, inspectingCell, disabled);
     nameFields.disabled = disabled;
-    setActions(terminalKeys, !naming && !pickingOnMap && !showRunControls && !playing && !stopVisible && !outcome &&
+    setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
-    terminalKeys.classList.toggle("birth-review-controls", reviewing);
+    terminalKeys.classList.toggle("birth-confirmation-controls", history || reviewing);
+    editHistory.hidden = !history;
     birthStartOver.hidden = !reviewing;
     terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
-    terminalKeys.classList.toggle("target-controls", showTargetControls);
+    terminalKeys.classList.toggle("aim-controls", aiming);
     confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" :
         aiming ? "5" : details || character || overview ? "Escape" : "Enter";
-    cancelKey.dataset.key = confirming || history ? "n" : "Escape";
-    if (details) cancelKey.dataset.key = confirmKey.dataset.key;
+    cancelKey.dataset.key = confirming ? "n" : "Escape";
     const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
     const targetLabel = selecting && !context.attack ? "Select target" : useTarget;
     confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
@@ -840,31 +850,31 @@ function updateControls() {
         editing || counting || optionNumber || resting ? "Done" :
         saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
-    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild ||
+    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
+    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild || directing || runDirection ||
+        pickingOnMap || directMenu ||
         showTargetControls || (aiming && targetUnavailable);
     confirmKey.disabled = directing || (targeting && targetUnavailable) ||
         (!!menu && !selectedRow);
-    cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
-        history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
-        "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
+    cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") : openPanel ? "Back" :
+        targeting || directing || runDirection || pickingOnMap || editing || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    cancelKey.hidden = character || victory;
-    setActions(worldActions, showRunControls || (playing && !stopVisible), disabled || showRunControls);
+    cancelKey.hidden = details || character || overview || victory;
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
     previousRoll.disabled = !context.birthStats?.roll?.previous;
     setActions(targetActions, showTargetControls, disabled);
-    if (targeting) {
+    if (selecting) {
         confirmTarget.textContent = targetLabel;
         confirmTarget.dataset.key = confirmKey.dataset.key;
         confirmTarget.disabled = targetUnavailable;
     }
-    nearest.hidden = !aiming;
+    nearest.hidden = !aiming || !!openPanel || showKeyboard;
     nearest.disabled = !context.nearest;
-    if (aiming) nearest.textContent = `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest`;
-    previousTarget.hidden = nextTarget.hidden = !selecting;
-    previousTarget.disabled = nextTarget.disabled = context.freeAim || context.targetCount < 2;
+    if (aiming) nearest.setAttribute("aria-label",
+        `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest target`);
+    previousTarget.hidden = nextTarget.hidden = !selecting || context.freeAim || context.targetCount < 2;
     targetMode.hidden = attackTargeting;
     targetTypes.hidden = !attackTargeting;
     if (attackTargeting) {
@@ -872,9 +882,8 @@ function updateControls() {
         targetLocation.setAttribute("aria-pressed", String(context.freeAim));
         targetMonster.disabled = !context.targetCount;
     } else {
-        targetMode.textContent = aiming ? "Target monster or location" :
-            context.freeAim ? "Interesting places" : "Free selection";
-        targetMode.dataset.key = aiming ? "*" : context.freeAim ? "m" : "o";
+        targetMode.textContent = context.freeAim ? "Interesting places" : "Free selection";
+        targetMode.dataset.key = context.freeAim ? "m" : "o";
         targetMode.disabled = selecting && context.freeAim && !context.targetCount;
     }
     targetInspect.hidden = !selecting || !showTargetControls;
@@ -883,7 +892,8 @@ function updateControls() {
     setActions(optionDigits, optionNumber, disabled);
     setActions(rest, resting && !stopVisible, disabled);
     setActions(keyboard, showKeyboard && !stopVisible, disabled);
-    keyboardToggle.hidden = !canOpenKeyboard;
+    setActions(keyboardUtilities, command && showKeyboard && !stopVisible, disabled);
+    keyboardToggle.hidden = !canOpenKeyboard || (aiming && !showKeyboard && (context.worldView || views.target.crop));
     keyboardToggle.textContent = showKeyboard ? "Hide" : "Keys";
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
@@ -966,7 +976,8 @@ function updatePrompt() {
     if (!messagePause.hidden) return;
     let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (menu?.onMap) text = "";
-    if (mode === "aim") text = `${context.verb}: choose a target or direction.`;
+    if (mode === "aim") text = activeView === views.terminal ? "Choose a target or direction." :
+        "Tap a monster or location, or choose a direction.";
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running) text = "Running…";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
@@ -983,6 +994,8 @@ function updatePrompt() {
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
     else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
+    inputPrompt.classList.toggle("map-description", !!context.mapCell || (mode === "aim" && context.worldView) ||
+        mode === "direction" || mode === "run-direction" || running);
     inputPrompt.hidden = mode === "name" || !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -994,8 +1007,9 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     world = state;
     views.target.crop = region;
-    const aiming = mode === "target" || mode === "aim" || mode === "direction";
-    activeView = aiming && region ? views.target : world && (context.worldView || menu?.onMap) ? views.map : views.terminal;
+    const aiming = mode === "target" || mode === "aim" || mode === "direction" || mode === "run-direction";
+    activeView = world && (context.worldView || menu?.onMap) ? views.map :
+        aiming && region ? views.target : views.terminal;
     const naming = mode === "name";
     const editing = !naming && context.value !== undefined && !openPanel;
     const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
@@ -1055,9 +1069,11 @@ function updateView(state = world, region = views.target.crop) {
         activeView.viewport.scrollTo(0, 0);
     }
     const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
+    main.classList.toggle("in-play", playingGame);
     main.classList.toggle("in-world", showMap);
-    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || !!menu?.options || mode === "option-number" ||
-        showOutcome || showVictory || !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
+    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || mode === "history" ||
+        !!menu?.options || mode === "option-number" || showOutcome || showVictory ||
+        !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
     main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
@@ -1088,6 +1104,7 @@ function updateView(state = world, region = views.target.crop) {
 
 function stop(message, failed) {
     stopped = true;
+    playingGame = false;
     request = mode = undefined;
     world = menu = undefined;
     context = {};
@@ -1130,16 +1147,18 @@ function handleWorkerMessage({ data }) {
                 break;
             }
             const pauseTrigger = closeMessagePause();
-            const restoreRunFocus = document.activeElement === runAction ||
+            const restorePlayFocus = document.activeElement === stopAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.onMap !== menu?.onMap ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
+            const changedMapPicker = data.menu?.onMap &&
+                (data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
             if (mode === "results-file") clearResultFile();
             if (changed) {
-                const stayingOnMap = (menu?.onMap || data.menu?.onMap) &&
-                    (mode === "command" || menu?.onMap) && (data.mode === "command" || data.menu?.onMap);
+                const stayingOnMap = (context.worldView || menu?.onMap) &&
+                    (data.context.worldView || data.menu?.onMap);
                 if (!stayingOnMap) centerPending = true;
                 if (mode === "save-slots") {
                     deleteSaveStatus.hidden = true;
@@ -1157,14 +1176,19 @@ function handleWorkerMessage({ data }) {
                 views.terminal.fitKey = undefined;
             }
             mode = data.mode;
+            playingGame = data.playing;
             request = data.request;
             context = data.context;
-            menu = data.menu;
             if (mode === "name") {
                 nameValue.value = context.value;
                 nameValue.setCustomValidity("");
                 namePrompt.textContent = context.prompt;
             }
+            if (context.mapCell?.actions) {
+                const buttons = context.mapCell.actions.map(({ code, label }) => makeInput("map-action", code, label));
+                mapCellActions.replaceChildren(...buttons, closeMapCellActions);
+            }
+            menu = data.menu;
             deletingSave = false;
             if (changed && mode === "text") renderKeyboard();
             launch.hidden = true;
@@ -1190,7 +1214,7 @@ function handleWorkerMessage({ data }) {
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
-            if (changed && mode === "menu" && (context.outcome || menu?.title || menu?.onMap)) {
+            if ((changed || changedMapPicker) && mode === "menu" && (context.outcome || menu?.title || menu?.onMap)) {
                 const selected = menuRows.querySelector('[aria-current="true"]') ??
                     outcomeActions.querySelector('[aria-current="true"]:not([disabled])');
                 (selected ?? menuRows).focus({ preventScroll: true });
@@ -1203,9 +1227,10 @@ function handleWorkerMessage({ data }) {
                 characterTrigger.focus({ preventScroll: true });
                 characterTrigger = undefined;
             }
-            if ((changed && mode === "run-direction") || (mode === "command" && restoreRunFocus)) {
-                runAction.focus({ preventScroll: true });
-            }
+            if (changed && (mode === "direction" || mode === "run-direction"))
+                activeView.viewport.focus({ preventScroll: true });
+            if (mode === "command" && restorePlayFocus) heroActions.focus({ preventScroll: true });
+            if (!mapCellActions.hidden) mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
             break;
         }
         case "saving":
@@ -1231,6 +1256,7 @@ function handleWorkerMessage({ data }) {
         case "restarting":
             clearPendingInput();
             closeMessagePause();
+            playingGame = false;
             request = mode = world = menu = undefined;
             context = {};
             openPanel = panelTrigger = characterTrigger = undefined;
@@ -1273,7 +1299,6 @@ function clearPendingInput() {
     clearTimeout(stopTimer);
     pendingInput = undefined;
     running = false;
-    runAction.disabled = false;
     stopAction.hidden = true;
     stopAction.disabled = false;
 }
@@ -1282,10 +1307,11 @@ function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || !messagePause.hidden) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     journal.open = false;
-    const movingToCell = input.type === "map-cell" &&
+    const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
     running = (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
-        (mode === "run-direction" && input.type === "key" && input.code !== keyCode("Escape"));
+        (mode === "run-direction" && (input.type === "aim-cell" ||
+            (input.type === "key" && input.code !== keyCode("Escape"))));
     if (context.mapCell) {
         context = { ...context, mapCell: undefined };
         draw();
@@ -1293,7 +1319,7 @@ function sendInput(input) {
     worker.postMessage({ ...input, request });
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
-        (movingToCell || ["key", "menu-row", "aim-cell", "target-cell"].includes(input.type))) {
+        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
             stopTimer = setTimeout(() => {
@@ -1304,6 +1330,7 @@ function sendInput(input) {
         }
     }
     request = undefined;
+    if (mode === "aim") draw();
     manageSave.disabled = deleteSave.disabled = true;
     setSaveManagementOpen(false);
     if (running) updateControls();
@@ -1342,7 +1369,7 @@ main.addEventListener("click", (event) => {
     if (!button || button.matches(":disabled, [aria-disabled=true]") || (event.detail !== 0 &&
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
-    if (button === cancelKey && closeInputPanel()) return;
+    if (button === cancelKey && closeInputPanel(false)) return;
     if (button === confirmKey && menu) {
         sendInput({ type: "menu-row", code: menuCursor });
         return;
@@ -1402,6 +1429,16 @@ function makeInput(type, code, label) {
     return button;
 }
 
+function dismissMapActions() {
+    context = { ...context, mapCell: undefined };
+    updateControls();
+    updatePrompt();
+    draw();
+    views.map.viewport.focus({ preventScroll: true });
+}
+
+closeMapCellActions.addEventListener("click", dismissMapActions);
+
 function keyBadge(label) {
     const badge = document.createElement("kbd");
     badge.textContent = label;
@@ -1414,32 +1451,15 @@ function commandKey([key, , alternative], roguelike) {
 
 function renderQuickActions({ roguelike, quickActions }) {
     const { spell, spellHint, launcher, hasAmmo } = quickActions;
-    const commands = [...quickCommands, spellCommands[spell], launcher ? fireCommand : throwCommand, restCommand];
-    for (let i = 0; i < commands.length; i++) {
-        const entry = commands[i];
-        const [, label, , face] = entry;
-        const key = commandKey(entry, roguelike);
-        const hint = i === quickCommands.length ? spellHint : entry === fireCommand && !hasAmmo ? "No ammo" : "";
-        let button = worldActions.children[i];
-        if (!button) {
-            button = makeButton("");
-            button.className = "shortcut";
-            button.append(document.createElement("span"), keyBadge(""), document.createElement("small"));
-            worldActions.append(button);
-        }
-        if (button.dataset.key === key && button.dataset.hint === hint) continue;
-        button.dataset.key = key;
-        button.dataset.hint = hint;
-        button.disabled = !!hint;
-        button.title = label;
-        button.setAttribute("aria-label", hint ? `${label} (${key}). ${hint}` : `${label} (${key})`);
-        const [name, badge, notice] = button.children;
-        name.textContent = face;
-        badge.textContent = commandFaces.get(key) ?? key;
-        badge.hidden = !!hint;
-        notice.textContent = hint;
-        notice.hidden = !hint;
-    }
+    const spellAction = spell === "look" || spellHint ? undefined : spellCommands[spell];
+    const combat = spell === "cast" && spellAction ? spellAction :
+        launcher && hasAmmo ? fireCommand : spellAction ?? throwCommand;
+    combatAction.dataset.key = commandKey(combat, roguelike);
+    combatAction.setAttribute("aria-label", combat[1]);
+    combatAction.textContent = combat[3];
+    useAction.dataset.key = commandKey(useCommand, roguelike);
+    repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
+    runAction.dataset.key = commandKey(runCommand, roguelike);
 }
 
 function renderActionsPanel() {
@@ -1474,7 +1494,14 @@ function renderActionsPanel() {
     });
     if (openPanel === "menu") {
         tilesMenu.textContent = `Tiles: ${graphicsModes.get(currentGraphics).label}`;
-        rows.unshift(tilesMenu);
+        const commands = makeButton("Commands");
+        commands.onclick = () => showPanel("commands", openMenu);
+        const keys = makeButton("Keys", "Keyboard");
+        keys.onclick = () => {
+            showPanel();
+            toggleKeyboard();
+        };
+        rows.unshift(commands, keys, tilesMenu);
     }
     actionsScreen.replaceChildren(...rows);
 }
@@ -1639,6 +1666,7 @@ function renderMenu(state) {
         price.textContent = row.price;
         const ending = outcome && ["n", "q"].some((key) => row.key === keyCode(key));
         if (state.birth || ending) button.replaceChildren(description);
+        else if (state.onMap) button.replaceChildren(description, price);
         else button.replaceChildren(keyBadge(row.key ? String.fromCharCode(row.key) : ""), description, price);
         button.setAttribute("aria-label",
             [row.name, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
@@ -1677,13 +1705,13 @@ function renderKeyboard() {
     const layers = [
         ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
         ["1234567890", "-=,.;:<>/?", "!@#$%&*()"],
-        ["[]{}\\|`", "'\"+_~^", ""],
+        ["[]{}\\", "|`'\"", "+_~^"],
     ];
     const rows = layers[keyboardLayer].map((line) =>
         [...line].map((key) => makeKey(keyboardLayer === 0 && shifted ? key.toUpperCase() : key)));
     if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
         makeKey("ArrowRight", "→", "Move text cursor right")]);
-    if (mode === "terminal" || (isMenu() && !menu)) rows.unshift([
+    if (mode === "terminal") rows.unshift([
         makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
         makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
     ]);
@@ -1692,8 +1720,7 @@ function renderKeyboard() {
         ["Letters", "Numbers", "More symbols"][nextLayer]);
     switchLayer.onclick = () => {
         keyboardLayer = nextLayer;
-        renderKeyboard();
-        keyboard.querySelector(".keyboard-row:last-child button").focus({ preventScroll: true });
+        renderKeyboard().focus({ preventScroll: true });
     };
     const shift = makeButton("⇧", "Uppercase for next letter");
     shift.setAttribute("aria-pressed", String(shifted));
@@ -1717,9 +1744,13 @@ function renderKeyboard() {
         const hide = makeButton("Hide", "Hide keyboard");
         hide.onclick = () => toggleKeyboard();
         utility.push(makeKey("Escape", "Esc"), commands, hide);
+        keyboardUtilities.replaceChildren(...utility);
+    } else {
+        rows.push(utility);
     }
-    rows.push(utility);
     showKeys(keyboard, rows);
+    keyboard.lastElementChild.classList.toggle("keyboard-utility-row", mode !== "command");
+    return switchLayer;
 }
 
 const digits = () => [
@@ -1735,10 +1766,11 @@ showKeys(optionDigits, [
     [makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right"),
         makeKey("Backspace", "⌫", "Delete digit")],
 ]);
+const [lowDigits, highDigits] = digits();
 showKeys(rest, [
     Array.from(restLabels, ([key, label]) => makeKey(key, label)),
-    ...digits(),
-    [makeKey("Backspace", "⌫", "Delete digit")],
+    lowDigits,
+    [...highDigits, makeKey("Backspace", "⌫", "Delete digit")],
 ]);
 
 function toggleKeyboard() {
@@ -1755,15 +1787,19 @@ function toggleKeyboard() {
     centerPending = true;
     draw();
     if (mode === "command") {
-        (keyboardOpen ? keyboard.querySelector("button") : playKeyboard)?.focus({ preventScroll: true });
+        (keyboardOpen ? keyboard.querySelector("button") : openMenu)?.focus({ preventScroll: true });
     } else if (mode === "target" || mode === "aim" || mode === "direction") {
         (keyboardOpen ? keyboard.querySelector("button") : keyboardToggle)?.focus({ preventScroll: true });
     }
 }
 
 keyboardToggle.addEventListener("click", toggleKeyboard);
-playKeyboard.addEventListener("click", toggleKeyboard);
 
+heroActions.addEventListener("click", () => {
+    if (mode === "command" && context.worldView && world) {
+        sendInput({ type: "map-cell", x: world.x, y: world.y, openMenu: true });
+    }
+});
 openMenu.addEventListener("click", () => {
     if (mode === "command" && request !== undefined) showPanel("menu", openMenu);
 });
@@ -1781,38 +1817,72 @@ function interruptAction(button) {
 }
 
 stopAction.addEventListener("click", () => interruptAction(stopAction));
-runAction.addEventListener("click", () => {
-    if (running) interruptAction(runAction);
-});
 
 for (const view of Object.values(views)) {
     let tap;
+    let holdTimer;
+
+    function cancelTap() {
+        clearTimeout(holdTimer);
+        tap = undefined;
+    }
+
+    function selectCell({ x, y, request: pressedRequest }, openMenu = false) {
+        const type = view === views.map ? mode === "command" ? "map-cell" :
+            mode === "aim" || mode === "run-direction" ? "aim-cell" : undefined :
+            view === views.target ? mode === "target" ? "target-cell" :
+            mode === "aim" || mode === "direction" || mode === "run-direction" ? "aim-cell" : undefined :
+            isMenu() && !menu ? "tap" : undefined;
+        const source = view === views.map ? view.frame : views.terminal.frame;
+        if (request === undefined || pressedRequest !== request || activeView !== view ||
+            !type || !view.grid || !view.gridElement.contains(document.elementFromPoint(x, y)) ||
+            view.rendered !== source || !sameRegion(view.region, view.crop)) return;
+        const { x: left, y: top, columns, rows } = view.grid;
+        const grid = view.gridElement.getBoundingClientRect();
+        const column = Math.floor((x - grid.left) * columns / grid.width);
+        const row = Math.floor((y - grid.top) * rows / grid.height);
+        if (column < 0 || column >= columns || row < 0 || row >= rows) return;
+        sendInput({ type, x: left + column, y: top + row, openMenu });
+    }
+
     view.viewport.addEventListener("pointerdown", (event) => {
-        tap = event.isPrimary && event.button === 0 ?
-            { request, x: event.clientX, y: event.clientY, pointer: event.pointerId } : undefined;
+        cancelTap();
+        if (!event.isPrimary || event.button !== 0) return;
+        tap = { request, x: event.clientX, y: event.clientY, pointer: event.pointerId };
+        if (view === views.map && mode === "command" && event.pointerType === "touch" &&
+            view.gridElement?.contains(event.target)) {
+            holdTimer = setTimeout(() => {
+                const held = tap;
+                cancelTap();
+                if (held) selectCell(held, true);
+            }, 425);
+        }
     });
     view.viewport.addEventListener("pointermove", (event) => {
         if (tap?.pointer === event.pointerId &&
-            Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) tap = undefined;
+            Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 8) cancelTap();
     });
-    view.viewport.addEventListener("pointercancel", () => { tap = undefined; });
+    view.viewport.addEventListener("pointerup", () => clearTimeout(holdTimer));
+    view.viewport.addEventListener("pointercancel", cancelTap);
     view.viewport.addEventListener("click", (event) => {
-        const type = view === views.map ? mode === "command" ? "map-cell" : undefined :
-            view === views.target ? mode === "target" ? "target-cell" :
-            mode === "aim" || mode === "direction" ? "aim-cell" : undefined :
-            isMenu() && !menu ? "tap" : undefined;
-        const source = view === views.map ? view.frame : views.terminal.frame;
-        if (event.detail === 0 || !request || tap?.request !== request || activeView !== view ||
-            !type || !view.grid || !view.gridElement.contains(event.target) ||
-            view.rendered !== source || !sameRegion(view.region, view.crop)) return;
-        tap = undefined;
-        const { x, y, columns, rows } = view.grid;
-        const grid = view.gridElement.getBoundingClientRect();
-        const column = Math.floor((event.clientX - grid.left) * columns / grid.width);
-        const row = Math.floor((event.clientY - grid.top) * rows / grid.height);
-        if (column < 0 || column >= columns || row < 0 || row >= rows) return;
-        sendInput({ type, x: x + column, y: y + row });
+        if (!tap || event.detail === 0) return;
+        const pressedRequest = tap.request;
+        cancelTap();
+        selectCell({ x: event.clientX, y: event.clientY, request: pressedRequest });
     });
+    if (view === views.map) {
+        view.viewport.addEventListener("contextmenu", (event) => {
+            if (!view.gridElement?.contains(event.target)) return;
+            event.preventDefault();
+            cancelTap();
+            if (mode === "command" && event.button === 2 && event.pointerType !== "touch")
+                selectCell({ x: event.clientX, y: event.clientY, request }, true);
+        });
+        view.viewport.addEventListener("scroll", cancelTap);
+        document.addEventListener("touchstart", (event) => {
+            if (event.touches.length > 1) cancelTap();
+        }, { capture: true, passive: true });
+    }
 }
 
 zoomOut.addEventListener("click", () => changeZoom(-1));
@@ -1884,7 +1954,8 @@ journal.addEventListener("toggle", () => {
 
 const viewResize = new ResizeObserver((entries) => {
     if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;
-    recenterView();
+    if (activeView === views.map) draw();
+    else recenterView();
 });
 for (const { viewport } of Object.values(views)) viewResize.observe(viewport);
 
@@ -1922,7 +1993,7 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (event.key === "Escape" && pendingInput !== undefined && (running || !stopAction.hidden)) {
-        interruptAction(running ? runAction : stopAction);
+        interruptAction(stopAction);
         event.preventDefault();
         return;
     }

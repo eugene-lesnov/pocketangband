@@ -9,6 +9,7 @@
 #include "init.h"
 #include "message.h"
 #include "mon-desc.h"
+#include "mon-lore.h"
 #include "mon-predicate.h"
 #include "monster.h"
 #include "obj-desc.h"
@@ -18,17 +19,23 @@
 #include "obj-util.h"
 #include "object.h"
 #include "player.h"
+#include "player-calcs.h"
 #include "player-spell.h"
 #include "player-timed.h"
 #include "player-util.h"
+#include "project.h"
 #include "target.h"
 #include "trap.h"
+#include "ui-command.h"
 #include "ui-display.h"
 #include "ui-input.h"
 #include "ui-map.h"
+#include "ui-mon-lore.h"
+#include "ui-object.h"
 #include "ui-output.h"
 #include "ui-player.h"
 #include "ui-prefs.h"
+#include "z-type.h"
 #include <emscripten.h>
 
 enum { MAP_TERM = 6, LOG_LIMIT = 40, RUN_STEP_DELAY_MS = 80 };
@@ -98,9 +105,11 @@ cmd_code web_set_direction_command(cmd_code code)
     return previous;
 }
 
-EM_JS(void, web_set_aim_options, (bool current, bool nearest, int x, int y), {
+EM_JS(void, set_aim_options, (bool current, bool nearest, int x, int y,
+        const int *path, int length), {
     Module['inputContext'] = { current: !!current, nearest: !!nearest,
-        target: current ? { x, y } : undefined };
+        target: current ? { x, y } : undefined,
+        aimPath: length ? HEAP32.slice(path >>> 2, (path >>> 2) + length) : undefined };
 });
 
 EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
@@ -550,38 +559,157 @@ static struct loc web_map_grid(int x, int y)
     return loc(map->offset_x + x / tile_width, map->offset_y + y / tile_height);
 }
 
-EM_JS(void, set_map_cell, (int x, int y, const char *description), {
-    Module['inputContext'] = { mapCell: { x, y, description: UTF8ToString(description) } };
+static bool web_has_overhead_map(void)
+{
+    return window_flag[MAP_TERM] == PW_OVERHEAD && textui_map_is_visible();
+}
+
+struct loc web_direction_grid(int x, int y)
+{
+    if (direction_command == CMD_RUN && web_has_overhead_map()) return web_map_grid(x, y);
+    return loc(Term->offset_x + (x - COL_MAP) / tile_width,
+        Term->offset_y + (y - ROW_MAP) / tile_height);
+}
+
+void web_set_aim_options(bool selected, struct loc location)
+{
+    struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
+    const bool overhead = web_has_overhead_map();
+    const term *map = overhead ? angband_term[MAP_TERM] : Term;
+    const int origin_x = overhead ? 0 : COL_MAP;
+    const int origin_y = overhead ? 0 : ROW_MAP;
+    const bool current = location.x || (selected && target_okay());
+    struct loc grid = location;
+    if (!location.x) target_get(&grid);
+
+    int path_count = 0;
+    int path_cells[z_info->max_range];
+    if (current) {
+        struct loc path[z_info->max_range];
+        int count = project_path(cave, path, z_info->max_range, player->grid, grid, PROJECT_INFO);
+        for (int i = 0; i < count; i++) {
+            int x = origin_x + (path[i].x - map->offset_x) * tile_width;
+            int y = origin_y + (path[i].y - map->offset_y) * tile_height;
+            if (x >= 0 && x < map->wid && y >= 0 && y < map->hgt)
+                path_cells[path_count++] = y * map->wid + x;
+        }
+    }
+    set_aim_options(current, point_set_size(targets) > 0,
+        origin_x + (grid.x - map->offset_x) * tile_width,
+        origin_y + (grid.y - map->offset_y) * tile_height, path_cells, path_count);
+    point_set_dispose(targets);
+}
+
+bool web_aim_at_cell(int x, int y, struct loc *location)
+{
+    struct loc grid = web_has_overhead_map() ? web_map_grid(x, y) :
+        loc(Term->offset_x + (x - COL_MAP) / tile_width,
+            Term->offset_y + (y - ROW_MAP) / tile_height);
+    if (!square_in_bounds_fully(cave, grid)) return false;
+    struct monster *mon = square_monster(cave, grid);
+    if (!target_able(mon)) {
+        *location = grid;
+        return false;
+    }
+    target_set_monster(mon);
+    monster_race_track(player->upkeep, mon->race);
+    health_track(player->upkeep, mon);
+    return true;
+}
+
+enum web_map_action {
+    MAP_PICKUP, MAP_GO_UP, MAP_GO_DOWN, MAP_REST, MAP_RUN,
+    MAP_OPEN, MAP_CLOSE, MAP_DISARM, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE,
+    MAP_CAST, MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_ACTION_COUNT
+};
+
+static const char *const map_action_labels[MAP_ACTION_COUNT] = {
+    [MAP_PICKUP] = "Pick up", [MAP_GO_UP] = "Go up staircase",
+    [MAP_GO_DOWN] = "Go down staircase",
+    [MAP_REST] = "Rest", [MAP_RUN] = "Run", [MAP_OPEN] = "Open", [MAP_CLOSE] = "Close",
+    [MAP_DISARM] = "Disarm", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
+    [MAP_ATTACK] = "Attack",
+    [MAP_FIRE] = "Fire", [MAP_CAST] = "Cast", [MAP_THROW] = "Throw",
+    [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect",
+};
+
+static bool map_cell_adjacent(struct loc grid)
+{
+    return !loc_eq(grid, player->grid) &&
+        ABS(grid.x - player->grid.x) <= 1 && ABS(grid.y - player->grid.y) <= 1;
+}
+
+static unsigned map_actions(struct loc grid, struct monster *mon, int object_count)
+{
+    struct chunk *known = player->cave;
+    unsigned actions = 0;
+    if (loc_eq(grid, player->grid)) {
+        if (object_count) actions |= 1U << MAP_PICKUP;
+        if (square_isupstairs(known, grid)) actions |= 1U << MAP_GO_UP;
+        if (square_isdownstairs(known, grid)) actions |= 1U << MAP_GO_DOWN;
+        return actions | (1U << MAP_REST) | (1U << MAP_RUN);
+    }
+    if (player->timed[TMD_IMAGE]) return 0;
+    bool adjacent = map_cell_adjacent(grid);
+    if (mon) {
+        actions = 1U << MAP_DETAILS;
+        if (adjacent) actions |= 1U << MAP_ATTACK;
+        if (target_able(mon)) {
+            if (player_can_fire(player, false) && has_quick_action_item(obj_can_fire, true))
+                actions |= 1U << MAP_FIRE;
+            if (player_can_cast(player, false) && has_learned_spell() &&
+                    has_quick_action_item(obj_can_cast_from, false))
+                actions |= 1U << MAP_CAST;
+            if (has_quick_action_item(obj_can_throw, true)) actions |= 1U << MAP_THROW;
+        }
+        return actions;
+    }
+    if (adjacent) {
+        if (square_iscloseddoor(known, grid)) actions |= 1U << MAP_OPEN;
+        if (square_isopendoor(known, grid)) actions |= 1U << MAP_CLOSE;
+        if (square_isdisarmabletrap(known, grid)) actions |= (1U << MAP_DISARM) | (1U << MAP_JUMP);
+        if (square_isknownpassable(known, grid) && !square_isvisibletrap(known, grid))
+            actions |= 1U << MAP_WALK;
+    }
+    if (object_count == 1) actions |= 1U << MAP_INSPECT;
+    return actions;
+}
+
+EM_JS(void, set_map_cell, (int x, int y, const char *description, bool menu,
+        unsigned enabled, const char *const *labels, int count), {
+    const mapCell = { x, y, description: UTF8ToString(description) };
+    if (menu) {
+        mapCell.actions = [];
+        for (let code = 0; code < count; code++) {
+            if (enabled & (1 << code))
+                mapCell.actions.push({ code, label: UTF8ToString(HEAPU32[(labels >>> 2) + code]) });
+        }
+    }
+    Module['inputContext'] = { mapCell };
 });
 
-void web_inspect_cell(int x, int y)
+static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned actions,
+        struct monster *mon, struct object **objects, int count)
 {
-    struct loc grid = web_map_grid(x, y);
-    if (!square_in_bounds(cave, grid)) return;
-
-    struct monster *mon = square_monster(cave, grid);
-    bool obvious_monster = mon && monster_is_obvious(mon);
     bool here = loc_eq(player->grid, grid);
     const char *phrase = here ? "You are on " : square_isseen(cave, grid) ? "You see " :
-        obvious_monster ? "You sense " : "You recall ";
+        mon ? "You sense " : "You recall ";
     const char *article = "";
     char name[160];
 
     if (player->timed[TMD_IMAGE]) {
         my_strcpy(name, "something strange", sizeof(name));
-    } else if (obvious_monster) {
+    } else if (mon) {
         monster_desc(name, sizeof(name), mon, MDESC_IND_VIS);
     } else if (square_isvisibletrap(player->cave, grid)) {
         const char *trap_name = square(player->cave, grid)->trap->kind->desc;
         article = is_a_vowel(trap_name[0]) ? "an " : "a ";
         my_strcpy(name, trap_name, sizeof(name));
     } else {
-        struct object *floor_list[z_info->floor_size];
-        int count = scan_distant_floor(floor_list, N_ELEMENTS(floor_list), player, grid);
         if (count > 1) {
             strnfmt(name, sizeof(name), "a pile of %d objects", count);
         } else if (count == 1) {
-            object_desc(name, sizeof(name), floor_list[0], ODESC_PREFIX | ODESC_FULL, player);
+            object_desc(name, sizeof(name), objects[0], ODESC_PREFIX | ODESC_FULL, player);
         } else {
             if (here) phrase = "You are ";
             strnfmt(name, sizeof(name), "%s%s%s",
@@ -594,21 +722,75 @@ void web_inspect_cell(int x, int y)
     char coordinates[32], description[224];
     coords_desc(coordinates, sizeof(coordinates), grid.y, grid.x);
     strnfmt(description, sizeof(description), "%s%s%s, %s.", phrase, article, name, coordinates);
-    set_map_cell(x, y, description);
+    set_map_cell(x, y, description, menu, actions, map_action_labels, MAP_ACTION_COUNT);
 }
 
-void web_move_to_cell(int x, int y)
+static bool queue_map_command(cmd_code command, struct loc grid)
 {
-    struct loc grid = web_map_grid(x, y);
-    if (!square_in_bounds_fully(cave, grid) || loc_eq(grid, player->grid)) return;
-
-    if (ABS(grid.x - player->grid.x) <= 1 && ABS(grid.y - player->grid.y) <= 1) {
-        if (!cmdq_push(CMD_WALK))
-            cmd_set_arg_direction(cmdq_peek(), "direction", motion_dir(player->grid, grid));
-    } else if (!cmdq_push(CMD_PATHFIND)) {
+    if (cmdq_push(command)) return false;
+    if (command == CMD_WALK || command == CMD_JUMP || command == CMD_ALTER || command == CMD_OPEN ||
+            command == CMD_CLOSE || command == CMD_DISARM) {
+        cmd_set_arg_direction(cmdq_peek(), "direction", motion_dir(player->grid, grid));
+    } else if (command == CMD_PATHFIND) {
         cmd_set_arg_point(cmdq_peek(), "point", grid);
         pace_run = true;
+    } else if (command == CMD_FIRE || command == CMD_CAST || command == CMD_THROW) {
+        cmd_set_arg_point(cmdq_peek(), "map target", grid);
     }
+    return true;
+}
+
+bool web_map_cell(int x, int y, int gesture)
+{
+    struct loc grid = web_map_grid(x, y);
+    if (!square_in_bounds(cave, grid)) return false;
+    bool here = loc_eq(grid, player->grid);
+    bool adjacent = map_cell_adjacent(grid);
+    struct monster *mon = square_monster(cave, grid);
+    if (mon && !monster_is_obvious(mon)) mon = NULL;
+    struct object *objects[z_info->floor_size];
+    int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
+    struct chunk *known = player->cave;
+    if (gesture != WEB_MAP_HOLD && adjacent && square_in_bounds_fully(cave, grid) &&
+            !player->timed[TMD_IMAGE] && !mon && !count && square_isfloor(known, grid) &&
+            !square_isvisibletrap(known, grid)) {
+        return queue_map_command(CMD_WALK, grid);
+    }
+    unsigned actions = map_actions(grid, mon, count);
+    bool menu = gesture == WEB_MAP_HOLD || here || (actions && (adjacent || mon));
+    if (!menu && gesture == WEB_MAP_REPEAT && square_in_bounds_fully(cave, grid))
+        return queue_map_command(adjacent ? CMD_WALK : CMD_PATHFIND, grid);
+    describe_map_cell(x, y, grid, menu, actions, mon, objects, count);
+    return false;
+}
+
+bool web_act_on_map_cell(int x, int y, int action)
+{
+    static const cmd_code commands[MAP_ACTION_COUNT] = {
+        [MAP_PICKUP] = CMD_PICKUP, [MAP_GO_UP] = CMD_GO_UP, [MAP_GO_DOWN] = CMD_GO_DOWN,
+        [MAP_RUN] = CMD_RUN, [MAP_OPEN] = CMD_OPEN,
+        [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
+        [MAP_ATTACK] = CMD_ALTER, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
+        [MAP_THROW] = CMD_THROW,
+    };
+    struct loc grid = web_map_grid(x, y);
+    if (!square_in_bounds(cave, grid) || action < 0 || action >= MAP_ACTION_COUNT) return false;
+    struct monster *mon = square_monster(cave, grid);
+    if (mon && !monster_is_obvious(mon)) mon = NULL;
+    struct object *objects[2];
+    int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
+    if (!(map_actions(grid, mon, count) & (1U << action))) return false;
+    if (action == MAP_REST) {
+        textui_cmd_rest();
+        return true;
+    }
+    if (action == MAP_DETAILS || action == MAP_INSPECT) {
+        if (action == MAP_DETAILS) lore_show_interactive(mon->race, get_lore(mon->race));
+        else display_object_recall_interactive(objects[0]);
+        web_map_cell(x, y, WEB_MAP_HOLD);
+        return false;
+    }
+    return queue_map_command(commands[action], grid);
 }
 
 EM_JS(bool, take_interrupt, (void), {
@@ -624,8 +806,20 @@ void web_poll_interrupt(void)
     if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
     double now = emscripten_get_now();
     if (pace_run && player->upkeep->running) {
-        const term *map = angband_term[MAP_TERM];
-        send_run_position(player->grid.x - map->offset_x, player->grid.y - map->offset_y);
+        if (web_has_overhead_map()) {
+            term *map = angband_term[MAP_TERM];
+            if (OPT(player, center_player)) {
+                modify_panel(map, player->grid.y - map->hgt / (2 * tile_height),
+                    player->grid.x - map->wid / (2 * tile_width));
+            }
+            handle_stuff(player);
+            term *previous = Term;
+            Term_activate(map);
+            Term_fresh();
+            Term_activate(previous);
+            send_run_position((player->grid.x - map->offset_x) * tile_width,
+                (player->grid.y - map->offset_y) * tile_height);
+        }
         last_interrupt_poll = now;
         emscripten_sleep(RUN_STEP_DELAY_MS);
     } else if (now - last_interrupt_poll >= 16) {
@@ -636,7 +830,7 @@ void web_poll_interrupt(void)
 }
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
-        int store_action, int aim_cell, int target_cell, int inspect_cell, int move_to_cell,
+        int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event), {
     const event = Module['takeInput']();
     if (!event) return 0;
@@ -658,7 +852,8 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
         case "target-cell": return target_cell;
-        case "map-cell": return event.code ? move_to_cell : inspect_cell;
+        case "map-cell": return map_cell;
+        case "map-action": return map_action;
         case "buy-stat": return buy_stat;
         case "sell-stat": return sell_stat;
         case "set-tiles": return tiles_event;
@@ -739,16 +934,17 @@ static ui_event_type wait_for_input(void)
     if (mode == WEB_INPUT_DIRECTION && direction_command == CMD_RUN) mode = WEB_INPUT_RUN_DIRECTION;
     pace_run = mode == WEB_INPUT_RUN_DIRECTION;
 
-    bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM || mode == WEB_INPUT_DIRECTION;
+    bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM ||
+        mode == WEB_INPUT_DIRECTION || mode == WEB_INPUT_RUN_DIRECTION;
     const char *warning = mode == WEB_INPUT_CONFIRM ? cast_warning : NULL;
-    bool world_view = map_visible && playing &&
-        (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MORE || mode == WEB_INPUT_RUN_DIRECTION || warning) &&
-        window_flag[MAP_TERM] == PW_OVERHEAD;
+    bool world_view = playing && web_has_overhead_map() &&
+        (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_MORE ||
+            mode == WEB_INPUT_RUN_DIRECTION || warning);
     if (mode == WEB_INPUT_CHARACTER ||
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
         publish_world(mode == WEB_INPUT_COMMAND);
     if (playing && aiming && map_visible) web_character_sheet(false);
-    if (mode == WEB_INPUT_COMMAND && world_view) {
+    if ((mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_RUN_DIRECTION) && world_view) {
         const term *map = angband_term[MAP_TERM];
         width = MIN(map->wid, (cave->width - map->offset_x) * tile_width);
         height = MIN(map->hgt, (cave->height - map->offset_y) * tile_height);
@@ -778,7 +974,7 @@ static errr queue_input(void)
     int code = 0, x = 0, y = 0;
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
-        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
+        EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
         EVT_WEB_NAME);
 
     switch (type) {
@@ -786,10 +982,11 @@ static errr queue_input(void)
         case EVT_KBRD: return Term_keypress(code, 0);
         case EVT_MOUSE: return Term_mousepress(x, y, 1);
         case EVT_WEB_AIM_CELL:
-        case EVT_WEB_INSPECT_CELL:
-        case EVT_WEB_MOVE_TO_CELL:
+        case EVT_WEB_MAP_CELL:
+        case EVT_WEB_MAP_ACTION:
         case EVT_WEB_TARGET_CELL: {
-            const ui_event action = { .mouse = { .type = type, .x = x, .y = y, .button = 1 } };
+            const ui_event action = { .mouse = { .type = type, .x = x, .y = y,
+                .button = type == EVT_WEB_MAP_CELL || type == EVT_WEB_MAP_ACTION ? code : 1 } };
             return Term_event_push(&action);
         }
         case EVT_WEB_STORE_ACTION: {
@@ -829,7 +1026,16 @@ static errr web_xtra(int action, int value)
             return 0;
         }
         case TERM_XTRA_DELAY:
-            if (value > 0) emscripten_sleep(value);
+            if (value > 0) {
+                term *map = angband_term[MAP_TERM];
+                if (Term != map && web_has_overhead_map()) {
+                    term *previous = Term;
+                    Term_activate(map);
+                    Term_fresh();
+                    Term_activate(previous);
+                }
+                emscripten_sleep(value);
+            }
             return 0;
         case TERM_XTRA_CLEAR:
         case TERM_XTRA_REACT:

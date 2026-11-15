@@ -53,20 +53,27 @@ self.addEventListener("message", ({ data }) => {
         if (waiting?.mode !== "name" || data.request !== waiting.request || typeof data.value !== "string") return;
     } else if (data.type === "set-tiles") {
         if (waiting?.mode !== "command" || data.request !== waiting.request || !graphicsModes.has(data.code)) return;
-    } else if (["tap", "aim-cell", "target-cell", "map-cell"].includes(data.type)) {
-        if (!waiting || data.request !== waiting.request ||
-            !Number.isInteger(data.x) || !Number.isInteger(data.y)) return;
+    } else if (["tap", "aim-cell", "target-cell", "map-cell", "map-action"].includes(data.type)) {
+        if (!waiting || data.request !== waiting.request) return;
         if (data.type === "tap" && !["menu", "save-slots"].includes(waiting.mode)) return;
-        if (data.type === "aim-cell" && !["aim", "direction"].includes(waiting.mode)) return;
+        if (data.type === "aim-cell" && !["aim", "direction", "run-direction"].includes(waiting.mode)) return;
         if (data.type === "target-cell" && waiting.mode !== "target") return;
-        if (data.type === "map-cell" && (waiting.mode !== "command" || !waiting.context.worldView)) return;
-        const { region } = waiting;
-        if (!region || data.x < region.x || data.y < region.y ||
-            data.x >= region.x + region.width || data.y >= region.y + region.height) return;
-        if (data.type === "map-cell") {
+        if (data.type === "map-cell" || data.type === "map-action") {
+            if (waiting.mode !== "command" || !waiting.context.worldView) return;
             const selected = waiting.context.mapCell;
-            data.code = Number(data.x === selected?.x && data.y === selected?.y);
+            if (data.type === "map-action") {
+                if (!selected?.actions?.some(({ code }) => code === data.code)) return;
+                data.x = selected.x;
+                data.y = selected.y;
+            } else {
+                const repeat = selected && !selected.actions && data.x === selected.x && data.y === selected.y;
+                data.code = data.openMenu === true ? 1 : repeat ? 2 : 0;
+            }
         }
+        const { region } = waiting;
+        if (!region || !Number.isInteger(data.x) || !Number.isInteger(data.y) ||
+            data.x < region.x || data.y < region.y ||
+            data.x >= region.x + region.width || data.y >= region.y + region.height) return;
     } else if (data.type === "buy-stat" || data.type === "sell-stat") {
         if (waiting?.mode !== "birth-stats" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 0) return;
@@ -161,7 +168,7 @@ async function play(afterRun) {
             return new Promise((resolve) => {
                 waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve };
                 const data = context.resultsFile?.data;
-                self.postMessage({ type: "waiting", request, mode, region, world, context, menu },
+                self.postMessage({ type: "waiting", request, mode, region, playing, world, context, menu },
                     data ? [data.buffer] : []);
                 world = undefined;
             });

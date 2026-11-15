@@ -87,6 +87,10 @@ export function renderTileMap(canvas, tiles, frame, grid, colors) {
                     context.fillText(String.fromCodePoint(codepoint), left + size / 2, top + size / 2);
                 }
             }
+            if (frame.aimPath?.has(index)) {
+                context.fillStyle = "#ffdb764d";
+                context.fillRect(left, top, size, size);
+            }
             if (index === frame.cursor) {
                 context.strokeRect(left + cursorWidth / 2, top + cursorWidth / 2, size - cursorWidth, size - cursorWidth);
             }

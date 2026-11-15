@@ -31,7 +31,7 @@ main:not(.starting) {
 }
 main > :not(.view) { flex: none; }
 main:not(.starting) .view { flex: 1; min-height: 7rem; }
-main:is(.in-world, .in-game-panel) {
+main:is(.in-play, .in-world, .in-game-panel) {
     gap: 0.25rem;
     padding-block: env(safe-area-inset-top) max(0.25rem, env(safe-area-inset-bottom));
     padding-inline: max(0.25rem, env(safe-area-inset-left)) max(0.25rem, env(safe-area-inset-right));
@@ -131,6 +131,21 @@ dt { color: var(--muted); }
 .view > :is(.screen, .menu-screen) { grid-area: content; }
 .in-world .view { overflow: clip; }
 
+#open-menu {
+    position: absolute;
+    grid-area: content;
+    inset-inline-end: 0.25rem;
+    inset-block-end: 0.25rem;
+    z-index: 1;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    background: rgb(34 32 25 / 80%);
+    color: var(--accent);
+    font-size: 1.25rem;
+}
+#open-menu:enabled:active { background: #4c3820; }
+
 #zoom { display: flex; }
 .in-world .view-bar {
     position: absolute;
@@ -229,6 +244,12 @@ dt { color: var(--muted); }
     scrollbar-width: none;
 }
 #map-screen:has(canvas:not([hidden])), #target-screen:has(canvas:not([hidden])) { background: #111; }
+#map-screen { touch-action: pan-x pan-y; }
+#map-screen .map-grid {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
 #map-screen::-webkit-scrollbar, #target-screen::-webkit-scrollbar { display: none; }
 .map-grid {
     width: max-content;
@@ -280,6 +301,12 @@ dt { color: var(--muted); }
     font: 0.875rem/1.25 system-ui, sans-serif;
 }
 .in-world #save-status { grid-area: journal; }
+.in-world #save-status:not(.error) { min-height: var(--message-row-height); margin: 0.25rem; }
+.in-world #input-prompt.map-description {
+    grid-area: journal;
+    height: var(--message-row-height);
+    margin: 0.25rem;
+}
 .in-world #save-status.error,
 .in-world #input-prompt:not([hidden]) ~ #save-status {
     position: absolute;
@@ -292,6 +319,7 @@ dt { color: var(--muted); }
 }
 
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
+.aim-path { box-shadow: inset 0 0 0 1em #ffdb764d; }
 
 :is(#journal, #empty-journal, #message-pause) { margin: 0.25rem; }
 :is(#journal, #empty-journal) {
@@ -402,57 +430,49 @@ dt { color: var(--muted); }
 #map-picker {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(var(--map-picker-height, 184px), 45dvh);
+    height: min(13rem, 40dvh);
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     background: var(--panel);
 }
-.map-picker-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.25rem 0.25rem 0.25rem 0.625rem;
+#map-picker-title { padding: 0.45rem 0.625rem; color: var(--accent); }
+#map-picker .menu-rows button {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-block: 0.25rem;
 }
-#map-picker-title { color: var(--accent); }
-.map-picker-header button { padding-inline: 0.75rem; }
-#map-picker .menu-rows button { padding-block: 0.25rem; }
-.control-body {
+.game-controls-row {
+    --pad-key-size: clamp(44px, 13vw, 52px);
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
     gap: 0.5rem;
 }
-.control-body:has(> fieldset:not([hidden])) { min-height: 140px; }
-.control-body:not(:has(> fieldset:not([hidden]))) { display: none; }
-.control-body > fieldset { align-self: start; }
+.game-controls-row:has(#direction-pad[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.game-controls-row:not(:has(fieldset:not([hidden]), #stop-action:not([hidden]))) { display: none; }
+.game-controls-buttons { display: grid; gap: 0.25rem; min-width: 0; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.direction-pad, .key-row, #world-actions, #play-keys, #terminal-keys { display: grid; gap: 0.25rem; }
-.direction-pad { grid-template-columns: repeat(3, 44px); }
+.direction-pad, .key-row, #play-keys, #map-cell-actions, #keyboard-utilities, #terminal-keys { display: grid; gap: 0.25rem; }
+.direction-pad {
+    grid-template-columns: repeat(3, var(--pad-key-size));
+    grid-auto-rows: var(--pad-key-size);
+}
 .direction-pad button { padding: 0; font: 1.25rem var(--mono); }
 .direction-pad.run-direction button:enabled { border-color: var(--accent); }
-#direction-center { line-height: 1; }
-#center-caption { display: block; margin-top: 0.1rem; font: 0.625rem system-ui, sans-serif; }
-.direction-pad.cardinal :is(.diagonal, #direction-center), #direction-center:disabled { visibility: hidden; }
+#direction-center { font-size: clamp(1rem, 5vw, 1.25rem); line-height: 1; }
+#center-caption { display: block; margin-top: 0.1rem; font: 0.625rem/1.05 system-ui, sans-serif; }
+.direction-pad.cardinal :is(.diagonal, #direction-center) { visibility: hidden; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#world-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#stop-action { align-self: end; min-width: 88px; border-color: #9c7749; }
+#stop-action { border-color: var(--accent); background: #4c3820; }
 #play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-#play-keys button { padding-inline: 0.125rem; font-size: 0.75rem; white-space: nowrap; }
-#run-action { border-color: #9c7749; }
-#play-keys.run-controls #run-action { border-color: var(--accent); background: #4c3820; }
-.shortcut {
-    display: grid;
-    align-content: center;
-    justify-items: center;
-    gap: 0.0625rem;
-    min-width: 0;
-    text-align: center;
+.game-controls-row:has(#direction-pad:not([hidden])) :is(#play-keys, #map-cell-actions, #keyboard-utilities) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(var(--pad-key-size), auto);
 }
-.shortcut kbd { font: 0.75rem var(--mono); color: var(--accent); }
-.shortcut small { font: 0.625rem/1.2 system-ui, sans-serif; white-space: nowrap; }
-.control-body:has(#target-actions:not([hidden])) .direction-pad,
+#map-cell-actions > :first-child:nth-last-child(even), #close-map-cell-actions { grid-column: 1 / -1; }
+#close-map-cell-actions { background: var(--panel); }
+#target-actions button { min-width: 0; overflow-wrap: anywhere; }
 #target-actions { grid-auto-rows: 44px; }
-#target-mode, #target-types, #nearest, #confirm-target { grid-column: 1 / -1; }
+#target-mode, #target-types, #confirm-target { grid-column: 1 / -1; }
 #target-types { gap: 0; }
 #target-monster { border-radius: 0.375rem 0 0 0.375rem; }
 #target-location { border-radius: 0 0.375rem 0.375rem 0; border-left: 0; }
@@ -461,14 +481,24 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 :is(#confirm-key, #confirm-target, #confirm-name) { border-color: #9c7749; }
 #keyboard-toggle[aria-expanded="true"] { color: #171612; background: var(--accent); }
 #terminal-keys > [hidden] { display: block !important; visibility: hidden; }
-#terminal-keys > :is(#birth-start-over, #target-inspect)[hidden],
-#terminal-keys.target-controls > [hidden], #terminal-keys.birth-review-controls > [hidden] {
+#terminal-keys > :is(#edit-history, #birth-start-over, #target-inspect, #nearest)[hidden],
+#terminal-keys.birth-confirmation-controls > [hidden] {
     display: none !important;
 }
-#terminal-keys.target-controls { grid-template-columns: minmax(0, 1fr) 60px; }
-#terminal-keys.target-controls:has(#target-inspect:not([hidden])) {
-    grid-template-columns: minmax(0, 1fr) 88px 60px;
+#terminal-keys.birth-confirmation-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys {
+    grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
 }
+.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys.aim-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys > button {
+    min-width: 0;
+    padding-inline: 0.125rem;
+    overflow-wrap: anywhere;
+}
+.game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys > [hidden] { display: none !important; }
+#terminal-keys.aim-controls #confirm-key { grid-column: 1 / -1; grid-row: 1; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr) 60px; }
 #terminal-keys.options-controls #confirm-key { display: none !important; }
 #terminal-keys.birth-choice-controls { grid-template-columns: minmax(0, 1fr); }
@@ -483,7 +513,7 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .keyboard-row { display: flex; gap: 0.25rem; }
 .keyboard-row button { flex: 1; min-width: 0; padding-inline: 0; }
 .keyboard-row .space-key { flex: 1.5; }
-#keyboard .keyboard-row:last-child button { min-width: min(44px, 15%); }
+.keyboard-utility-row button { min-width: min(44px, 15%); }
 .keyboard-row button[aria-pressed="true"] { color: #171612; background: var(--accent); }
 
 .menu-screen { overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); }
@@ -602,7 +632,6 @@ main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#can
 main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#cancel-key:not([hidden])) > [hidden] {
     display: none !important;
 }
-#terminal-keys.birth-review-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !important; }
 .view:has(#name-screen:not([hidden])) { flex: none; }
 #name-screen, #edit-screen { padding: 0.75rem 0.625rem; }

@@ -527,8 +527,8 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_DELETE = 0x40000,
 +	EVT_WEB_BUY_STAT = 0x80000,
 +	EVT_WEB_SELL_STAT = 0x100000,
-+	EVT_WEB_INSPECT_CELL = 0x200000,
-+	EVT_WEB_MOVE_TO_CELL = 0x400000,
++	EVT_WEB_MAP_CELL = 0x200000,
++	EVT_WEB_MAP_ACTION = 0x400000,
 +	EVT_WEB_NAME = 0x800000,
 +#endif
  } ui_event_type;
@@ -1054,7 +1054,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,11 +1611,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,15 +1611,30 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1078,7 +1078,36 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				int y = KEY_GRID_Y(ke);
  				int x = KEY_GRID_X(ke);
-@@ -1642,9 +1739,28 @@ static bool textui_get_aim_dir(int *dp)
+ 				struct loc from = player->grid;
+ 				struct loc to = loc(x, y);
++#ifdef __EMSCRIPTEN__
++				if (ke.type == EVT_WEB_AIM_CELL)
++					to = web_direction_grid(ke.mouse.x, ke.mouse.y);
++#endif
+ 
+ 				dir = pathfind_direction_to(from, to);
+@@ -1613,7 +1710,7 @@
+  * Note that "Force Target", if set, will pre-empt user interaction,
+  * if there is a usable target already set.
+  */
+-static bool textui_get_aim_dir(int *dp)
++static bool textui_get_aim_dir_aux(int *dp, bool confirm)
+ {
+ 	/* Global direction */
+ 	int dir = 0;
+@@ -1625,7 +1722,10 @@
+ 	(*dp) = 0;
+ 
+ 	/* Auto-target if requested */
+-	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
++	if (!confirm && OPT(player, use_old_target) && target_okay()) dir = 5;
++#ifdef __EMSCRIPTEN__
++	struct loc location = loc(0, 0);
++#endif
+ 
+ 	/* Ask until satisfied */
+ 	while (!dir) {
+@@ -1642,9 +1742,23 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1087,14 +1116,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 -		if (ke.type == EVT_MOUSE) {
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_AIM);
-+		struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
-+		bool current = target_okay();
-+		struct loc grid;
-+		target_get(&grid);
-+		web_set_aim_options(current, point_set_size(targets) > 0,
-+			COL_MAP + (grid.x - Term->offset_x) * tile_width,
-+			ROW_MAP + (grid.y - Term->offset_y) * tile_height);
-+		point_set_dispose(targets);
++		web_set_aim_options(confirm, location);
 +#endif
 +		bool entered = get_com_ex(p, &ke);
 +#ifdef __EMSCRIPTEN__
@@ -1102,15 +1124,17 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +#endif
 +		if (!entered) break;
 +
-+		if (ke.type == EVT_MOUSE
 +#ifdef __EMSCRIPTEN__
-+				|| ke.type == EVT_WEB_AIM_CELL
++		if (ke.type == EVT_WEB_AIM_CELL) {
++			if (web_aim_at_cell(ke.mouse.x, ke.mouse.y, &location)) dir = DIR_TARGET;
++			continue;
++		}
 +#endif
-+				) {
++		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1661,7 +1777,11 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1661,7 +1775,11 @@ static bool textui_get_aim_dir(int *dp)
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1123,7 +1147,40 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  					dir = 5;
  				} else {
  					need_beep = true;
-@@ -1840,6 +1960,21 @@ ui_event textui_get_command(int *count)
+@@ -1668,6 +1786,9 @@ static bool textui_get_aim_dir(int *dp)
+ 				}
+ 			} else if (ke.key.code == 't' || ke.key.code == '5' ||
+ 					   ke.key.code == '0' || ke.key.code == '.') {
++#ifdef __EMSCRIPTEN__
++				if (location.x) target_set_location(location.y, location.x);
++#endif
+ 				if (target_okay()) {
+ 					dir = 5;
+ 				} else {
+@@ -1719,6 +1840,22 @@
+ 	/* A "valid" direction was entered */
+ 	return (true);
+ }
++
++static bool textui_get_aim_dir(int *dp)
++{
++	return textui_get_aim_dir_aux(dp, false);
++}
++
++#ifdef __EMSCRIPTEN__
++bool web_get_map_aim_dir(int *dir, struct loc grid)
++{
++	if (!square_in_bounds(cave, grid)) return false;
++	struct monster *mon = square_monster(cave, grid);
++	if (!target_able(mon)) return false;
++	target_set_monster(mon);
++	return textui_get_aim_dir_aux(dir, true);
++}
++#endif
+ 
+ /**
+  * Initialise the UI hooks to give input asked for by the game
+@@ -1840,6 +1977,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -1132,13 +1189,13 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +			web_set_tiles(ke.key.code);
 +			continue;
 +		}
-+		if (ke.type == EVT_WEB_INSPECT_CELL) {
-+			web_inspect_cell(ke.mouse.x, ke.mouse.y);
++		if (ke.type == EVT_WEB_MAP_CELL) {
++			if (web_map_cell(ke.mouse.x, ke.mouse.y, ke.mouse.button)) break;
 +			continue;
 +		}
-+		if (ke.type == EVT_WEB_MOVE_TO_CELL) {
-+			web_move_to_cell(ke.mouse.x, ke.mouse.y);
-+			break;
++		if (ke.type == EVT_WEB_MAP_ACTION) {
++			if (web_act_on_map_cell(ke.mouse.x, ke.mouse.y, ke.mouse.button)) break;
++			continue;
 +		}
 +#endif
 +
@@ -1148,7 +1205,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,75 @@
+@@ -24,6 +24,79 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1169,15 +1226,19 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +const char *web_set_prompt(const char *prompt);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
-+void web_set_aim_options(bool current, bool nearest, int x, int y);
++struct loc web_direction_grid(int x, int y);
++void web_set_aim_options(bool selected, struct loc location);
++bool web_aim_at_cell(int x, int y, struct loc *location);
 +void web_set_edit_value(const char *value, int cursor, bool initial);
 +void web_set_name_value(const char *value, size_t size);
 +bool web_read_name(char *buf, size_t size);
 +void web_set_direction_center(bool available);
 +void web_set_target_options(bool free_aim, int count, bool can_select,
 +	bool can_inspect, bool attack);
-+void web_inspect_cell(int x, int y);
-+void web_move_to_cell(int x, int y);
++enum web_map_gesture { WEB_MAP_TAP, WEB_MAP_HOLD, WEB_MAP_REPEAT };
++bool web_map_cell(int x, int y, int gesture);
++bool web_act_on_map_cell(int x, int y, int action);
++bool web_get_map_aim_dir(int *dir, struct loc grid);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
 +void web_cancel_birth(void);
@@ -1753,17 +1814,19 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  		cmd_set_arg_direction(cmd, arg, *dir);
  		return CMD_OK;
  	}
-@@ -961,7 +971,14 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+@@ -961,7 +971,16 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
  			return CMD_OK;
  	}
  
 -	if (get_aim_dir(target)) {
 +#ifdef __EMSCRIPTEN__
 +	cmd_code previous = web_set_direction_command(cmd->code);
-+#endif
-+	bool aimed = get_aim_dir(target);
-+#ifdef __EMSCRIPTEN__
++	struct loc grid;
++	bool aimed = cmd_get_arg_point(cmd, "map target", &grid) == CMD_OK ?
++		web_get_map_aim_dir(target, grid) : get_aim_dir(target);
 +	web_set_direction_command(previous);
++#else
++	bool aimed = get_aim_dir(target);
 +#endif
 +	if (aimed) {
  		cmd_set_arg_target(cmd, arg, *target);
@@ -1822,7 +1885,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1153,6 +1160,34 @@ static void cmd_sub_entry(struct menu *m
+@@ -1153,6 +1159,34 @@ static void cmd_sub_entry(struct menu *m
  	}
  }
  
@@ -1857,7 +1920,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  /**
   * Display a list of commands.
   */
-@@ -1177,6 +1212,10 @@ static bool cmd_menu(struct command_list
+@@ -1177,6 +1211,10 @@ static bool cmd_menu(struct command_list
  	area.row -= list->menu_level;
  	assert(area.row > 1);
  	menu_layout(&menu, &area);
@@ -1868,7 +1931,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	/* Set up the screen */
  	screen_save();
-@@ -1278,6 +1317,9 @@ struct cmd_info *textui_action_menu_choo
+@@ -1278,6 +1316,9 @@ struct cmd_info *textui_action_menu_choo
  
  	if (!command_menu)
  		command_menu = menu_new(MN_SKIN_SCROLL, &command_menu_iter);
