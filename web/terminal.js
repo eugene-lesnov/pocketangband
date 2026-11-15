@@ -448,6 +448,7 @@ function renderWorld(state) {
         lines.every((line, index) => messages.children[index].textContent === line)) return;
     previousMessage.textContent = lines.at(-2) ?? "";
     latestMessage.textContent = lines.at(-1) ?? "";
+    if (!lines.length) journal.open = false;
     messages.replaceChildren(...lines.map((line) => {
         const item = document.createElement("li");
         item.textContent = line;

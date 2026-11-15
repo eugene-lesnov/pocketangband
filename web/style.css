@@ -50,7 +50,7 @@ h1 { color: var(--accent); font-size: 1.25rem; }
 h2 { font-size: 0.875rem; overflow-wrap: anywhere; }
 a { color: var(--muted); font-size: 0.75rem; }
 
-.view, #journal, .status {
+.view, #journal, #empty-journal, .status {
     min-width: 0;
     border: 1px solid var(--border);
     border-radius: 0.5rem;
@@ -286,19 +286,30 @@ dt { color: var(--muted); }
 
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
 
-:is(#journal, #message-pause) { margin: 0.25rem; }
-#journal {
+:is(#journal, #empty-journal, #message-pause) { margin: 0.25rem; }
+:is(#journal, #empty-journal) {
     grid-area: journal;
+}
+#journal {
     position: relative;
 }
+:is(#journal summary, #empty-journal) {
+    align-items: center;
+    padding: 0.25rem 0.5rem;
+    font: 0.875rem/1.25 system-ui, sans-serif;
+}
+#empty-journal {
+    display: none;
+    height: var(--message-row-height);
+    color: var(--muted);
+}
+#journal:has(#latest-message:empty) { display: none; }
+:where(#journal:not([hidden]):has(#latest-message:empty)) + #empty-journal { display: flex; }
 #journal summary {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.5rem;
-    align-items: center;
     height: calc(var(--message-row-height) - 2px);
-    padding: 0.25rem 0.5rem;
-    font: 0.875rem/1.25 system-ui, sans-serif;
     cursor: pointer;
 }
 #journal summary::-webkit-details-marker { display: none; }
@@ -365,7 +376,7 @@ dt { color: var(--muted); }
     grid-area: journal;
     position: static;
 }
-.view:has(#message-pause:not([hidden])) #journal { display: none; }
+.view:has(#message-pause:not([hidden])) :is(#journal, #empty-journal) { display: none; }
 #paused-message {
     max-height: 100%;
     overflow: auto;
