@@ -6,7 +6,6 @@ const launch = document.querySelector("#launch");
 const status = document.querySelector("#status");
 const progress = document.querySelector("#download-progress");
 const retry = document.querySelector("#retry");
-const appUpdate = document.querySelector("#app-update");
 const updateApp = document.querySelector("#update-app");
 const updateStatus = document.querySelector("#update-status");
 const saveStatus = document.querySelector("#save-status");
@@ -947,13 +946,12 @@ function updateControls() {
 }
 
 function renderAppUpdate() {
-    const updateScreen = !playingGame && (mode === "splash" || mode === "save-slots");
-    appUpdate.hidden = !updateScreen || (!availableUpdate && !applyingUpdate);
+    updateApp.hidden = playingGame || mode !== "splash" || (!availableUpdate && !applyingUpdate);
     updateApp.disabled = applyingUpdate || request === undefined || saving || deletingSave || !messagePause.hidden;
 }
 
 updateApp.addEventListener("click", async () => {
-    if (appUpdate.hidden || updateApp.disabled || !availableUpdate) return;
+    if (updateApp.hidden || updateApp.disabled || !availableUpdate) return;
     applyingUpdate = true;
     updateStatus.textContent = "Applying update…";
     updateControls();

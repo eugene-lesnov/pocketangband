@@ -18,11 +18,6 @@
             <progress id="download-progress" max="100" aria-label="Game download progress" hidden></progress>
             <button id="retry" type="button" hidden>Try again</button>
         </div>
-        <div id="app-update" class="status" hidden>
-            <button id="update-app" type="button">Update PocketBand</button>
-            <p id="update-status" role="status"></p>
-        </div>
-
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
@@ -43,8 +38,13 @@
             <section id="splash-screen" class="menu-screen" aria-labelledby="view-title" hidden>
                 <img src="icon-192.png" width="96" height="96" alt="">
                 <div>
-                    <h3>PocketBand __POCKETBAND_VERSION__</h3>
+                    <h3>PocketBand</h3>
+                    <div class="splash-version">
+                        <span>__POCKETBAND_VERSION__</span>
+                        <button id="update-app" type="button" aria-label="Update PocketBand" hidden>Update</button>
+                    </div>
                     <p class="splash-subtitle">Angband <span id="angband-version"></span></p>
+                    <p id="update-status" role="status"></p>
                 </div>
                 <blockquote>When the world is old and the Powers grow weary, then Morgoth, seeing that the
                     guard sleepeth, shall come back through the Door of Night out of the Timeless Void. Then shall the

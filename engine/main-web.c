@@ -172,9 +172,9 @@ EM_JS(void, set_splash_version, (const char *version), {
     Module['inputContext'] = { version: UTF8ToString(version) };
 });
 
-void web_show_splash(void)
+void web_show_splash(bool startup)
 {
-    if (skip_splash()) return;
+    if (startup && skip_splash()) return;
     enum web_input_mode previous = web_set_input_mode(WEB_INPUT_SPLASH);
     set_splash_version(buildver);
     (void)inkey();
