@@ -453,7 +453,7 @@ enum { LOW_LIGHT_FUEL = 50 };
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool roguelike, bool commands), {
+        int count, const char *const *lines, const int *repeats, bool stat_loss, bool roguelike, bool commands), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -464,7 +464,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
-        conditions: Module['worldConditions'], stats: Module['worldStats'],
+        conditions: Module['worldConditions'], stats: Module['worldStats'], statLoss: !!stat_loss,
         quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
 });
@@ -478,16 +478,60 @@ EM_JS(void, add_world_condition, (const char *label, int priority), {
     Module['worldConditions'].push({ label: UTF8ToString(label), priority });
 });
 
-EM_JS(void, add_world_stat, (const char *label, const char *value, bool reduced), {
-    Module['worldStats'].push({ label: UTF8ToString(label), value: UTF8ToString(value).trim(), reduced: !!reduced });
+EM_JS(void, add_world_stat, (const char *label, const char *value, bool reduced, bool lowered), {
+    Module['worldStats'].push({
+        label: UTF8ToString(label), value: UTF8ToString(value).trim(), reduced: !!reduced, lowered: !!lowered,
+    });
 });
+
+static bool publish_stats(bool commands)
+{
+    static bool have_stats;
+    static int previous_cur[STAT_MAX], previous_max[STAT_MAX], previous_use[STAT_MAX];
+    char notice[256] = "";
+    bool stat_loss = false;
+
+    for (int stat = 0; stat < STAT_MAX; ++stat) {
+        char label[4], value[8];
+        int cur = player->stat_cur[stat], max = player->stat_max[stat];
+        int use = player->state.stat_use[stat];
+        bool lower_max = commands && have_stats && max < previous_max[stat];
+        bool lower_cur = commands && have_stats && cur < previous_cur[stat];
+        strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
+        cnv_stat(use, value, sizeof(value));
+        add_world_stat(label, value, cur < max, lower_cur || lower_max);
+        if (lower_cur || lower_max) {
+            char before[8], after[8];
+            cnv_stat(lower_cur ? previous_use[stat] : previous_max[stat], before, sizeof(before));
+            cnv_stat(lower_cur ? use : max, after, sizeof(after));
+            const char *from = before + strspn(before, " ");
+            const char *to = after + strspn(after, " ");
+            if (stat_loss) my_strcat(notice, " · ", sizeof(notice));
+            my_strcat(notice, label, sizeof(notice));
+            if (lower_cur && (use >= previous_use[stat] || streq(from, to))) {
+                my_strcat(notice, " decreased", sizeof(notice));
+            } else {
+                if (!lower_cur) my_strcat(notice, " max", sizeof(notice));
+                my_strcat(notice, format(" %s → %s", from, to), sizeof(notice));
+            }
+            stat_loss = true;
+        }
+        if (commands) {
+            previous_cur[stat] = cur;
+            previous_max[stat] = max;
+            previous_use[stat] = use;
+        }
+    }
+    if (commands) have_stats = true;
+    if (stat_loss) message_add(notice, MSG_DRAIN_STAT);
+    return stat_loss;
+}
 
 static void publish_world(bool commands)
 {
     const term *map = angband_term[MAP_TERM];
     const char *lines[LOG_LIMIT];
     int repeats[LOG_LIMIT];
-    int count = MIN(messages_num(), LOG_LIMIT);
     char speed[32], light_name[160];
     struct object *light = equipped_item_by_slot_name(player, "light");
     int speed_offset = player->state.speed - 110;
@@ -495,12 +539,7 @@ static void publish_world(bool commands)
     const char *food_grade = "";
 
     start_world_status();
-    for (int stat = 0; stat < STAT_MAX; ++stat) {
-        char label[4], value[8];
-        strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
-        cnv_stat(player->state.stat_use[stat], value, sizeof(value));
-        add_world_stat(label, value, player->stat_cur[stat] < player->stat_max[stat]);
-    }
+    bool stat_loss = publish_stats(commands);
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
         struct timed_grade *grade = timed_effects[effect].grade;
@@ -513,8 +552,13 @@ static void publish_world(bool commands)
             case TMD_CONFUSED: priority = 95; break;
             case TMD_BLIND: priority = 90; break;
             case TMD_POISONED: priority = 85; break;
-            case TMD_CUT: priority = 80; break;
-            case TMD_STUN: priority = 75; break;
+            case TMD_CUT:
+                priority = !grade->next ? 105 : grade->color == COLOUR_RED ? 98 : 80;
+                break;
+            case TMD_STUN:
+                priority = !grade->next ? 105 : 75;
+                break;
+            case TMD_SLOW: priority = 65; break;
             case TMD_TERROR:
             case TMD_IMAGE:
             case TMD_AFRAID:
@@ -550,6 +594,7 @@ static void publish_world(bool commands)
         }
     }
 
+    int count = MIN(messages_num(), LOG_LIMIT);
     for (int i = 0; i < count; i++) {
         lines[i] = message_str(i);
         repeats[i] = message_count(i);
@@ -559,7 +604,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands), commands);
+        stat_loss, OPT(player, rogue_like_commands), commands);
 }
 
 static double last_interrupt_poll;

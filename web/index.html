@@ -74,6 +74,7 @@
                     <canvas id="target-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
                 </div>
             </div>
+            <p id="map-status" hidden><span id="depth"></span><span id="speed" hidden></span></p>
             <div id="menu-screen" class="menu-screen" hidden>
                 <section id="outcome-summary" class="character-identity" aria-label="Run summary" hidden>
                     <h3 id="outcome-name"></h3>
@@ -174,14 +175,20 @@
         <section id="hud" aria-label="Character status" hidden>
             <button id="vitals" type="button" aria-label="Open Character" aria-controls="character-screen">
                 <span class="vital-values">
-                    <span class="vital-group">
-                        <span id="hp"></span><span id="sp"></span><span id="speed" hidden></span>
+                    <span id="hp" class="vital-resource">
+                        <span class="vital-value"><span>HP</span><span id="hp-value"></span></span>
+                        <span class="vital-meter" aria-hidden="true"></span>
                     </span>
-                    <span id="depth"></span>
+                    <span id="sp" class="vital-resource" hidden>
+                        <span class="vital-value"><span>SP</span><span id="sp-value"></span></span>
+                        <span class="vital-meter" aria-hidden="true"></span>
+                    </span>
                 </span>
                 <span id="hud-stats"></span>
-                <span id="condition-summary" hidden>
-                    <span id="active-conditions"></span><span id="extra-conditions" hidden></span>
+                <span id="condition-summary">
+                    <span id="active-conditions"></span>
+                    <span id="hidden-condition-count" hidden></span>
+                    <span id="character-indicator" aria-hidden="true">›</span>
                 </span>
             </button>
         </section>

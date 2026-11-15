@@ -20,14 +20,16 @@ const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
 const vitals = document.querySelector("#vitals");
+const mapStatus = document.querySelector("#map-status");
 const depth = document.querySelector("#depth");
 const hp = document.querySelector("#hp");
+const hpValue = document.querySelector("#hp-value");
 const sp = document.querySelector("#sp");
+const spValue = document.querySelector("#sp-value");
 const speed = document.querySelector("#speed");
 const hudStats = document.querySelector("#hud-stats");
-const conditionSummary = document.querySelector("#condition-summary");
 const activeConditions = document.querySelector("#active-conditions");
-const extraConditions = document.querySelector("#extra-conditions");
+const hiddenConditionCount = document.querySelector("#hidden-condition-count");
 const characterScreen = document.querySelector("#character-screen");
 const characterName = document.querySelector("#character-name");
 const characterClass = document.querySelector("#character-class");
@@ -230,6 +232,7 @@ let panelTrigger;
 let characterTrigger;
 let pendingInput;
 let stopTimer;
+let speedHighlightTimer;
 let running = false;
 let runMode = false;
 let runningFromPad = false;
@@ -456,41 +459,64 @@ function changeZoom(step) {
     recenterView();
 }
 
-function renderWorld(state) {
-    const depthLabel = state.depth ? `${state.depth * 50}′` : "Town";
-    depth.textContent = depthLabel;
-    hp.textContent = `HP ${state.hp}/${state.maxHp}`;
+function renderResource(element, value, current, maximum) {
+    value.textContent = `${current} / ${maximum}`;
+    const fill = maximum > 0 ? Math.max(0, Math.min(100, current * 100 / maximum)) : 0;
+    element.style.setProperty("--fill", `${fill}%`);
+}
+
+function renderMapStatus(state, previousSpeed) {
+    depth.textContent = state.depth ? `${state.depth * 50}′` : "Town";
+    const normal = state.speed === "Normal";
+    speed.textContent = state.speed;
+    speed.classList.toggle("fast", state.speed.startsWith("Fast "));
+    speed.classList.toggle("slow", state.speed.startsWith("Slow "));
+    if (!mapStatus.hidden && previousSpeed !== undefined && previousSpeed !== state.speed) {
+        mapStatus.classList.add("speed-changed");
+        clearTimeout(speedHighlightTimer);
+        speedHighlightTimer = setTimeout(() => {
+            mapStatus.classList.remove("speed-changed");
+            speed.hidden = world?.speed === "Normal";
+        }, 1200);
+    }
+    speed.hidden = normal && !mapStatus.classList.contains("speed-changed");
+}
+
+function renderWorld(state, previousSpeed) {
+    renderMapStatus(state, previousSpeed);
+    renderResource(hp, hpValue, state.hp, state.maxHp);
     hp.classList.toggle("low", state.lowHp);
-    sp.textContent = `SP ${state.sp}/${state.maxSp}`;
+    renderResource(sp, spValue, state.sp, state.maxSp);
     sp.hidden = !state.magic;
-    speed.hidden = state.speed === "Normal";
-    speed.textContent = speed.hidden ? "" : state.speed;
-    for (const [index, { label, value, reduced }] of state.stats.entries()) {
+    for (const [index, { label, value, reduced, lowered }] of state.stats.entries()) {
         let stat = hudStats.children[index];
         if (!stat) {
             stat = document.createElement("span");
-            const name = document.createElement("small");
-            name.textContent = label;
-            stat.append(name, document.createElement("span"));
+            stat.append(document.createElement("small"), document.createElement("span"));
             hudStats.append(stat);
         }
+        stat.firstElementChild.textContent = reduced ? `${label}↓` : label;
         const current = stat.lastElementChild;
         if (current.textContent !== value) current.textContent = value;
-        current.classList.toggle("reduced", reduced);
+        stat.classList.toggle("reduced", reduced);
+        stat.classList.toggle("lowered", !!lowered);
     }
-    const alerts = [...state.conditions].sort((left, right) => right.priority - left.priority);
-    const labels = alerts.slice(0, 2).map(({ label }) => label);
-    if (labels.length === 2 && labels.join(" · ").length > 25) labels.pop();
-    const more = alerts.length - labels.length;
-    conditionSummary.hidden = !alerts.length;
-    activeConditions.textContent = labels.join(" · ");
-    extraConditions.hidden = more <= 0;
-    extraConditions.textContent = `+${more}`;
-    vitals.setAttribute("aria-label", ["Open Character", hp.textContent, state.magic && sp.textContent,
-        !speed.hidden && `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
+    const alerts = state.conditions.filter(({ priority }) => priority > 0)
+        .sort((left, right) => right.priority - left.priority);
+    const labels = (alerts.length ? alerts : state.conditions).slice(0, 2).map(({ label }) => label);
+    const hiddenCount = state.conditions.length - labels.length;
+    activeConditions.textContent = labels.join(" · ") || "Conditions";
+    activeConditions.classList.toggle("alert", !!alerts.length);
+    hiddenConditionCount.hidden = !hiddenCount;
+    hiddenConditionCount.textContent = `+${hiddenCount}`;
+    vitals.setAttribute("aria-label", ["Open Character", `HP ${hpValue.textContent}`,
+        state.magic && `SP ${spValue.textContent}`,
+        `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
         ...state.stats.map(({ label, value, reduced }) => `${label} ${value}${reduced ? " (reduced)" : ""}`), ...labels,
-        more > 0 && `${more} more conditions`].filter(Boolean).join(", "));
+        hiddenCount > 0 && `${hiddenCount} hidden ${hiddenCount === 1 ? "condition" : "conditions"}`]
+        .filter(Boolean).join(", "));
 
+    latestMessage.classList.toggle("stat-loss", !!state.statLoss);
     const lines = state.log.flatMap(({ text, count }) => {
         const line = text.trim();
         return !line || /^=+$/.test(line) ? [] : [count > 1 ? `${line} (×${count})` : line];
@@ -628,16 +654,20 @@ function renderConditions(container) {
     const effects = state.conditions
         .filter(({ label }) => label !== state.foodGrade)
         .sort((left, right) => right.priority - left.priority);
-    if (effects.length) {
+    for (const [label, group] of [["Alerts", effects.filter(({ priority }) => priority > 0)],
+        ["Other active effects", effects.filter(({ priority }) => priority === 0)]]) {
+        if (!group.length) continue;
+        const heading = document.createElement("h3");
+        heading.textContent = label;
         const list = document.createElement("ul");
         list.className = "character-effects";
-        list.setAttribute("aria-label", "Active effects");
-        for (const { label } of effects) {
+        list.setAttribute("aria-label", label);
+        for (const { label } of group) {
             const item = document.createElement("li");
             item.textContent = label;
             list.append(item);
         }
-        container.append(list);
+        container.append(heading, list);
     }
 }
 
@@ -1077,6 +1107,7 @@ function updatePrompt() {
 
 function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
+    const previousSpeed = world?.speed;
     world = state;
     views.target.crop = region;
     const aiming = mode === "target" || mode === "aim" || mode === "direction" || mode === "run-direction";
@@ -1148,6 +1179,7 @@ function updateView(state = world, region = views.target.crop) {
         !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
     main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
+    mapStatus.hidden = hud.hidden;
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
         context.resultsList?.title ?? context.resultsFile?.title ??
         (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
@@ -1171,7 +1203,7 @@ function updateView(state = world, region = views.target.crop) {
     renderMenu(menu);
     updatePrompt();
     draw();
-    if (world) renderWorld(world);
+    if (world) renderWorld(world, previousSpeed);
 }
 
 function stop(message, failed) {
