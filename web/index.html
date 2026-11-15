@@ -13,9 +13,6 @@
 </head>
 <body>
     <main class="starting">
-        <header class="app-header">
-            <a href="licenses.html">Source and licenses</a>
-        </header>
         <div id="launch" class="status">
             <p id="status" role="status">Preparing Angband…</p>
             <progress id="download-progress" max="100" aria-label="Game download progress" hidden></progress>
@@ -25,6 +22,12 @@
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
+                <div id="save-management" hidden>
+                    <button id="manage-save" type="button" aria-expanded="false" aria-controls="delete-save">
+                        Manage save
+                    </button>
+                    <button id="delete-save" type="button" hidden disabled>Delete save</button>
+                </div>
                 <div id="zoom" role="group" aria-label="Zoom" hidden>
                     <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
                     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
@@ -42,9 +45,10 @@
                 <blockquote>When the world is old and the Powers grow weary, then Morgoth, seeing that the
                     guard sleepeth, shall come back through the Door of Night out of the Timeless Void. Then shall the
                     Last Battle be gathered…</blockquote>
-                <nav aria-label="Angband links">
+                <nav aria-label="PocketBand links">
                     <a href="https://rephial.org/" target="_blank" rel="noopener">Angband website</a>
                     <a href="https://angband.live/forums/" target="_blank" rel="noopener">Forums</a>
+                    <a href="licenses.html">Source and licenses</a>
                 </nav>
             </section>
             <section id="victory-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
@@ -208,10 +212,7 @@
                 <button type="button" data-key="r">Reroll</button>
             </fieldset>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
-            <section id="save-management" aria-label="Manage saves" hidden>
-                <button id="delete-save" type="button" disabled>Delete selected save</button>
-                <p id="delete-save-status" class="status" role="status" hidden></p>
-            </section>
+            <p id="delete-save-status" class="status" role="status" hidden></p>
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
             <fieldset id="option-digits" class="key-panel" aria-label="Enter a number" disabled hidden></fieldset>
             <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>

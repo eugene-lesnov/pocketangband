@@ -36,15 +36,12 @@ main:is(.in-world, .in-game-panel) {
     padding-block: env(safe-area-inset-top) max(0.25rem, env(safe-area-inset-bottom));
     padding-inline: max(0.25rem, env(safe-area-inset-left)) max(0.25rem, env(safe-area-inset-right));
 }
-:is(.in-world, .in-game-panel) .app-header { display: none; }
-
-.app-header, .view-bar {
+.view-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.625rem;
 }
-.app-header { justify-content: flex-end; }
 
 h1, h2, p, dl, dd { margin: 0; }
 h1 { color: var(--accent); font-size: 1.25rem; }
@@ -64,7 +61,16 @@ a { color: var(--muted); font-size: 0.75rem; }
 #download-progress { width: 100%; accent-color: var(--accent); }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
-#save-management { display: grid; gap: 0.25rem; }
+#save-management { position: relative; z-index: 1; }
+#save-management button { padding-inline: 0.625rem; }
+#manage-save { background: transparent; border-color: transparent; color: var(--muted); }
+#manage-save[aria-expanded="true"] { border-color: var(--border); }
+#delete-save {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-end: 0;
+    white-space: nowrap;
+}
 #vitals {
     display: grid;
     align-content: center;

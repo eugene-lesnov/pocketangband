@@ -8,6 +8,7 @@ const progress = document.querySelector("#download-progress");
 const retry = document.querySelector("#retry");
 const saveStatus = document.querySelector("#save-status");
 const saveManagement = document.querySelector("#save-management");
+const manageSave = document.querySelector("#manage-save");
 const deleteSave = document.querySelector("#delete-save");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
@@ -710,6 +711,11 @@ function isTextEntry(state) {
 }
 
 function closeInputPanel() {
+    if (!deleteSave.hidden) {
+        setSaveManagementOpen(false);
+        manageSave.focus({ preventScroll: true });
+        return true;
+    }
     if (openPanel === "tiles") {
         showPanel("menu", panelTrigger);
         return true;
@@ -756,6 +762,9 @@ function updateControls() {
     const counting = mode === "quantity";
     const optionNumber = mode === "option-number";
     const splash = mode === "splash";
+    const saveSlots = mode === "save-slots";
+    const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
+    const existingSave = saveSlots && !!selectedRow && selectedRow.index > 0;
     const resting = mode === "rest";
     const confirming = mode === "confirm";
     const history = mode === "history";
@@ -819,12 +828,13 @@ function updateControls() {
     confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
         confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
         targeting ? targetLabel :
-        editing || counting || optionNumber || resting ? "Done" : isMenu() ? "Select" :
+        editing || counting || optionNumber || resting ? "Done" :
+        saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
     confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild ||
         showTargetControls || (aiming && targetUnavailable);
     confirmKey.disabled = directing || (targeting && targetUnavailable) ||
-        (!!menu && !menu.rows.some((row) => row.index === menuCursor && row.enabled));
+        (!!menu && !selectedRow);
     cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") :
         history ? "Edit history" : openPanel || (showKeyboard && !editing) ?
         "Back" : selecting || aiming || directing || editing || counting || optionNumber || resting || retiring ?
@@ -872,9 +882,17 @@ function updateControls() {
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
-    saveManagement.hidden = mode !== "save-slots";
-    deleteSave.disabled = disabled || !(menuCursor > 0);
+    saveManagement.hidden = !existingSave;
+    manageSave.disabled = deleteSave.disabled = disabled || !existingSave;
+    if (manageSave.disabled) setSaveManagementOpen(false);
 }
+
+function setSaveManagementOpen(open) {
+    deleteSave.hidden = !open;
+    manageSave.setAttribute("aria-expanded", String(open));
+}
+
+manageSave.addEventListener("click", () => setSaveManagementOpen(deleteSave.hidden));
 
 function showDeleteSaveStatus(message, failed = false) {
     deleteSaveStatus.textContent = message;
@@ -1266,7 +1284,8 @@ function sendInput(input) {
         }
     }
     request = undefined;
-    deleteSave.disabled = true;
+    manageSave.disabled = deleteSave.disabled = true;
+    setSaveManagementOpen(false);
     if (running) updateControls();
     updatePrompt();
     return true;
@@ -1283,6 +1302,7 @@ main.addEventListener("pointerdown", (event) => {
 main.addEventListener("pointercancel", () => { buttonPress = undefined; });
 
 main.addEventListener("click", (event) => {
+    if (!deleteSave.hidden && !saveManagement.contains(event.target)) setSaveManagementOpen(false);
     const button = event.target.closest(inputButton);
     if (!button || button.matches(":disabled, [aria-disabled=true]") || (event.detail !== 0 &&
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
