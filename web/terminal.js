@@ -46,6 +46,7 @@ const continueMessage = document.querySelector("#continue-message");
 const pausedControls = [...messagePause.parentElement.children, hud, document.querySelector(".controls")]
     .filter((element) => element !== messagePause);
 const directionPad = document.querySelector("#direction-pad");
+const directionButtons = [...directionPad.querySelectorAll("button")];
 const directionCenter = document.querySelector("#direction-center");
 const centerCaption = document.querySelector("#center-caption");
 const terminalKeys = document.querySelector("#terminal-keys");
@@ -59,6 +60,7 @@ const combatAction = document.querySelector("#combat-action");
 const repeatAction = document.querySelector("#repeat-action");
 const runAction = document.querySelector("#run-action");
 const mapCellActions = document.querySelector("#map-cell-actions");
+const mapActionButtons = document.querySelector("#map-action-buttons");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
@@ -168,6 +170,18 @@ const extraCommands = [
 const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles" };
 const commandFaces = new Map([["CtrlT", "^T"], ["Ctrl+V", "^V"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
+const mapDirections = [
+    null,
+    { key: "1", roguelike: "b", arrow: "↙", name: "down left" },
+    { key: "ArrowDown", roguelike: "j", arrow: "↓", name: "down" },
+    { key: "3", roguelike: "n", arrow: "↘", name: "down right" },
+    { key: "ArrowLeft", roguelike: "h", arrow: "←", name: "left" },
+    { key: "5", name: "here" },
+    { key: "ArrowRight", roguelike: "l", arrow: "→", name: "right" },
+    { key: "7", roguelike: "y", arrow: "↖", name: "up left" },
+    { key: "ArrowUp", roguelike: "k", arrow: "↑", name: "up" },
+    { key: "9", roguelike: "u", arrow: "↗", name: "up right" },
+];
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const mapScales = [...scales, 2, 2.25];
@@ -201,6 +215,7 @@ let mode;
 let messagePauseTrigger;
 let world;
 let context = {};
+let mapDirectionAction;
 let menu;
 let renderedMenu;
 let menuCursor;
@@ -250,7 +265,7 @@ function render(view, frame, region = {}) {
 }
 
 function renderText(pre, frame, grid, colors, tiles) {
-    const { width, codepoints, attributes, backgroundStride, shade, cursor, aimPath } = frame;
+    const { width, codepoints, attributes, backgroundStride, shade, cursor, highlighted } = frame;
     const { x, y, columns, rows } = grid;
     const fragment = document.createDocumentFragment();
     for (let row = 0; row < rows; row++) {
@@ -261,7 +276,7 @@ function renderText(pre, frame, grid, colors, tiles) {
         for (let start = rowStart; start < rowEnd;) {
             const attr = attributes[start];
             const span = document.createElement("span");
-            const onPath = aimPath?.has(start) ?? false;
+            const marked = highlighted?.has(start) ?? false;
             const tile = tiles && tileAt(tiles, attr, codepoints[start]);
             let end = start + 1;
             if (tile) {
@@ -269,7 +284,7 @@ function renderText(pre, frame, grid, colors, tiles) {
             } else {
                 if (start !== cursor) {
                     while (end < rowEnd && attributes[end] === attr && end !== cursor &&
-                        (aimPath?.has(end) ?? false) === onPath &&
+                        (highlighted?.has(end) ?? false) === marked &&
                         !(tiles && tileAt(tiles, attr, codepoints[end]))) end++;
                 }
                 span.textContent = String.fromCodePoint(...codepoints.subarray(start, end));
@@ -284,7 +299,7 @@ function renderText(pre, frame, grid, colors, tiles) {
                 }
             }
             if (start === cursor) span.classList.add("cursor");
-            if (onPath) span.classList.add("aim-path");
+            if (marked) span.classList.add("highlighted-cell");
             line.append(span);
             start = end;
         }
@@ -310,6 +325,8 @@ function draw() {
         const selected = target ?? (view === views.map ? context.mapCell : undefined);
         const cursor = selected ? selected.y * source.width + selected.x : source.cursor;
         const path = aiming && view !== views.terminal ? context.aimPath : undefined;
+        const mapActions = view === views.map ? context.mapCell?.actions : undefined;
+        const choosing = view === views.map ? mapDirectionAction : undefined;
         const previousGrid = view.gridElement;
         const cursorCell = mode === "target" && cursor >= 0 ?
             { x: cursor % source.width, y: Math.floor(cursor / source.width) } : undefined;
@@ -318,15 +335,20 @@ function draw() {
             cell?.depth !== view.focusCell?.depth;
         const regionChanged = !sameRegion(region, view.region);
         const graphicsChanged = source.graphicsMode !== view.rendered?.graphicsMode;
-        const changed = source !== view.rendered || cursor !== view.cursor || regionChanged || path !== view.path;
+        const changed = source !== view.rendered || cursor !== view.cursor || regionChanged || path !== view.path ||
+            mapActions !== view.mapActions || choosing !== view.choosing;
         if (changed) {
-            const frame = cursor === source.cursor && !path ? source :
-                { ...source, cursor, aimPath: path && new Set(path) };
+            const positions = choosing?.targets ?? mapActions?.flatMap((action) => action.targets ?? []);
+            const highlighted = path ? new Set(path) :
+                positions?.length ? new Set(positions.map(({ x, y }) => y * source.width + x)) : undefined;
+            const frame = cursor === source.cursor && !highlighted ? source : { ...source, cursor, highlighted };
             render(view, frame, region);
             view.rendered = source;
             view.region = region;
             view.cursor = cursor;
             view.path = path;
+            view.mapActions = mapActions;
+            view.choosing = choosing;
         }
         updateViewZoom(view);
         updatePrompt();
@@ -817,8 +839,12 @@ function updateControls() {
     setActions(directionPad, !naming && (playingGame || usingPad), disabled || !usingPad || !!openPanel || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
-    const here = directing && context.center;
-    directionCenter.disabled = !command && !here;
+    const here = (directing && context.center) || mapDirectionAction?.targets.some(({ direction }) => direction === 5);
+    for (const button of directionButtons) {
+        if (button !== directionCenter) button.disabled = !!mapDirectionAction &&
+            !mapDirectionAction.targets.some(({ direction }) => mapDirections[direction].key === button.dataset.key);
+    }
+    directionCenter.disabled = (!command || !!mapDirectionAction) && !here;
     centerCaption.hidden = directionCenter.disabled;
     centerCaption.textContent = here ? "Here" : "Stand still";
     directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
@@ -827,6 +853,7 @@ function updateControls() {
     setActions(openMenu, showPlayActions, disabled);
     heroActions.disabled = !context.worldView;
     setActions(mapCellActions, inspectingCell, disabled);
+    mapActionButtons.hidden = !!mapDirectionAction;
     nameFields.disabled = disabled;
     setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
@@ -975,6 +1002,7 @@ continueMessage.addEventListener("click", () => acknowledgeMessage(keyCode("Ente
 function updatePrompt() {
     if (!messagePause.hidden) return;
     let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
+    if (mapDirectionAction) text = `${mapDirectionAction.label} · Choose a direction.`;
     if (menu?.onMap) text = "";
     if (mode === "aim") text = activeView === views.terminal ? "Choose a target or direction." :
         "Tap a monster or location, or choose a direction.";
@@ -1108,6 +1136,7 @@ function stop(message, failed) {
     request = mode = undefined;
     world = menu = undefined;
     context = {};
+    mapDirectionAction = undefined;
     openPanel = panelTrigger = characterTrigger = undefined;
     clearPendingInput();
     closeMessagePause();
@@ -1179,15 +1208,13 @@ function handleWorkerMessage({ data }) {
             playingGame = data.playing;
             request = data.request;
             context = data.context;
+            mapDirectionAction = undefined;
             if (mode === "name") {
                 nameValue.value = context.value;
                 nameValue.setCustomValidity("");
                 namePrompt.textContent = context.prompt;
             }
-            if (context.mapCell?.actions) {
-                const buttons = context.mapCell.actions.map(({ code, label }) => makeInput("map-action", code, label));
-                mapCellActions.replaceChildren(...buttons, closeMapCellActions);
-            }
+            if (context.mapCell?.actions) renderMapActions();
             menu = data.menu;
             deletingSave = false;
             if (changed && mode === "text") renderKeyboard();
@@ -1259,6 +1286,7 @@ function handleWorkerMessage({ data }) {
             playingGame = false;
             request = mode = world = menu = undefined;
             context = {};
+            mapDirectionAction = undefined;
             openPanel = panelTrigger = characterTrigger = undefined;
             keyboardOpen = false;
             if (!outcomeSaveFailed) saveStatus.hidden = true;
@@ -1314,6 +1342,7 @@ function sendInput(input) {
             (input.type === "key" && input.code !== keyCode("Escape"))));
     if (context.mapCell) {
         context = { ...context, mapCell: undefined };
+        mapDirectionAction = undefined;
         draw();
     }
     worker.postMessage({ ...input, request });
@@ -1375,11 +1404,28 @@ main.addEventListener("click", (event) => {
         return;
     }
     const key = button.dataset.key;
+    if (mapDirectionAction && directionPad.contains(button)) {
+        chooseMapDirection(mapDirections.findIndex((direction) => direction?.key === key));
+        return;
+    }
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
         { type: "key", code: keyCode(key) };
     if (input.type === "set-tiles") {
         void chooseTiles(input, button);
+        return;
+    }
+    if (input.type === "map-action") {
+        const action = context.mapCell?.actions?.find(({ code }) => code === input.code);
+        if (!action || request === undefined) return;
+        if (action.targets?.length > 1) {
+            mapDirectionAction = action;
+            updateControls();
+            recenterView();
+            directionPad.querySelector("button:enabled")?.focus({ preventScroll: true });
+        } else {
+            sendMapAction(action, action.targets?.[0]);
+        }
         return;
     }
     const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
@@ -1429,12 +1475,40 @@ function makeInput(type, code, label) {
     return button;
 }
 
+function renderMapActions() {
+    const { actions, here } = context.mapCell;
+    const buttons = [...actions].sort((a, b) => a.code - b.code).map(({ code, label, targets }) => {
+        const direction = targets?.length === 1 ? mapDirections[targets[0].direction] : undefined;
+        const button = makeInput("map-action", code, direction?.arrow ? `${label} ${direction.arrow}` : label);
+        if (direction) button.setAttribute("aria-label", `${label}, ${direction.name}`);
+        return button;
+    });
+    mapCellActions.classList.toggle("nearby-actions", here);
+    mapCellActions.setAttribute("aria-label", here ? "Actions" : "Cell actions");
+    mapActionButtons.replaceChildren(...buttons);
+    mapActionButtons.scrollTop = 0;
+    if (here && actions.some((action) => action.targets)) centerPending = true;
+}
+
+function sendMapAction(action, target) {
+    sendInput({ type: "map-action", code: action.code, x: target?.x, y: target?.y });
+}
+
+function chooseMapDirection(direction) {
+    const target = mapDirectionAction.targets.find((cell) => cell.direction === direction);
+    if (target) sendMapAction(mapDirectionAction, target);
+}
+
 function dismissMapActions() {
-    context = { ...context, mapCell: undefined };
+    const code = mapDirectionAction?.code;
+    const returnFocus = mapDirectionAction ? mapActionButtons.querySelector(`[data-value="${code}"]`) :
+        context.mapCell?.here ? heroActions : views.map.viewport;
+    if (mapDirectionAction) mapDirectionAction = undefined;
+    else context = { ...context, mapCell: undefined };
     updateControls();
     updatePrompt();
     draw();
-    views.map.viewport.focus({ preventScroll: true });
+    returnFocus?.focus({ preventScroll: true });
 }
 
 closeMapCellActions.addEventListener("click", dismissMapActions);
@@ -1842,14 +1916,21 @@ for (const view of Object.values(views)) {
         const column = Math.floor((x - grid.left) * columns / grid.width);
         const row = Math.floor((y - grid.top) * rows / grid.height);
         if (column < 0 || column >= columns || row < 0 || row >= rows) return;
-        sendInput({ type, x: left + column, y: top + row, openMenu });
+        const cellX = left + column;
+        const cellY = top + row;
+        if (mapDirectionAction && view === views.map) {
+            const target = mapDirectionAction.targets.find((cell) => cell.x === cellX && cell.y === cellY);
+            if (!openMenu && target) sendMapAction(mapDirectionAction, target);
+            return;
+        }
+        sendInput({ type, x: cellX, y: cellY, openMenu });
     }
 
     view.viewport.addEventListener("pointerdown", (event) => {
         cancelTap();
         if (!event.isPrimary || event.button !== 0) return;
         tap = { request, x: event.clientX, y: event.clientY, pointer: event.pointerId };
-        if (view === views.map && mode === "command" && event.pointerType === "touch" &&
+        if (view === views.map && mode === "command" && !mapDirectionAction && event.pointerType === "touch" &&
             view.gridElement?.contains(event.target)) {
             holdTimer = setTimeout(() => {
                 const held = tap;
@@ -2018,6 +2099,15 @@ document.addEventListener("keydown", (event) => {
     }
     if ((event.key === "Enter" || event.key === " ") &&
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
+    if (mapDirectionAction && event.key !== "Tab") {
+        event.preventDefault();
+        if (!event.repeat) {
+            const direction = mapDirections.findIndex((entry, index) => entry && (entry.key === event.key ||
+                String(index) === event.key || (world?.roguelike && entry.roguelike === event.key)));
+            chooseMapDirection(direction);
+        }
+        return;
+    }
     if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape") return;
     if (mode === "birth-review" && !["Enter", "Escape", "s", "S"].includes(event.key)) return;
     if (mode === "character" && characterScreen.contains(event.target) &&

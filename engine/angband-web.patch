@@ -1205,7 +1205,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,79 @@
+@@ -24,6 +24,80 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1238,6 +1238,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_map_gesture { WEB_MAP_TAP, WEB_MAP_HOLD, WEB_MAP_REPEAT };
 +bool web_map_cell(int x, int y, int gesture);
 +bool web_act_on_map_cell(int x, int y, int action);
++bool web_can_equip_light(const struct object *obj);
 +bool web_get_map_aim_dir(int *dir, struct loc grid);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
@@ -1757,7 +1758,41 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  /**
   * ------------------------------------------------------------------------
-@@ -1140,15 +1143,25 @@ void do_cmd_cast(struct command *cmd)
+@@ -277,12 +280,22 @@ void do_cmd_wield(struct command *cmd)
+ 		return;
+ 	}
+ 
++	const char *prompt = "Wear or wield which item?";
++	item_tester filter = obj_can_wear;
++#ifdef __EMSCRIPTEN__
++	int light_source;
++	if (cmd_get_arg_choice(cmd, "light source", &light_source) == CMD_OK && light_source) {
++		prompt = "Equip which light source?";
++		filter = web_can_equip_light;
++	}
++#endif
++
+ 	/* Get arguments */
+ 	if (cmd_get_item(cmd, "item", &obj,
+-			/* Prompt */ "Wear or wield which item?",
++			/* Prompt */ prompt,
+ 			/* Error  */ "You have nothing to wear or wield.",
+-			/* Filter */ obj_can_wear,
++			/* Filter */ filter,
+ 			/* Choice */ USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK)
+ 		return;
+ 
+ 	/* Get the slot the object wants to go in, and the item currently there */
+@@ -1089,7 +1102,7 @@ void do_cmd_refill(struct command *cmd)
+ 
+ 	/* Get an item */
+ 	if (cmd_get_item(cmd, "item", &obj,
+-			"Refuel with with fuel source? ",
++			"Refuel with which fuel source? ",
+ 			"You have nothing you can refuel with.",
+ 			obj_can_refill,
+ 			USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK) return;
+@@ -1140,15 +1153,25 @@ void do_cmd_cast(struct command *cmd)
  	if (spell->smana > player->csp) {
  		const char *verb = spell->realm->verb;
  		const char *noun = spell->realm->spell_noun;
@@ -1976,7 +2011,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -1002,6 +1002,71 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+@@ -1002,6 +1002,72 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
  	return false;
  }
  
@@ -1998,7 +2033,8 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	if ((inventory && !square_isshop(cave, player->grid)) ||
 +			item_cmd == CMD_CAST || item_cmd == CMD_FIRE || item_cmd == CMD_THROW ||
 +			item_cmd == CMD_USE || item_cmd == CMD_USE_WAND || item_cmd == CMD_USE_ROD ||
-+			item_cmd == CMD_USE_STAFF)
++			item_cmd == CMD_USE_STAFF || item_cmd == CMD_EAT || item_cmd == CMD_REFILL ||
++			(item_cmd == CMD_WIELD && tester_m == web_can_equip_light))
 +		web_set_menu_on_map();
 +	web_set_menu_sections(current, web_item_sections() | current);
 +	for (int i = 0; i < menu->count; i++) {
@@ -2048,7 +2084,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1224,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1159,6 +1225,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
@@ -2058,7 +2094,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1290,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1222,6 +1291,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -2073,7 +2109,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
-@@ -1457,6 +1533,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+@@ -1457,6 +1534,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
  	throwing_num = scan_items(throwing_list, throwing_max, player,
  		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
  

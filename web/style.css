@@ -319,7 +319,7 @@ dt { color: var(--muted); }
 }
 
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
-.aim-path { box-shadow: inset 0 0 0 1em #ffdb764d; }
+.highlighted-cell { box-shadow: inset 0 0 0 1em #ffdb764d; }
 
 :is(#journal, #empty-journal, #message-pause) { margin: 0.25rem; }
 :is(#journal, #empty-journal) {
@@ -451,7 +451,8 @@ dt { color: var(--muted); }
 .game-controls-row:not(:has(fieldset:not([hidden]), #stop-action:not([hidden]))) { display: none; }
 .game-controls-buttons { display: grid; gap: 0.25rem; min-width: 0; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.direction-pad, .key-row, #play-keys, #map-cell-actions, #keyboard-utilities, #terminal-keys { display: grid; gap: 0.25rem; }
+.direction-pad, .key-row, #play-keys, #map-cell-actions, #map-action-buttons,
+#keyboard-utilities, #terminal-keys { display: grid; gap: 0.25rem; }
 .direction-pad {
     grid-template-columns: repeat(3, var(--pad-key-size));
     grid-auto-rows: var(--pad-key-size);
@@ -464,12 +465,17 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #stop-action { border-color: var(--accent); background: #4c3820; }
 #play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.game-controls-row:has(#direction-pad:not([hidden])) :is(#play-keys, #map-cell-actions, #keyboard-utilities) {
+.game-controls-row:has(#direction-pad:not([hidden])) :is(#play-keys, #map-action-buttons, #keyboard-utilities) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-auto-rows: minmax(var(--pad-key-size), auto);
 }
-#map-cell-actions > :first-child:nth-last-child(even), #close-map-cell-actions { grid-column: 1 / -1; }
-#close-map-cell-actions { background: var(--panel); }
+#map-action-buttons > :first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+#map-cell-actions.nearby-actions #map-action-buttons {
+    max-height: calc(3 * var(--pad-key-size) + 0.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+#close-map-cell-actions { min-height: var(--pad-key-size); background: var(--panel); }
 #target-actions button { min-width: 0; overflow-wrap: anywhere; }
 #target-actions { grid-auto-rows: 44px; }
 #target-mode, #target-types, #confirm-target { grid-column: 1 / -1; }

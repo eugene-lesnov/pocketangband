@@ -12,10 +12,12 @@
 #include "mon-lore.h"
 #include "mon-predicate.h"
 #include "monster.h"
+#include "obj-chest.h"
 #include "obj-desc.h"
 #include "obj-gear.h"
 #include "obj-ignore.h"
 #include "obj-pile.h"
+#include "obj-tval.h"
 #include "obj-util.h"
 #include "object.h"
 #include "player.h"
@@ -28,7 +30,9 @@
 #include "trap.h"
 #include "ui-command.h"
 #include "ui-display.h"
+#include "ui-game.h"
 #include "ui-input.h"
+#include "ui-keymap.h"
 #include "ui-map.h"
 #include "ui-mon-lore.h"
 #include "ui-object.h"
@@ -389,19 +393,23 @@ EM_JS(void, send_quick_actions, (const char *spell_action, const char *spell_hin
     };
 });
 
-static bool has_quick_action_item(item_tester eligible, bool include_quiver)
+static bool has_action_item(item_tester eligible, int locations)
 {
-    for (int i = 0; i < z_info->pack_size; i++) {
-        if (object_test(eligible, player->upkeep->inven[i])) return true;
+    if (locations & USE_INVEN) {
+        for (int i = 0; i < z_info->pack_size; i++) {
+            if (object_test(eligible, player->upkeep->inven[i])) return true;
+        }
     }
-    if (include_quiver) {
+    if (locations & USE_QUIVER) {
         for (int i = 0; i < z_info->quiver_size; i++) {
             if (object_test(eligible, player->upkeep->quiver[i])) return true;
         }
     }
-    for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next) {
-        if (obj->known && obj->known->kind == obj->kind &&
-                !ignore_item_ok(player, obj) && object_test(eligible, obj)) return true;
+    if (locations & USE_FLOOR) {
+        for (struct object *obj = square_object(cave, player->grid); obj; obj = obj->next) {
+            if (obj->known && obj->known->kind == obj->kind &&
+                    !ignore_item_ok(player, obj) && object_test(eligible, obj)) return true;
+        }
     }
     return false;
 }
@@ -423,22 +431,25 @@ static void publish_quick_actions(void)
     if (player->class->magic.total_spells) {
         if (has_learned_spell()) {
             spell_action = "cast";
-            if (!has_quick_action_item(obj_can_cast_from, false)) spell_hint = "No book";
+            if (!has_action_item(obj_can_cast_from, USE_INVEN | USE_FLOOR)) spell_hint = "No book";
             else if (!player_can_cast(player, false)) {
                 if (player->timed[TMD_BLIND]) spell_hint = "Blind";
                 else if (no_light(player)) spell_hint = "Darkness";
                 else if (player->timed[TMD_CONFUSED]) spell_hint = "Confused";
             }
-        } else if (player_can_study(player, false) && has_quick_action_item(obj_can_study, false)) {
+        } else if (player_can_study(player, false) && has_action_item(obj_can_study, USE_INVEN | USE_FLOOR)) {
             spell_action = "study";
-        } else if (has_quick_action_item(obj_can_browse, false)) {
+        } else if (has_action_item(obj_can_browse, USE_INVEN | USE_FLOOR)) {
             spell_action = "browse";
         }
     }
 
     send_quick_actions(spell_action, spell_hint, launcher,
-        launcher && has_quick_action_item(obj_can_fire, true), player_has(player, PF_STEAL));
+        launcher && has_action_item(obj_can_fire, USE_INVEN | USE_FLOOR | USE_QUIVER),
+        player_has(player, PF_STEAL));
 }
+
+enum { LOW_LIGHT_FUEL = 50 };
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
@@ -521,7 +532,7 @@ static void publish_world(bool commands)
     if (player->deep_descent) add_world_condition("Descent", 55);
     if (light) {
         object_desc(light_name, sizeof(light_name), light, ODESC_BASE | ODESC_COMBAT, player);
-        if (!of_has(light->flags, OF_NO_FUEL) && light->timeout > 0 && light->timeout < 50)
+        if (!of_has(light->flags, OF_NO_FUEL) && light->timeout > 0 && light->timeout < LOW_LIGHT_FUEL)
             add_world_condition("Low light fuel", 65);
     } else {
         my_strcpy(light_name, "No light source equipped", sizeof(light_name));
@@ -618,16 +629,19 @@ bool web_aim_at_cell(int x, int y, struct loc *location)
 }
 
 enum web_map_action {
-    MAP_PICKUP, MAP_GO_UP, MAP_GO_DOWN, MAP_REST, MAP_RUN,
-    MAP_OPEN, MAP_CLOSE, MAP_DISARM, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE,
-    MAP_CAST, MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_ACTION_COUNT
+    MAP_EAT, MAP_REFILL, MAP_EQUIP_LIGHT, MAP_PICKUP, MAP_GO_UP, MAP_GO_DOWN,
+    MAP_OPEN, MAP_CLOSE, MAP_DISARM, MAP_TUNNEL, MAP_OPEN_CHEST, MAP_DISARM_CHEST,
+    MAP_STUDY, MAP_REST, MAP_RUN, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE, MAP_CAST,
+    MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_ACTION_COUNT
 };
 
 static const char *const map_action_labels[MAP_ACTION_COUNT] = {
+    [MAP_EAT] = "Eat", [MAP_REFILL] = "Refill", [MAP_EQUIP_LIGHT] = "Equip light source",
     [MAP_PICKUP] = "Pick up", [MAP_GO_UP] = "Go up staircase",
     [MAP_GO_DOWN] = "Go down staircase",
-    [MAP_REST] = "Rest", [MAP_RUN] = "Run", [MAP_OPEN] = "Open", [MAP_CLOSE] = "Close",
-    [MAP_DISARM] = "Disarm", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
+    [MAP_OPEN] = "Open", [MAP_CLOSE] = "Close", [MAP_DISARM] = "Disarm", [MAP_TUNNEL] = "Tunnel",
+    [MAP_OPEN_CHEST] = "Open Chest", [MAP_DISARM_CHEST] = "Disarm Chest", [MAP_STUDY] = "Study",
+    [MAP_REST] = "Rest", [MAP_RUN] = "Run", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
     [MAP_ATTACK] = "Attack",
     [MAP_FIRE] = "Fire", [MAP_CAST] = "Cast", [MAP_THROW] = "Throw",
     [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect",
@@ -639,15 +653,76 @@ static bool map_cell_adjacent(struct loc grid)
         ABS(grid.x - player->grid.x) <= 1 && ABS(grid.y - player->grid.y) <= 1;
 }
 
-static unsigned map_actions(struct loc grid, struct monster *mon, int object_count)
+static struct monster *obvious_map_monster(struct loc grid)
+{
+    struct monster *mon = square_monster(cave, grid);
+    return mon && monster_is_obvious(mon) ? mon : NULL;
+}
+
+bool web_can_equip_light(const struct object *obj)
+{
+    return tval_is_light(obj) && obj_can_wear(obj) && (obj->timeout > 0 ||
+        (obj->known && of_has(obj->known->flags, OF_NO_FUEL)));
+}
+
+static unsigned player_map_actions(struct loc grid, int object_count)
+{
+    struct chunk *known = player->cave;
+    struct object *light = equipped_item_by_slot_name(player, "light");
+    const int pack_and_floor = USE_INVEN | USE_FLOOR;
+    const int supplies = pack_and_floor | USE_QUIVER;
+    int food_locations = player_is_shapechanged(player) ? USE_FLOOR : pack_and_floor;
+    unsigned actions = (1U << MAP_REST) | (1U << MAP_RUN);
+
+    if (player->timed[TMD_FOOD] <= PY_FOOD_HUNGRY && has_action_item(tval_is_edible, food_locations))
+        actions |= 1U << MAP_EAT;
+    if (light && !of_has(light->flags, OF_NO_FUEL) && light->timeout < LOW_LIGHT_FUEL &&
+            player_can_refuel(player, false) && has_action_item(obj_can_refill, supplies))
+        actions |= 1U << MAP_REFILL;
+    else if ((!light || (!of_has(light->flags, OF_NO_FUEL) && !light->timeout)) &&
+            has_action_item(web_can_equip_light, supplies))
+        actions |= 1U << MAP_EQUIP_LIGHT;
+    if (object_count) actions |= 1U << MAP_PICKUP;
+    if (square_isupstairs(known, grid)) actions |= 1U << MAP_GO_UP;
+    if (square_isdownstairs(known, grid)) actions |= 1U << MAP_GO_DOWN;
+    if (player_can_study(player, false) && has_action_item(obj_can_study, pack_and_floor))
+        actions |= 1U << MAP_STUDY;
+    return actions;
+}
+
+static unsigned nearby_map_actions(struct loc grid, struct object *const *objects, int object_count,
+        bool quick)
+{
+    struct chunk *known = player->cave;
+    unsigned actions = 0;
+    for (int i = 0; i < object_count; i++) {
+        const struct object *obj = objects[i];
+        if (!tval_is_chest(obj)) continue;
+        if (obj->pval) actions |= 1U << MAP_OPEN_CHEST;
+        if (is_trapped_chest(obj) && obj->known && is_trapped_chest(obj->known))
+            actions |= 1U << MAP_DISARM_CHEST;
+    }
+    if (loc_eq(grid, player->grid) || !square_isknown(known, grid)) return actions;
+
+    if (square_iscloseddoor(known, grid) && !(actions & (1U << MAP_OPEN_CHEST)))
+        actions |= 1U << MAP_OPEN;
+    if (square_isopendoor(known, grid)) actions |= 1U << MAP_CLOSE;
+    if (square_isdisarmabletrap(known, grid) && !(actions & (1U << MAP_DISARM_CHEST)))
+        actions |= 1U << MAP_DISARM;
+    if (square_isdiggable(known, grid) && (!quick || square_isrubble(known, grid) || square_hasgoldvein(known, grid)))
+        actions |= 1U << MAP_TUNNEL;
+    return actions;
+}
+
+static unsigned map_actions(struct loc grid, struct monster *mon, struct object *const *objects,
+        int object_count, bool quick)
 {
     struct chunk *known = player->cave;
     unsigned actions = 0;
     if (loc_eq(grid, player->grid)) {
-        if (object_count) actions |= 1U << MAP_PICKUP;
-        if (square_isupstairs(known, grid)) actions |= 1U << MAP_GO_UP;
-        if (square_isdownstairs(known, grid)) actions |= 1U << MAP_GO_DOWN;
-        return actions | (1U << MAP_REST) | (1U << MAP_RUN);
+        actions = player_map_actions(grid, object_count);
+        if (!player->timed[TMD_IMAGE]) actions |= nearby_map_actions(grid, objects, object_count, true);
+        return actions;
     }
     if (player->timed[TMD_IMAGE]) return 0;
     bool adjacent = map_cell_adjacent(grid);
@@ -655,19 +730,19 @@ static unsigned map_actions(struct loc grid, struct monster *mon, int object_cou
         actions = 1U << MAP_DETAILS;
         if (adjacent) actions |= 1U << MAP_ATTACK;
         if (target_able(mon)) {
-            if (player_can_fire(player, false) && has_quick_action_item(obj_can_fire, true))
+            int sources = USE_INVEN | USE_FLOOR | USE_QUIVER;
+            if (player_can_fire(player, false) && has_action_item(obj_can_fire, sources))
                 actions |= 1U << MAP_FIRE;
             if (player_can_cast(player, false) && has_learned_spell() &&
-                    has_quick_action_item(obj_can_cast_from, false))
+                    has_action_item(obj_can_cast_from, USE_INVEN | USE_FLOOR))
                 actions |= 1U << MAP_CAST;
-            if (has_quick_action_item(obj_can_throw, true)) actions |= 1U << MAP_THROW;
+            if (has_action_item(obj_can_throw, sources)) actions |= 1U << MAP_THROW;
         }
         return actions;
     }
     if (adjacent) {
-        if (square_iscloseddoor(known, grid)) actions |= 1U << MAP_OPEN;
-        if (square_isopendoor(known, grid)) actions |= 1U << MAP_CLOSE;
-        if (square_isdisarmabletrap(known, grid)) actions |= (1U << MAP_DISARM) | (1U << MAP_JUMP);
+        actions = nearby_map_actions(grid, objects, object_count, quick);
+        if (square_isdisarmabletrap(known, grid)) actions |= 1U << MAP_JUMP;
         if (square_isknownpassable(known, grid) && !square_isvisibletrap(known, grid))
             actions |= 1U << MAP_WALK;
     }
@@ -675,9 +750,9 @@ static unsigned map_actions(struct loc grid, struct monster *mon, int object_cou
     return actions;
 }
 
-EM_JS(void, set_map_cell, (int x, int y, const char *description, bool menu,
+EM_JS(void, set_map_cell, (int x, int y, const char *description, bool here, bool menu,
         unsigned enabled, const char *const *labels, int count), {
-    const mapCell = { x, y, description: UTF8ToString(description) };
+    const mapCell = { x, y, here: !!here, description: UTF8ToString(description) };
     if (menu) {
         mapCell.actions = [];
         for (let code = 0; code < count; code++) {
@@ -687,6 +762,39 @@ EM_JS(void, set_map_cell, (int x, int y, const char *description, bool menu,
     }
     Module['inputContext'] = { mapCell };
 });
+
+EM_JS(void, add_map_action_targets, (int x, int y, int direction, unsigned enabled,
+        const char *const *labels, int count), {
+    const actions = Module['inputContext'].mapCell.actions;
+    for (let code = 0; code < count; code++) {
+        if (!(enabled & (1 << code))) continue;
+        let action = actions.find((entry) => entry.code === code);
+        if (!action) {
+            action = { code, label: UTF8ToString(HEAPU32[(labels >>> 2) + code]), targets: [] };
+            actions.push(action);
+        }
+        action.targets.push({ x, y, direction });
+    }
+});
+
+static void describe_nearby_map_actions(unsigned underfoot)
+{
+    const term *map = angband_term[MAP_TERM];
+    struct object *objects[z_info->floor_size];
+    for (int dir = DIR_SW; dir <= DIR_NE; dir++) {
+        struct loc grid = next_grid(player->grid, dir);
+        int x = (grid.x - map->offset_x) * tile_width;
+        int y = (grid.y - map->offset_y) * tile_height;
+        if (x < 0 || x >= map->wid || y < 0 || y >= map->hgt ||
+                !square_in_bounds_fully(cave, grid) || obvious_map_monster(grid)) continue;
+        unsigned actions = underfoot;
+        if (dir != DIR_TARGET) {
+            int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
+            actions = nearby_map_actions(grid, objects, count, true);
+        }
+        if (actions) add_map_action_targets(x, y, dir, actions, map_action_labels, MAP_ACTION_COUNT);
+    }
+}
 
 static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned actions,
         struct monster *mon, struct object **objects, int count)
@@ -722,14 +830,17 @@ static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned
     char coordinates[32], description[224];
     coords_desc(coordinates, sizeof(coordinates), grid.y, grid.x);
     strnfmt(description, sizeof(description), "%s%s%s, %s.", phrase, article, name, coordinates);
-    set_map_cell(x, y, description, menu, actions, map_action_labels, MAP_ACTION_COUNT);
+    const unsigned chest_actions = (1U << MAP_OPEN_CHEST) | (1U << MAP_DISARM_CHEST);
+    unsigned underfoot = here ? actions & chest_actions : 0;
+    set_map_cell(x, y, description, here, menu, actions & ~underfoot, map_action_labels, MAP_ACTION_COUNT);
+    if (here && !player->timed[TMD_IMAGE]) describe_nearby_map_actions(underfoot);
 }
 
 static bool queue_map_command(cmd_code command, struct loc grid)
 {
     if (cmdq_push(command)) return false;
     if (command == CMD_WALK || command == CMD_JUMP || command == CMD_ALTER || command == CMD_OPEN ||
-            command == CMD_CLOSE || command == CMD_DISARM) {
+            command == CMD_CLOSE || command == CMD_DISARM || command == CMD_TUNNEL) {
         cmd_set_arg_direction(cmdq_peek(), "direction", motion_dir(player->grid, grid));
     } else if (command == CMD_PATHFIND) {
         cmd_set_arg_point(cmdq_peek(), "point", grid);
@@ -746,8 +857,7 @@ bool web_map_cell(int x, int y, int gesture)
     if (!square_in_bounds(cave, grid)) return false;
     bool here = loc_eq(grid, player->grid);
     bool adjacent = map_cell_adjacent(grid);
-    struct monster *mon = square_monster(cave, grid);
-    if (mon && !monster_is_obvious(mon)) mon = NULL;
+    struct monster *mon = obvious_map_monster(grid);
     struct object *objects[z_info->floor_size];
     int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
     struct chunk *known = player->cave;
@@ -756,7 +866,7 @@ bool web_map_cell(int x, int y, int gesture)
             !square_isvisibletrap(known, grid)) {
         return queue_map_command(CMD_WALK, grid);
     }
-    unsigned actions = map_actions(grid, mon, count);
+    unsigned actions = map_actions(grid, mon, objects, count, gesture != WEB_MAP_HOLD);
     bool menu = gesture == WEB_MAP_HOLD || here || (actions && (adjacent || mon));
     if (!menu && gesture == WEB_MAP_REPEAT && square_in_bounds_fully(cave, grid))
         return queue_map_command(adjacent ? CMD_WALK : CMD_PATHFIND, grid);
@@ -767,20 +877,23 @@ bool web_map_cell(int x, int y, int gesture)
 bool web_act_on_map_cell(int x, int y, int action)
 {
     static const cmd_code commands[MAP_ACTION_COUNT] = {
+        [MAP_EAT] = CMD_EAT, [MAP_REFILL] = CMD_REFILL, [MAP_EQUIP_LIGHT] = CMD_WIELD,
         [MAP_PICKUP] = CMD_PICKUP, [MAP_GO_UP] = CMD_GO_UP, [MAP_GO_DOWN] = CMD_GO_DOWN,
         [MAP_RUN] = CMD_RUN, [MAP_OPEN] = CMD_OPEN,
-        [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
+        [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_TUNNEL] = CMD_TUNNEL,
+        [MAP_OPEN_CHEST] = CMD_OPEN, [MAP_DISARM_CHEST] = CMD_DISARM, [MAP_STUDY] = CMD_STUDY,
+        [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
         [MAP_ATTACK] = CMD_ALTER, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
         [MAP_THROW] = CMD_THROW,
     };
     struct loc grid = web_map_grid(x, y);
     if (!square_in_bounds(cave, grid) || action < 0 || action >= MAP_ACTION_COUNT) return false;
-    struct monster *mon = square_monster(cave, grid);
-    if (mon && !monster_is_obvious(mon)) mon = NULL;
-    struct object *objects[2];
+    struct monster *mon = obvious_map_monster(grid);
+    struct object *objects[z_info->floor_size];
     int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
-    if (!(map_actions(grid, mon, count) & (1U << action))) return false;
+    if (!(map_actions(grid, mon, objects, count, false) & (1U << action))) return false;
     if (action == MAP_REST) {
+        if (!key_confirm_command('R')) return false;
         textui_cmd_rest();
         return true;
     }
@@ -790,7 +903,12 @@ bool web_act_on_map_cell(int x, int y, int action)
         web_map_cell(x, y, WEB_MAP_HOLD);
         return false;
     }
-    return queue_map_command(commands[action], grid);
+    int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
+    cmd_code command = commands[action];
+    if (!key_confirm_command(cmd_lookup_key(command, keymap)) || !queue_map_command(command, grid))
+        return false;
+    if (action == MAP_EQUIP_LIGHT) cmd_set_arg_choice(cmdq_peek(), "light source", 1);
+    return true;
 }
 
 EM_JS(bool, take_interrupt, (void), {

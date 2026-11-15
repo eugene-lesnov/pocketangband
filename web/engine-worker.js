@@ -62,9 +62,14 @@ self.addEventListener("message", ({ data }) => {
             if (waiting.mode !== "command" || !waiting.context.worldView) return;
             const selected = waiting.context.mapCell;
             if (data.type === "map-action") {
-                if (!selected?.actions?.some(({ code }) => code === data.code)) return;
-                data.x = selected.x;
-                data.y = selected.y;
+                const action = selected?.actions?.find(({ code }) => code === data.code);
+                if (!action) return;
+                if (action.targets) {
+                    if (!action.targets.some(({ x, y }) => x === data.x && y === data.y)) return;
+                } else {
+                    data.x = selected.x;
+                    data.y = selected.y;
+                }
             } else {
                 const repeat = selected && !selected.actions && data.x === selected.x && data.y === selected.y;
                 data.code = data.openMenu === true ? 1 : repeat ? 2 : 0;
