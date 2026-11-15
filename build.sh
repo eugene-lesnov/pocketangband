@@ -41,7 +41,17 @@ printf '%s\n' "$pocketband_version" > "$source_dir/VERSION"
 if [[ -z ${1:-} && -f "$project_dir/angband/docs/copying.rst" ]]; then
     cp -R "$project_dir/angband/." "$source_dir/angband/"
 else
-    angband_repo=${1:-"$project_dir/../angband"}
+    angband_repo=${1:-"$build_dir/angband-upstream"}
+    if [[ -z ${1:-} ]]; then
+        git clone --depth 1 --single-branch --branch "$angband_version" --no-checkout \
+            https://github.com/angband/angband.git "$angband_repo"
+        downloaded_revision=$(git -C "$angband_repo" rev-parse --verify "refs/tags/$angband_version^{commit}")
+        if [[ $downloaded_revision != "$angband_revision" ]]; then
+            printf 'Angband tag %s points to %s; expected %s.\n' \
+                "$angband_version" "$downloaded_revision" "$angband_revision" >&2
+            exit 1
+        fi
+    fi
     git -C "$angband_repo" archive "$angband_revision" -- \
         ':(glob)src/*.c' ':(glob)src/*.h' src/Makefile.src ':!src/main-*.c' ':!src/snd-sdl.c' \
         ':(glob)lib/gamedata/*.txt' ':(glob)lib/customize/*.prf' \
