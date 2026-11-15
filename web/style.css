@@ -151,6 +151,7 @@ dt { color: var(--muted); }
 .view-bar { min-height: 44px; padding-inline: 0.625rem 0.25rem; }
 .view:has(.menu-screen:not([hidden])) .view-bar { min-height: 2rem; }
 .view {
+    --map-button-size: 44px;
     --message-row-height: 54px;
     position: relative;
     display: grid;
@@ -166,14 +167,17 @@ dt { color: var(--muted); }
     inset-inline-end: 0.25rem;
     inset-block-end: 0.25rem;
     z-index: 1;
-    width: 44px;
-    height: 44px;
+}
+#open-menu, .in-world #zoom button {
+    width: var(--map-button-size);
+    height: var(--map-button-size);
     padding: 0;
+    border: 1px solid var(--border);
     background: rgb(34 32 25 / 80%);
     color: var(--accent);
     font-size: 1.25rem;
 }
-#open-menu:enabled:active { background: #4c3820; }
+#open-menu:enabled:active, .in-world #zoom button:enabled:active { background: #4c3820; }
 
 #map-status, #monster-health {
     position: absolute;
@@ -216,8 +220,8 @@ dt { color: var(--muted); }
 #zoom { display: flex; }
 .in-world .view-bar {
     position: absolute;
-    grid-area: auto;
-    inset-block-start: 0.25rem;
+    grid-area: content;
+    inset-block-end: calc(var(--map-button-size) + 0.5rem);
     inset-inline-end: 0.25rem;
     z-index: 2;
     padding: 0;
@@ -230,10 +234,9 @@ dt { color: var(--muted); }
     clip-path: inset(50%);
 }
 .in-world #zoom {
+    flex-direction: column;
+    gap: 0.25rem;
     pointer-events: auto;
-    border: 1px solid var(--border);
-    border-radius: 0.375rem;
-    background: var(--panel);
 }
 #zoom button {
     min-width: 44px;
