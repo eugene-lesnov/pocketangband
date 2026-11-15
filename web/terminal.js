@@ -481,7 +481,7 @@ function renderResource(element, value, current, maximum) {
 }
 
 function renderMapStatus(state, previousSpeed) {
-    depth.textContent = state.depth ? `${state.depth * 50}′` : "Town";
+    depth.textContent = state.depth ? `Depth: ${state.depth * 50}′` : "Town";
     const normal = state.speed === "Normal";
     speed.textContent = state.speed;
     speed.classList.toggle("fast", state.speed.startsWith("Fast "));
