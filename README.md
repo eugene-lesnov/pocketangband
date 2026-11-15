@@ -5,9 +5,9 @@ PocketBand brings the classic single-player dungeon roguelike [Angband](https://
 PocketBand’s ideas were inspired by [PocketZot](https://github.com/pocketzot/pocketzot).
 
 <p>
-  <a href="screenshots/hello.jpg"><img src="screenshots/hello.jpg" width="220" alt="PocketBand dungeon started"></a>
+  <a href="screenshots/hello.jpg"><img src="screenshots/hello.jpg" width="220" alt="PocketBand welcome screen"></a>
   <a href="screenshots/ascii.jpg"><img src="screenshots/ascii.jpg" width="220" alt="PocketBand dungeon in ASCII mode"></a>
-  <a href="screenshots/tiles.jpg"><img src="screenshots/tiles.jpg" width="220" alt="PocketBand dungeon in tile mode"></a>
+  <a href="screenshots/tiles.jpg"><img src="screenshots/tiles.jpg" width="220" alt="PocketBand dungeon with David Gervais' tiles"></a>
 </p>
 
 ## Play on GitHub Pages
