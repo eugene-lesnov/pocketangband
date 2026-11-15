@@ -1004,8 +1004,11 @@ function updatePrompt() {
     let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mapDirectionAction) text = `${mapDirectionAction.label} · Choose a direction.`;
     if (menu?.onMap) text = "";
-    if (mode === "aim") text = activeView === views.terminal ? "Choose a target or direction." :
-        "Tap a monster or location, or choose a direction.";
+    if (mode === "aim") {
+        if (request === undefined) text = "";
+        else text = activeView === views.terminal ? "Choose a target or direction." :
+            "Tap a monster or location, or choose a direction.";
+    }
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running) text = "Running…";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
