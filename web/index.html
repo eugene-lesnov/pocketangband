@@ -233,7 +233,12 @@
                         <button id="cancel-key" type="button" data-key="Escape" aria-label="Back">Back</button>
                         <button id="nearest" type="button" data-key="'" hidden>Nearest</button>
                         <button id="target-inspect" type="button" data-key="r" hidden>Details</button>
-                        <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false">Keys</button>
+                        <button id="keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false" aria-label="Show keyboard">
+                            <svg class="keyboard-icon" width="24" height="18" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+                                <rect x="1" y="2" width="22" height="14" rx="2"/>
+                                <path d="M5.5 6h1m3 0h1m3 0h1m3 0h1M5.5 9h1m3 0h1m3 0h1m3 0h1M8 12h8"/>
+                            </svg>
+                        </button>
                         <button id="edit-history" type="button" data-key="n" hidden>Edit history</button>
                         <button id="birth-start-over" type="button" data-key="s" hidden>Start over</button>
                         <button id="confirm-key" type="button" data-key="Enter">Continue</button>

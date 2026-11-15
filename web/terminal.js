@@ -934,9 +934,8 @@ function updateControls() {
     setActions(keyboard, showKeyboard && !stopVisible, disabled);
     setActions(keyboardUtilities, command && showKeyboard && !stopVisible, disabled);
     keyboardToggle.hidden = !canOpenKeyboard || (aiming && !showKeyboard && (context.worldView || views.target.crop));
-    keyboardToggle.textContent = showKeyboard ? "Hide" : "Keys";
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
-    keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Keyboard");
+    keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
     setActions(menuActions, !!menu?.actions.length, disabled);
@@ -1643,7 +1642,8 @@ function renderActionsPanel() {
         tilesMenu.textContent = `Tiles: ${graphicsModes.get(currentGraphics).label}`;
         const commands = makeButton("Commands");
         commands.onclick = () => showPanel("commands", openMenu);
-        const keys = makeButton("Keys", "Keyboard");
+        const keys = makeButton("Keyboard");
+        keys.prepend(keyboardToggle.querySelector(".keyboard-icon").cloneNode(true));
         keys.onclick = () => {
             showPanel();
             toggleKeyboard();
