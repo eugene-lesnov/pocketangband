@@ -510,7 +510,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,21 @@
+@@ -36,7 +36,22 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -529,11 +529,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_SELL_STAT = 0x100000,
 +	EVT_WEB_INSPECT_CELL = 0x200000,
 +	EVT_WEB_MOVE_TO_CELL = 0x400000,
++	EVT_WEB_NAME = 0x800000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +210,14 @@
+@@ -196,6 +211,14 @@
  	uint8_t mods;
  };
  
@@ -548,7 +549,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +243,9 @@
+@@ -221,6 +244,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -949,17 +950,23 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,6 +1030,9 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -992,6 +1030,15 @@ bool askfor_aux_ext(char *buf, size_t len,
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
 +#ifdef __EMSCRIPTEN__
-+			web_set_edit_value(buf, k, firsttime);
++			web_set_name_value(buf, len);
 +#endif
  			in = inkey_ex();
++#ifdef __EMSCRIPTEN__
++			if (in.type == EVT_WEB_NAME) {
++				if (web_read_name(buf, len)) return true;
++				continue;
++			}
++#endif
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
-@@ -1171,7 +1212,20 @@ bool get_character_name(char *buf, size_t buflen)
+@@ -1171,7 +1218,20 @@ bool get_character_name(char *buf, size_t buflen)
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -980,7 +987,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1258,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1204,7 +1264,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -994,7 +1001,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1280,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1220,6 +1286,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -1002,7 +1009,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1301,14 @@ static int textui_get_quantity(const char *prompt, int max)
+@@ -1240,7 +1307,14 @@ static int textui_get_quantity(const char *prompt, int max)
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -1018,7 +1025,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1352,15 @@ static bool textui_get_check(const char *prompt)
+@@ -1284,7 +1358,15 @@ static bool textui_get_check(const char *prompt)
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -1034,7 +1041,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1528,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
+@@ -1452,7 +1534,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1047,7 +1054,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,11 +1605,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,11 +1611,22 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1071,7 +1078,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				int y = KEY_GRID_Y(ke);
  				int x = KEY_GRID_X(ke);
-@@ -1642,9 +1733,28 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1642,9 +1739,28 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1103,7 +1110,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
  						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1661,7 +1771,11 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1661,7 +1777,11 @@ static bool textui_get_aim_dir(int *dp)
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1116,7 +1123,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  					dir = 5;
  				} else {
  					need_beep = true;
-@@ -1840,6 +1954,21 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +1960,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -1141,7 +1148,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,73 @@
+@@ -24,6 +24,75 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1164,6 +1171,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +cmd_code web_set_direction_command(cmd_code code);
 +void web_set_aim_options(bool current, bool nearest, int x, int y);
 +void web_set_edit_value(const char *value, int cursor, bool initial);
++void web_set_name_value(const char *value, size_t size);
++bool web_read_name(char *buf, size_t size);
 +void web_set_direction_center(bool available);
 +void web_set_target_options(bool free_aim, int count, bool can_select,
 +	bool can_inspect, bool attack);

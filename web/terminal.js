@@ -69,6 +69,10 @@ const targetLocation = document.querySelector("#target-location");
 const confirmTarget = document.querySelector("#confirm-target");
 const targetInspect = document.querySelector("#target-inspect");
 const inputPrompt = document.querySelector("#input-prompt");
+const nameScreen = document.querySelector("#name-screen");
+const nameFields = document.querySelector("#name-fields");
+const nameValue = document.querySelector("#name-value");
+const namePrompt = document.querySelector("#name-prompt");
 const editScreen = document.querySelector("#edit-screen");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
@@ -758,6 +762,7 @@ function updateControls() {
     const selecting = mode === "target";
     const aiming = mode === "aim";
     const directing = mode === "direction";
+    const naming = mode === "name";
     const editing = isTextEntry(mode);
     const counting = mode === "quantity";
     const optionNumber = mode === "option-number";
@@ -782,8 +787,8 @@ function updateControls() {
     const targeting = aiming || selecting;
     const attackTargeting = selecting && context.attack;
     const targetUnavailable = aiming ? !context.current : !context.canSelect;
-    const canOpenKeyboard = !pickingOnMap && !runDirection && !counting && !optionNumber && !splash && !resting && !confirming && !history &&
-        !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
+    const canOpenKeyboard = !naming && !pickingOnMap && !runDirection && !counting && !optionNumber && !splash &&
+        !resting && !confirming && !history && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const playing = command && !openPanel && !showKeyboard;
@@ -809,7 +814,8 @@ function updateControls() {
     if (runAction.textContent !== runLabel) runAction.textContent = runLabel;
     if (running) delete runAction.dataset.key;
     else runAction.dataset.key = runDirection ? "Escape" : commandKey(runCommand, world?.roguelike);
-    setActions(terminalKeys, !pickingOnMap && !showRunControls && !playing && !stopVisible && !outcome &&
+    nameFields.disabled = disabled;
+    setActions(terminalKeys, !naming && !pickingOnMap && !showRunControls && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
@@ -974,7 +980,7 @@ function updatePrompt() {
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
     else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
-    inputPrompt.hidden = !text || !!openPanel;
+    inputPrompt.hidden = mode === "name" || !text || !!openPanel;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     journal.hidden = hud.hidden || !inputPrompt.hidden || saveNotice;
@@ -987,7 +993,8 @@ function updateView(state = world, region = views.target.crop) {
     views.target.crop = region;
     const aiming = mode === "target" || mode === "aim" || mode === "direction";
     activeView = aiming && region ? views.target : world && (context.worldView || menu?.onMap) ? views.map : views.terminal;
-    const editing = context.value !== undefined && !openPanel;
+    const naming = mode === "name";
+    const editing = !naming && context.value !== undefined && !openPanel;
     const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
     const showDetails = context.detail !== undefined;
     const reviewing = mode === "birth-review";
@@ -1010,6 +1017,7 @@ function updateView(state = world, region = views.target.crop) {
         detailsScreen.textContent = context.detail;
         detailsScreen.scrollTop = 0;
     }
+    nameScreen.hidden = !naming;
     editScreen.hidden = !editing && !question;
     editValue.classList.toggle("confirmation", !editing && Boolean(question));
     if (editing) {
@@ -1038,8 +1046,8 @@ function updateView(state = world, region = views.target.crop) {
         }
     }
     for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || editing || !!question || showDetails || showCharacter ||
-        showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
+        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || naming || editing || !!question ||
+        showDetails || showCharacter || showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
@@ -1056,7 +1064,7 @@ function updateView(state = world, region = views.target.crop) {
         mode === "overview" ? "Full dungeon map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
         mode === "birth-roll" ? "Standard roller" :
-        question ? "Confirm" : editing ? mode === "name" ? "Character name" : mode === "quantity" ? "Quantity" :
+        question ? "Confirm" : naming ? "Character name" : editing ? mode === "quantity" ? "Quantity" :
             mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title);
     const activeSection = menu?.sections?.find((section) => section.active);
     viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
@@ -1135,9 +1143,9 @@ function handleWorkerMessage({ data }) {
                 }
                 keyboardOpen = false;
                 openPanel = panelTrigger = undefined;
-                if (isTextEntry(data.mode)) {
+                if (data.mode === "text") {
                     keyboardLayer = 0;
-                    shifted = data.mode === "name";
+                    shifted = false;
                     keyboardOpen = true;
                 }
             }
@@ -1149,8 +1157,13 @@ function handleWorkerMessage({ data }) {
             request = data.request;
             context = data.context;
             menu = data.menu;
+            if (mode === "name") {
+                nameValue.value = context.value;
+                nameValue.setCustomValidity("");
+                namePrompt.textContent = context.prompt;
+            }
             deletingSave = false;
-            if (changed && isTextEntry(mode)) renderKeyboard();
+            if (changed && mode === "text") renderKeyboard();
             launch.hidden = true;
             main.classList.remove("starting");
             updateView(mode === "command" ? data.world ?? null : data.world ?? world, data.region ?? null);
@@ -1164,6 +1177,10 @@ function handleWorkerMessage({ data }) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (changed && mode === "name" && matchMedia("(pointer: fine)").matches) {
+                nameValue.focus({ preventScroll: true });
+                nameValue.select();
+            }
             if (pauseTrigger && document.activeElement === document.body) {
                 pauseTrigger.focus({ preventScroll: true });
             }
@@ -1290,6 +1307,21 @@ function sendInput(input) {
     updatePrompt();
     return true;
 }
+
+nameValue.addEventListener("input", () => nameValue.setCustomValidity(""));
+nameScreen.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (mode !== "name" || request === undefined) return;
+    const value = nameValue.value;
+    const error = /[\p{Cc}\p{Cs}]/u.test(value) ? "The name contains unsupported characters." :
+        new TextEncoder().encode(value).length > context.nameMaxBytes ? "The name is too long." : "";
+    if (error) {
+        nameValue.setCustomValidity(error);
+        nameValue.reportValidity();
+        return;
+    }
+    sendInput({ type: "submit-name", value });
+});
 
 let buttonPress;
 const inputButton = "button[data-key], button[data-input]";
@@ -1646,8 +1678,6 @@ function renderKeyboard() {
     ];
     const rows = layers[keyboardLayer].map((line) =>
         [...line].map((key) => makeKey(keyboardLayer === 0 && shifted ? key.toUpperCase() : key)));
-    if (mode === "name") rows.unshift([makeKey("*", "Random name"),
-        makeKey("ArrowLeft", "←", "Move text cursor left"), makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
         makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "terminal" || (isMenu() && !menu)) rows.unshift([
@@ -1881,6 +1911,13 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
+    if (mode === "name") {
+        if (event.key === "Escape" && !event.repeat) {
+            event.preventDefault();
+            sendInput({ type: "key", code: keyCode("Escape") });
+        }
+        return;
+    }
     if (event.key === "Escape" && pendingInput !== undefined && (running || !stopAction.hidden)) {
         interruptAction(running ? runAction : stopAction);
         event.preventDefault();

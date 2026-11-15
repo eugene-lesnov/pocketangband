@@ -107,6 +107,19 @@ EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
 });
 
+EM_JS(void, web_set_name_value, (const char *value, size_t size), {
+    Module['inputContext'] = { value: UTF8ToString(value), nameMaxBytes: size - 1 };
+});
+
+EM_JS(bool, web_read_name, (char *buf, size_t size), {
+    const value = Module['submittedName'];
+    Module['submittedName'] = undefined;
+    if (typeof value !== "string" || value.includes(String.fromCharCode(0)) ||
+            lengthBytesUTF8(value) >= size) return false;
+    stringToUTF8(value, buf, size);
+    return true;
+});
+
 EM_JS(void, web_set_confirmation_price, (int32_t price), {
     if (price >= 0) Module['inputContext'] = { price };
 });
@@ -624,7 +637,7 @@ void web_poll_interrupt(void)
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int inspect_cell, int move_to_cell,
-        int buy_stat, int sell_stat, int tiles_event), {
+        int buy_stat, int sell_stat, int tiles_event, int name_event), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -636,6 +649,9 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
     }
     switch (event.type) {
         case "key": return 1;
+        case "submit-name":
+            Module['submittedName'] = event.value;
+            return name_event;
         case "tap": return tap;
         case "menu-row": return row;
         case "menu-section": return section;
@@ -762,7 +778,8 @@ static errr queue_input(void)
     int code = 0, x = 0, y = 0;
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
-        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES);
+        EVT_WEB_INSPECT_CELL, EVT_WEB_MOVE_TO_CELL, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
+        EVT_WEB_NAME);
 
     switch (type) {
         case EVT_NONE: return 1;

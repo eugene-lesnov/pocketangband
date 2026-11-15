@@ -130,6 +130,18 @@
                     <div id="character-progress"></div>
                 </details>
             </section>
+            <form id="name-screen" class="menu-screen" aria-labelledby="view-title" hidden>
+                <fieldset id="name-fields" disabled>
+                    <input id="name-value" type="text" aria-labelledby="view-title" aria-describedby="name-prompt"
+                        autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done">
+                    <p id="name-prompt"></p>
+                    <div class="key-row">
+                        <button type="button" data-key="Escape">Cancel</button>
+                        <button type="button" data-key="*">Random name</button>
+                        <button id="confirm-name" type="submit">Done</button>
+                    </div>
+                </fieldset>
+            </form>
             <div id="edit-screen" class="menu-screen" hidden>
                 <p id="edit-value" aria-label="Current value"></p>
             </div>
