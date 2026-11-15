@@ -247,7 +247,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +769,39 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -758,6 +769,34 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
  	mem_free(entries);
  }
  
@@ -271,15 +271,10 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +{
 +	char path[sizeof(savefile)];
 +	char panic[sizeof(savefile)];
-+	char prompt[320];
 +
 +	if (!name) return false;
 +	strnfmt(path, sizeof(path), "%s%s%s", ANGBAND_DIR_SAVE, PATH_SEP, name);
 +	savefile_get_panic_name(panic, sizeof(panic), path);
-+
-+	strnfmt(prompt, sizeof(prompt), "Delete the save %s permanently?", name);
-+	if (!get_check(prompt)) return false;
-+
 +	return web_delete_save_file(path, file_exists(panic) ? panic : NULL);
 +}
 +#endif
@@ -287,7 +282,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +809,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -765,10 +804,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
@@ -306,7 +301,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +925,23 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -875,11 +920,25 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -314,9 +309,11 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +	while (true) {
 +		selection = menu_select(m, notify, false);
 +#ifdef __EMSCRIPTEN__
-+		if (selection.type == EVT_WEB_DELETE &&
-+				(m->cursor < 0 || m->cursor >= count ||
-+				 !web_delete_save(names[m->cursor]))) continue;
++		if (selection.type == EVT_WEB_DELETE) {
++			int slot = selection.key.code;
++			if (slot <= 0 || slot >= count || !web_delete_save(names[slot]))
++				continue;
++		}
 +#endif
 +		break;
 +	}
@@ -331,7 +328,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +958,12 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -896,6 +955,12 @@ static void select_savefile(bool retry, bool *new_game)
  	if (selection.type == EVT_ESCAPE) {
 +#ifdef __EMSCRIPTEN__
 +		web_show_splash(false);
@@ -344,7 +341,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  }
  
  /**
-@@ -910,6 +978,12 @@ void play_game(enum game_mode_type mode)
+@@ -910,6 +975,12 @@ void play_game(enum game_mode_type mode)
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -357,7 +354,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -920,7 +994,9 @@ void play_game(enum game_mode_type mode)
+@@ -920,7 +991,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -368,7 +365,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -946,6 +1022,14 @@ void play_game(enum game_mode_type mode)
+@@ -946,6 +1019,14 @@ void play_game(enum game_mode_type mode)
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -383,7 +380,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1010,6 +1094,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1010,6 +1091,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -403,7 +400,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1143,25 @@ bool save_game_checked(void)
+@@ -1046,11 +1140,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -430,7 +427,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1175,6 @@ bool save_game_checked(void)
+@@ -1064,23 +1172,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -454,7 +451,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1094,10 +1188,8 @@ bool save_game_checked(void)
+@@ -1094,10 +1185,8 @@ bool save_game_checked(void)
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -467,7 +464,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1129,17 +1221,26 @@ void close_game(bool prompt_failed_save)
+@@ -1129,17 +1218,26 @@ void close_game(bool prompt_failed_save)
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -495,7 +492,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1149,6 +1250,7 @@ void close_game(bool prompt_failed_save)
+@@ -1149,6 +1247,7 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -503,7 +500,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1259,7 @@ void close_game(bool prompt_failed_save)
+@@ -1157,6 +1256,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}

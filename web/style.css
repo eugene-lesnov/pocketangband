@@ -61,16 +61,21 @@ a { color: var(--muted); font-size: 0.75rem; }
 #download-progress { width: 100%; accent-color: var(--accent); }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
-#save-management { position: relative; z-index: 1; }
-#save-management button { padding-inline: 0.625rem; }
-#manage-save { background: transparent; border-color: transparent; color: var(--muted); }
-#manage-save[aria-expanded="true"] { border-color: var(--border); }
-#delete-save {
-    position: absolute;
-    inset-block-start: 100%;
-    inset-inline-end: 0;
-    white-space: nowrap;
+#delete-save-dialog {
+    width: min(22rem, calc(100% - 2rem));
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--panel);
+    color: inherit;
 }
+#delete-save-dialog::backdrop { background: rgb(0 0 0 / 0.65); }
+#delete-save-dialog form { display: grid; gap: 0.625rem; }
+#delete-save-title { font-size: 1.125rem; }
+#delete-save-label { overflow-wrap: anywhere; }
+#delete-save-warning { color: var(--muted); font-size: 0.875rem; }
+#delete-save-dialog .key-row { display: grid; gap: 0.5rem; margin-top: 0.25rem; }
+#confirm-delete-save { border-color: #bf7f6a; color: #ffb3a0; }
 #vitals {
     display: grid;
     align-content: center;
@@ -732,6 +737,13 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     overflow-wrap: anywhere;
 }
 .menu-rows button[aria-current="true"] { border-color: var(--accent); background: #4c3820; }
+.save-slot-row { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 0.25rem; }
+.save-slot-row .delete-save {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    background: transparent;
+    color: var(--muted);
+}
 .menu-rows h3 { margin: 0.5rem 0.4rem 0.125rem; color: var(--muted); font-size: 0.875rem; }
 .menu-rows kbd { color: var(--accent); font: 0.8125rem var(--mono); }
 .menu-rows small { display: block; color: var(--muted); }

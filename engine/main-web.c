@@ -955,7 +955,7 @@ void web_poll_interrupt(void)
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
-        int buy_stat, int sell_stat, int tiles_event, int name_event), {
+        int buy_stat, int sell_stat, int tiles_event, int name_event, int delete_event), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -972,6 +972,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
             return name_event;
         case "tap": return tap;
         case "menu-row": return row;
+        case "delete-save": return delete_event;
         case "menu-section": return section;
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
@@ -987,7 +988,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
         const char *prompt, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
-        int save_event, int delete_event), {
+        int save_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
     const context = modeName === "target" ? { ...Module['targetOptions'] } :
@@ -1013,7 +1014,6 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
         context, menu);
     switch (action) {
         case "background-save": return save_event;
-        case "delete-save": return delete_event;
         default: return 0;
     }
 });
@@ -1089,8 +1089,7 @@ static ui_event_type wait_for_input(void)
         direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
     return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
-        player ? player->au : 0, world_view,
-        EVT_WEB_SAVE, EVT_WEB_DELETE);
+        player ? player->au : 0, world_view, EVT_WEB_SAVE);
 }
 
 static errr queue_input(void)
@@ -1099,7 +1098,7 @@ static errr queue_input(void)
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
-        EVT_WEB_NAME);
+        EVT_WEB_NAME, EVT_WEB_DELETE);
 
     switch (type) {
         case EVT_NONE: return 1;

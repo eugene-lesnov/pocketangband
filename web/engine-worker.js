@@ -37,11 +37,12 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "delete-save") {
         if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
-            !(data.cursor > 0) || data.cursor !== waiting.menu?.cursor) {
+            !(data.code > 0) || !waiting.menu?.rows.some((row) => row.index === data.code && row.enabled)) {
             deleteSaveError("The save slot selection changed. Try again.", waiting?.request);
             return;
         }
-        wakeInput(data.type);
+        input.push(data);
+        wakeInput();
         return;
     }
     if (input.length >= 256 || (data.request !== undefined && data.request !== waiting?.request)) {

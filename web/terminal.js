@@ -9,9 +9,10 @@ const retry = document.querySelector("#retry");
 const updateApp = document.querySelector("#update-app");
 const updateStatus = document.querySelector("#update-status");
 const saveStatus = document.querySelector("#save-status");
-const saveManagement = document.querySelector("#save-management");
-const manageSave = document.querySelector("#manage-save");
-const deleteSave = document.querySelector("#delete-save");
+const deleteSaveDialog = document.querySelector("#delete-save-dialog");
+const deleteSaveLabel = document.querySelector("#delete-save-label");
+const confirmDeleteSave = document.querySelector("#confirm-delete-save");
+const deleteSaveIcon = document.querySelector("#delete-save-icon");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
 const zoom = document.querySelector("#zoom");
@@ -233,6 +234,7 @@ let running = false;
 let playingGame = false;
 let saving = false;
 let deletingSave = false;
+let deleteTarget;
 let availableUpdate;
 let applyingUpdate = false;
 let resultURL;
@@ -757,11 +759,6 @@ function isTextEntry(state) {
 }
 
 function closeInputPanel(closeKeyboard = true) {
-    if (!deleteSave.hidden) {
-        setSaveManagementOpen(false);
-        manageSave.focus({ preventScroll: true });
-        return true;
-    }
     if (!mapCellActions.hidden) {
         dismissMapActions();
         return true;
@@ -940,9 +937,6 @@ function updateControls() {
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
     setActions(menuActions, !!menu?.actions.length, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
-    saveManagement.hidden = !existingSave;
-    manageSave.disabled = deleteSave.disabled = disabled || !existingSave;
-    if (manageSave.disabled) setSaveManagementOpen(false);
 }
 
 function renderAppUpdate() {
@@ -965,27 +959,36 @@ updateApp.addEventListener("click", async () => {
     }
 });
 
-function setSaveManagementOpen(open) {
-    deleteSave.hidden = !open;
-    manageSave.setAttribute("aria-expanded", String(open));
-}
-
-manageSave.addEventListener("click", () => setSaveManagementOpen(deleteSave.hidden));
-
 function showDeleteSaveStatus(message, failed = false) {
     deleteSaveStatus.textContent = message;
     deleteSaveStatus.classList.toggle("error", failed);
     deleteSaveStatus.hidden = false;
 }
 
-deleteSave.addEventListener("click", () => {
-    if (mode !== "save-slots" || deleteSave.disabled || request === undefined) return;
-    const selectedRequest = request;
-    request = undefined;
+function openDeleteSave(button, code) {
+    if (mode !== "save-slots" || request === undefined || deleteSaveDialog.open) return;
+    const row = menu?.rows.find((row) => row.index === code && row.enabled && row.index > 0);
+    if (!row) return;
+    deleteTarget = { request, code };
+    deleteSaveLabel.textContent = saveSlotLabel(row);
+    button.focus({ preventScroll: true });
+    deleteSaveDialog.showModal();
+}
+
+deleteSaveDialog.addEventListener("submit", (event) => {
+    if (event.submitter !== confirmDeleteSave) return;
+    event.preventDefault();
+    const target = deleteTarget;
+    deleteSaveDialog.close();
+    if (!target || mode !== "save-slots" || target.request !== request ||
+        !sendInput({ type: "delete-save", code: target.code })) return;
     deletingSave = true;
     deleteSaveStatus.hidden = true;
     updateControls();
-    worker.postMessage({ type: "delete-save", request: selectedRequest, cursor: menuCursor });
+});
+
+deleteSaveDialog.addEventListener("close", () => {
+    if (!deleteSaveDialog.open) deleteTarget = undefined;
 });
 
 function setActions(group, visible, disabled) {
@@ -1167,6 +1170,7 @@ function updateView(state = world, region = views.target.crop) {
 
 function stop(message, failed) {
     stopped = true;
+    if (deleteSaveDialog.open) deleteSaveDialog.close();
     playingGame = false;
     request = mode = undefined;
     world = menu = undefined;
@@ -1211,6 +1215,7 @@ function handleWorkerMessage({ data }) {
                 break;
             }
             const pauseTrigger = closeMessagePause();
+            const restoreSaveFocus = deletingSave && data.mode === "save-slots";
             const restorePlayFocus = document.activeElement === stopAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             clearPendingInput();
@@ -1266,6 +1271,7 @@ function handleWorkerMessage({ data }) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
+            if (restoreSaveFocus) focusSelectedSave();
             if (changed && mode === "name" && matchMedia("(pointer: fine)").matches) {
                 nameValue.focus({ preventScroll: true });
                 nameValue.select();
@@ -1334,14 +1340,15 @@ function handleWorkerMessage({ data }) {
             updateControls();
             break;
         case "save-deleted":
-            deletingSave = false;
-            updateControls();
             showDeleteSaveStatus(`Deleted ${data.slot}.`);
             break;
         case "save-delete-error":
-            deletingSave = false;
-            if (data.request !== undefined) request = data.request;
-            updateControls();
+            if (data.request !== undefined) {
+                deletingSave = false;
+                request = data.request;
+                updateControls();
+                if (mode === "save-slots") focusSelectedSave();
+            }
             showDeleteSaveStatus(data.message, true);
             break;
         case "exit":
@@ -1396,8 +1403,6 @@ function sendInput(input) {
     request = undefined;
     renderAppUpdate();
     if (mode === "aim") draw();
-    manageSave.disabled = deleteSave.disabled = true;
-    setSaveManagementOpen(false);
     if (running) updateControls();
     updatePrompt();
     return true;
@@ -1429,7 +1434,6 @@ main.addEventListener("pointerdown", (event) => {
 main.addEventListener("pointercancel", () => { buttonPress = undefined; });
 
 main.addEventListener("click", (event) => {
-    if (!deleteSave.hidden && !saveManagement.contains(event.target)) setSaveManagementOpen(false);
     const button = event.target.closest(inputButton);
     if (!button || button.matches(":disabled, [aria-disabled=true]") || (event.detail !== 0 &&
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
@@ -1447,6 +1451,10 @@ main.addEventListener("click", (event) => {
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
         { type: "key", code: keyCode(key) };
+    if (input.type === "delete-save") {
+        openDeleteSave(button, input.code);
+        return;
+    }
     if (input.type === "set-tiles") {
         void chooseTiles(input, button);
         return;
@@ -1732,6 +1740,14 @@ function renderBirthStats(stats, changed) {
     }
 }
 
+function saveSlotLabel(row) {
+    return row.name.replace(/^Use /, "");
+}
+
+function focusSelectedSave() {
+    (menuRows.querySelector('[aria-current="true"]') ?? menuRows).focus({ preventScroll: true });
+}
+
 function renderMenu(state) {
     menuScreen.hidden = !state;
     if (state?.onMap) {
@@ -1823,7 +1839,18 @@ function renderMenu(state) {
         button.setAttribute("aria-label",
             [row.name, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
                 .filter(Boolean).join(", "));
-        (ending ? endings : choices).push(button);
+        if (mode === "save-slots" && row.index > 0 && row.enabled) {
+            const controls = document.createElement("div");
+            controls.className = "save-slot-row";
+            const remove = makeInput("delete-save", row.index, `Delete save: ${saveSlotLabel(row)}`);
+            remove.className = "delete-save";
+            remove.setAttribute("aria-haspopup", "dialog");
+            remove.replaceChildren(deleteSaveIcon.content.cloneNode(true));
+            controls.append(button, remove);
+            choices.push(controls);
+        } else {
+            (ending ? endings : choices).push(button);
+        }
     }
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
@@ -1843,7 +1870,8 @@ function renderMenu(state) {
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
         const button = state.birth?.preview && state.cursor !== previous.cursor ? current :
-            [...menuRows.querySelectorAll("button[data-input]"), ...endings].find((row) => row.dataset.value === focusedCode);
+            [...menuRows.querySelectorAll("button[data-input]"), ...endings].find((row) =>
+                row.dataset.value === focusedCode && row.dataset.input === focused.dataset.input);
         if (button?.matches(":enabled")) button.focus({ preventScroll: true });
     }
 }
@@ -2141,6 +2169,7 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+    if (deleteSaveDialog.open) return;
     if (!messagePause.hidden) {
         if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
         const code = keyCode(event.key);

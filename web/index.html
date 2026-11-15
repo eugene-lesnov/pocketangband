@@ -21,12 +21,6 @@
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
-                <div id="save-management" hidden>
-                    <button id="manage-save" type="button" aria-expanded="false" aria-controls="delete-save">
-                        Manage save
-                    </button>
-                    <button id="delete-save" type="button" hidden disabled>Delete save</button>
-                </div>
                 <div id="zoom" role="group" aria-label="Zoom" hidden>
                     <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
                     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
@@ -265,5 +259,22 @@
             <fieldset id="outcome-actions" class="key-row" aria-label="After this run" disabled hidden></fieldset>
         </div>
     </main>
+    <dialog id="delete-save-dialog" aria-labelledby="delete-save-title" aria-describedby="delete-save-label delete-save-warning">
+        <form method="dialog">
+            <h2 id="delete-save-title">Delete save?</h2>
+            <p id="delete-save-label"></p>
+            <p id="delete-save-warning">This permanently deletes the save.</p>
+            <div class="key-row">
+                <button type="submit" autofocus>Cancel</button>
+                <button id="confirm-delete-save" type="submit">Delete save</button>
+            </div>
+        </form>
+    </dialog>
+    <template id="delete-save-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16m-11 0V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7"/>
+        </svg>
+    </template>
 </body>
 </html>
