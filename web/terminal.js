@@ -1563,7 +1563,7 @@ function renderMenu(state) {
     menuScreen.hidden = !state;
     if (state?.onMap) {
         if (menuScreen.parentElement !== mapPicker) mapPicker.append(menuScreen);
-        mapPickerTitle.textContent = state.title || state.prompt;
+        mapPickerTitle.textContent = state.title || state.prompt || context.prompt;
     } else if (menuScreen.parentElement === mapPicker) {
         menuDescription.before(menuScreen);
     }
