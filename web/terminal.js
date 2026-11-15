@@ -168,6 +168,7 @@ const commandFaces = new Map([["CtrlT", "^T"], ["Ctrl+V", "^V"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
+const mapScales = [...scales, 2, 2.25];
 const defaultAsciiZoom = scales.indexOf(1.5);
 const defaultTileZoom = scales.indexOf(1);
 const views = {
@@ -372,13 +373,14 @@ function zoomIndex(view) {
 
 function updateViewZoom(view) {
     const { viewport, gridElement, grid } = view;
-    const index = view === views.terminal ? view.zoom : zoomIndex(view);
+    const levels = view === views.terminal ? scales : mapScales;
+    const index = zoomIndex(view);
     const fitted = Boolean(view.fit);
     viewport.classList.toggle("fit-map", fitted);
     zoomOut.disabled = fitted || index === 0;
     if (!fitted) {
-        viewport.style.setProperty("--zoom", scales[index]);
-        zoomIn.disabled = index === scales.length - 1;
+        viewport.style.setProperty("--zoom", levels[index]);
+        zoomIn.disabled = index === levels.length - 1;
         return;
     }
     const { clientWidth, clientHeight } = viewport;
@@ -402,8 +404,9 @@ function recenterView() {
 function changeZoom(step) {
     const fitted = activeView.fit;
     if (fitted && (step < 0 || activeView.fitScale === undefined)) return;
-    const index = fitted ? scales.findIndex((scale) => scale > activeView.fitScale) - 1 : zoomIndex(activeView);
-    const next = Math.max(0, Math.min(scales.length - 1, index + step));
+    const levels = activeView === views.terminal ? scales : mapScales;
+    const index = fitted ? levels.findIndex((scale) => scale > activeView.fitScale) - 1 : zoomIndex(activeView);
+    const next = Math.max(0, Math.min(levels.length - 1, index + step));
     if (!fitted && next === index) return;
     activeView.fit = false;
     activeView.zoom = next;
