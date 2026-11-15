@@ -44,6 +44,7 @@ main:is(.in-world, .in-game-panel) {
     justify-content: space-between;
     gap: 0.625rem;
 }
+.app-header { justify-content: flex-end; }
 
 h1, h2, p, dl, dd { margin: 0; }
 h1 { color: var(--accent); font-size: 1.25rem; }
@@ -198,7 +199,7 @@ dt { color: var(--muted); }
 }
 #splash-screen img { margin-block-start: auto; border-radius: 0.75rem; }
 #splash-screen h3 { margin: 0; color: var(--accent); font-size: 1.75rem; }
-#angband-version { color: var(--muted); font-size: 1rem; font-weight: 400; }
+.splash-subtitle { color: var(--muted); font-size: 1rem; }
 #splash-screen blockquote {
     max-width: 32ch;
     margin: 0;
