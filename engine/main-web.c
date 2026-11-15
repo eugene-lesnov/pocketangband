@@ -445,8 +445,8 @@ EM_JS(void, add_world_condition, (const char *label, int priority), {
     Module['worldConditions'].push({ label: UTF8ToString(label), priority });
 });
 
-EM_JS(void, add_world_stat, (const char *label, const char *value), {
-    Module['worldStats'].push({ label: UTF8ToString(label), value: UTF8ToString(value).trim() });
+EM_JS(void, add_world_stat, (const char *label, const char *value, bool reduced), {
+    Module['worldStats'].push({ label: UTF8ToString(label), value: UTF8ToString(value).trim(), reduced: !!reduced });
 });
 
 static void publish_world(bool commands)
@@ -466,7 +466,7 @@ static void publish_world(bool commands)
         char label[4], value[8];
         strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
         cnv_stat(player->state.stat_use[stat], value, sizeof(value));
-        add_world_stat(label, value);
+        add_world_stat(label, value, player->stat_cur[stat] < player->stat_max[stat]);
     }
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;

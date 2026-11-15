@@ -414,7 +414,7 @@ function renderWorld(state) {
     sp.hidden = !state.magic;
     speed.hidden = state.speed === "Normal";
     speed.textContent = speed.hidden ? "" : state.speed;
-    for (const [index, { label, value }] of state.stats.entries()) {
+    for (const [index, { label, value, reduced }] of state.stats.entries()) {
         let stat = hudStats.children[index];
         if (!stat) {
             stat = document.createElement("span");
@@ -425,6 +425,7 @@ function renderWorld(state) {
         }
         const current = stat.lastElementChild;
         if (current.textContent !== value) current.textContent = value;
+        current.classList.toggle("reduced", reduced);
     }
     const alerts = [...state.conditions].sort((left, right) => right.priority - left.priority);
     const labels = alerts.slice(0, 2).map(({ label }) => label);
@@ -436,7 +437,7 @@ function renderWorld(state) {
     extraConditions.textContent = `+${more}`;
     vitals.setAttribute("aria-label", ["Open Character", hp.textContent, state.magic && sp.textContent,
         !speed.hidden && `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
-        ...state.stats.map(({ label, value }) => `${label} ${value}`), ...labels,
+        ...state.stats.map(({ label, value, reduced }) => `${label} ${value}${reduced ? " (reduced)" : ""}`), ...labels,
         more > 0 && `${more} more conditions`].filter(Boolean).join(", "));
 
     const lines = state.log.flatMap(({ text, count }) => {
