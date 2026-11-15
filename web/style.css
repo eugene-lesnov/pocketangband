@@ -423,6 +423,8 @@ dt { color: var(--muted); }
 #continue-message { padding-inline: 0.625rem; border-color: #9c7749; }
 
 .controls {
+    --pad-key-size: clamp(44px, 13vw, 52px);
+    --pad-height: calc(3 * var(--pad-key-size) + 0.5rem);
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
@@ -431,7 +433,7 @@ dt { color: var(--muted); }
 #map-picker {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(13rem, 40dvh);
+    height: calc(min(13rem, 40dvh) + var(--pad-height) - 44px);
     border: 1px solid var(--border);
     border-radius: 0.5rem;
     background: var(--panel);
@@ -441,7 +443,6 @@ dt { color: var(--muted); }
     padding-block: 0.25rem;
 }
 .game-controls-row {
-    --pad-key-size: clamp(44px, 13vw, 52px);
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
@@ -492,7 +493,7 @@ button > .key-hint {
 }
 #map-action-buttons > :first-child:nth-last-child(odd) { grid-column: 1 / -1; }
 #map-cell-actions.nearby-actions #map-action-buttons {
-    max-height: calc(3 * var(--pad-key-size) + 0.5rem);
+    max-height: var(--pad-height);
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -528,10 +529,10 @@ button > .key-hint {
     overflow-wrap: anywhere;
 }
 .game-controls-row:has(#direction-pad:not([hidden])) #terminal-keys > [hidden],
-#terminal-keys.full-screen-controls > [hidden] { display: none !important; }
-#terminal-keys.full-screen-controls:not([hidden]) { display: flex; }
-#terminal-keys.full-screen-controls > button { flex: 1; }
-#terminal-keys.full-screen-controls > #keyboard-toggle { flex: 0 0 60px; }
+#terminal-keys.single-row-controls > [hidden] { display: none !important; }
+#terminal-keys.single-row-controls:not([hidden]) { display: flex; }
+#terminal-keys.single-row-controls > button { flex: 1; }
+#terminal-keys.single-row-controls > #keyboard-toggle { flex: 0 0 60px; }
 #terminal-keys.aim-controls #confirm-key { grid-column: 1 / -1; grid-row: 1; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr) 60px; }
 #terminal-keys.options-controls #confirm-key { display: none !important; }
@@ -551,6 +552,17 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .keyboard-row button[aria-pressed="true"] { color: #171612; background: var(--accent); }
 
 .menu-screen { overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); }
+#menu-screen:has(#menu-sections:not([hidden])) {
+    display: flex;
+    flex-direction: column;
+    overflow: clip;
+}
+#menu-screen:has(#menu-sections:not([hidden])) #menu-items {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+#menu-sections { flex: none; }
 #actions-screen button:not(:has(kbd)) { display: block; }
 #actions-screen .keyboard-icon { margin-inline-end: 0.5rem; }
 #character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }

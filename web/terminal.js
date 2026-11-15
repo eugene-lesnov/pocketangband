@@ -105,6 +105,7 @@ const downloadResult = document.querySelector("#download-result");
 const menuScreen = document.querySelector("#menu-screen");
 const menuSummary = document.querySelector("#menu-summary");
 const menuSections = document.querySelector("#menu-sections");
+const menuItems = document.querySelector("#menu-items");
 const menuRows = document.querySelector("#menu-rows");
 const menuEmpty = document.querySelector("#menu-empty");
 const menuActions = document.querySelector("#menu-actions");
@@ -844,7 +845,7 @@ function updateControls() {
     views.target.viewport.classList.toggle("selectable", targeting || directing || runDirection);
     const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
     const usingPad = !openPanel && (command || directing || runDirection || targeting || (isMenu() && !menu));
-    const showPad = usingPad || (playingGame && main.classList.contains("in-world"));
+    const showPad = !pickingOnMap && (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
@@ -867,7 +868,7 @@ function updateControls() {
     setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
-    terminalKeys.classList.toggle("full-screen-controls", playingGame && !showPad);
+    terminalKeys.classList.toggle("single-row-controls", playingGame && !showPad);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
@@ -1766,9 +1767,11 @@ function renderMenu(state) {
     const active = state.sections?.find((section) => section.active)?.id;
     const previousActive = previous?.sections?.find((section) => section.active)?.id;
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
-        state.options !== previous.options ||
+        state.onMap !== previous.onMap || state.options !== previous.options ||
         state.prompt !== previous.prompt;
-    const previousScroll = menuScreen.scrollTop;
+    menuSections.hidden = (state.sections?.length ?? 0) <= (state.onMap ? 1 : 0);
+    const scrollArea = menuSections.hidden ? menuScreen : menuItems;
+    const previousScroll = scrollArea.scrollTop;
     if (differentList) birthSelection = undefined;
     else if (state.birth?.preview && state.cursor !== previous.cursor) birthSelection = state.cursor;
     menuCursor = birthSelection ?? state.cursor;
@@ -1776,7 +1779,6 @@ function renderMenu(state) {
         `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.hidden = !summary;
     menuSummary.textContent = summary;
-    menuSections.hidden = (state.sections?.length ?? 0) <= (state.onMap ? 1 : 0);
     menuSections.replaceChildren(...(state.sections ?? []).map((section) => {
         const button = makeInput("menu-section", section.id, section.label);
         button.disabled = section.active;
@@ -1834,12 +1836,12 @@ function renderMenu(state) {
         return button;
     }));
     renderBirthPreview();
-    menuScreen.scrollTop = differentList ? 0 : previousScroll;
+    scrollArea.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
         const bounds = current.getBoundingClientRect();
-        const screen = menuScreen.getBoundingClientRect();
-        if (bounds.top < screen.top) menuScreen.scrollTop += bounds.top - screen.top;
-        else if (bounds.bottom > screen.bottom) menuScreen.scrollTop += bounds.bottom - screen.bottom;
+        const screen = scrollArea.getBoundingClientRect();
+        if (bounds.top < screen.top) scrollArea.scrollTop += bounds.top - screen.top;
+        else if (bounds.bottom > screen.bottom) scrollArea.scrollTop += bounds.bottom - screen.bottom;
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
         const button = state.birth?.preview && state.cursor !== previous.cursor ? current :
