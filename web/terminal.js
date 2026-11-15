@@ -48,6 +48,7 @@ const pausedControls = [...messagePause.parentElement.children, hud, document.qu
 const directionPad = document.querySelector("#direction-pad");
 const directionButtons = [...directionPad.querySelectorAll("button")];
 const directionCenter = document.querySelector("#direction-center");
+const centerDot = document.querySelector("#center-dot");
 const centerCaption = document.querySelector("#center-caption");
 const terminalKeys = document.querySelector("#terminal-keys");
 const cancelKey = document.querySelector("#cancel-key");
@@ -168,7 +169,7 @@ const extraCommands = [
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
 ];
 const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles" };
-const commandFaces = new Map([["CtrlT", "^T"], ["Ctrl+V", "^V"]]);
+const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 const mapDirections = [
     null,
@@ -845,8 +846,8 @@ function updateControls() {
             !mapDirectionAction.targets.some(({ direction }) => mapDirections[direction].key === button.dataset.key);
     }
     directionCenter.disabled = (!command || !!mapDirectionAction) && !here;
-    centerCaption.hidden = directionCenter.disabled;
-    centerCaption.textContent = here ? "Here" : "Stand still";
+    centerDot.hidden = !!here;
+    centerCaption.hidden = !here;
     directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
     const showPlayActions = playing && !stopVisible && !inspectingCell;
     setActions(playKeys, showPlayActions, disabled);
@@ -877,6 +878,7 @@ function updateControls() {
         editing || counting || optionNumber || resting ? "Done" :
         saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
+    setKeyHint(confirmKey);
     const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
     confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild || directing || runDirection ||
         pickingOnMap || directMenu ||
@@ -887,6 +889,7 @@ function updateControls() {
         targeting || directing || runDirection || pickingOnMap || editing || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
+    setKeyHint(cancelKey);
     cancelKey.hidden = details || character || overview || victory;
     birthStatRows.disabled = resetStats.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
@@ -895,6 +898,7 @@ function updateControls() {
     if (selecting) {
         confirmTarget.textContent = targetLabel;
         confirmTarget.dataset.key = confirmKey.dataset.key;
+        setKeyHint(confirmTarget);
         confirmTarget.disabled = targetUnavailable;
     }
     nearest.hidden = !aiming || !!openPanel || showKeyboard;
@@ -911,6 +915,7 @@ function updateControls() {
     } else {
         targetMode.textContent = context.freeAim ? "Interesting places" : "Free selection";
         targetMode.dataset.key = context.freeAim ? "m" : "o";
+        setKeyHint(targetMode);
         targetMode.disabled = selecting && context.freeAim && !context.targetCount;
     }
     targetInspect.hidden = !selecting || !showTargetControls;
@@ -1480,10 +1485,11 @@ function makeInput(type, code, label) {
 
 function renderMapActions() {
     const { actions, here } = context.mapCell;
-    const buttons = [...actions].sort((a, b) => a.code - b.code).map(({ code, label, targets }) => {
+    const buttons = [...actions].sort((a, b) => a.code - b.code).map(({ code, label, key, targets }) => {
         const direction = targets?.length === 1 ? mapDirections[targets[0].direction] : undefined;
         const button = makeInput("map-action", code, direction?.arrow ? `${label} ${direction.arrow}` : label);
         if (direction) button.setAttribute("aria-label", `${label}, ${direction.name}`);
+        if (key) setKeyHint(button, keyFromCode(key));
         return button;
     });
     mapCellActions.classList.toggle("nearby-actions", here);
@@ -1522,6 +1528,38 @@ function keyBadge(label) {
     return badge;
 }
 
+function keyFromCode(code) {
+    if (code === 9) return "Tab";
+    if (code === 13) return "Enter";
+    if (code === 27) return "Escape";
+    return code > 0 && code < 27 ? `Ctrl+${String.fromCharCode(code + 64)}` : String.fromCodePoint(code);
+}
+
+function setKeyHint(button, key = button.dataset.key) {
+    const label = keyNames.get(key) ?? key;
+    let badge = button.querySelector(".key-hint");
+    if (!badge) {
+        badge = keyBadge(label);
+        badge.className = "key-hint";
+        badge.setAttribute("aria-hidden", "true");
+        button.append(badge);
+    } else if (badge.textContent !== label) {
+        badge.textContent = label;
+    }
+    button.setAttribute("aria-description", `Shortcut: ${label}`);
+}
+
+for (const button of document.querySelectorAll(
+    "#play-keys [data-key], #target-actions [data-key], #terminal-keys [data-key], " +
+    "#birth-roll-actions [data-key], #name-fields [data-key], #reset-stats"
+)) setKeyHint(button);
+for (const button of directionButtons) {
+    const direction = mapDirections.findIndex((entry) => entry?.key === button.dataset.key);
+    setKeyHint(button, String(direction));
+}
+for (const [button, key] of [[closeMapCellActions, "Escape"], [stopAction, "Escape"],
+    [continueMessage, "Enter"], [document.querySelector("#confirm-name"), "Enter"]]) setKeyHint(button, key);
+
 function commandKey([key, , alternative], roguelike) {
     return roguelike && alternative ? alternative : key;
 }
@@ -1537,6 +1575,7 @@ function renderQuickActions({ roguelike, quickActions }) {
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
     runAction.dataset.key = commandKey(runCommand, roguelike);
+    for (const button of [combatAction, useAction, repeatAction, runAction]) setKeyHint(button);
 }
 
 function renderActionsPanel() {
@@ -1566,7 +1605,8 @@ function renderActionsPanel() {
         const key = commandKey(entry, world.roguelike);
         const label = entry[1];
         const button = makeKey(key, label);
-        if (openPanel === "commands" && key !== "Enter") button.prepend(keyBadge(commandFaces.get(key) ?? key));
+        button.prepend(keyBadge(keyNames.get(key) ?? key));
+        button.setAttribute("aria-description", `Shortcut: ${keyNames.get(key) ?? key}`);
         return button;
     });
     if (openPanel === "menu") {
@@ -1742,9 +1782,14 @@ function renderMenu(state) {
         price.className = "price";
         price.textContent = row.price;
         const ending = outcome && ["n", "q"].some((key) => row.key === keyCode(key));
-        if (state.birth || ending) button.replaceChildren(description);
-        else if (state.onMap) button.replaceChildren(description, price);
-        else button.replaceChildren(keyBadge(row.key ? String.fromCharCode(row.key) : ""), description, price);
+        const rowKey = row.key ? keyFromCode(row.key) : "";
+        if (state.birth || ending) {
+            button.replaceChildren(description);
+            if (rowKey) setKeyHint(button, rowKey);
+        } else {
+            button.replaceChildren(keyBadge(rowKey), description, price);
+            if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
+        }
         button.setAttribute("aria-label",
             [row.name, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
                 .filter(Boolean).join(", "));
@@ -1752,8 +1797,12 @@ function renderMenu(state) {
     }
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
-    menuActions.replaceChildren(...state.actions.map((action) => state.store ?
-        makeInput("store-action", action.key, action.label) : makeKey(String.fromCharCode(action.key), action.label)));
+    menuActions.replaceChildren(...state.actions.map((action) => {
+        const button = state.store ? makeInput("store-action", action.key, action.label) :
+            makeKey(String.fromCharCode(action.key), action.label);
+        setKeyHint(button, keyFromCode(action.key));
+        return button;
+    }));
     renderBirthPreview();
     menuScreen.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
@@ -1849,6 +1898,9 @@ showKeys(rest, [
     lowDigits,
     [...highDigits, makeKey("Backspace", "⌫", "Delete digit")],
 ]);
+for (const button of [...quantity.querySelectorAll('[data-key="*"]'), ...rest.firstElementChild.children]) {
+    setKeyHint(button);
+}
 
 function toggleKeyboard() {
     keyboardOpen = !keyboardOpen;
@@ -2070,9 +2122,9 @@ document.addEventListener("keydown", (event) => {
     }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
     if (mode === "name") {
-        if (event.key === "Escape" && !event.repeat) {
+        if (event.key === "Escape" || (event.key === "*" && !event.ctrlKey && !event.metaKey)) {
             event.preventDefault();
-            sendInput({ type: "key", code: keyCode("Escape") });
+            if (!event.repeat) sendInput({ type: "key", code: keyCode(event.key) });
         }
         return;
     }
@@ -2094,9 +2146,17 @@ document.addEventListener("keydown", (event) => {
     if (journal.open && journal.contains(event.target)) return;
     if (openPanel) return;
     if (event.ctrlKey || event.metaKey) {
-        if (mode === "command" && !event.shiftKey && event.key.toLowerCase() === "s") {
+        const key = event.key.toLowerCase();
+        let shortcut;
+        if (key === "s") shortcut = "Save";
+        else if (!event.metaKey) {
+            if (key === "x") shortcut = "SaveAndQuit";
+            else if (world?.roguelike && key === "v") shortcut = "Ctrl+V";
+            else if (world?.roguelike && key === "t") shortcut = "CtrlT";
+        }
+        if (mode === "command" && request !== undefined && !event.shiftKey && shortcut) {
             event.preventDefault();
-            if (!event.repeat) sendInput({ type: "key", code: keyCode("Save") });
+            if (!event.repeat) sendInput({ type: "key", code: keyCode(shortcut) });
         }
         return;
     }

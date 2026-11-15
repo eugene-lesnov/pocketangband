@@ -647,6 +647,17 @@ static const char *const map_action_labels[MAP_ACTION_COUNT] = {
     [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect",
 };
 
+static const cmd_code map_action_commands[MAP_ACTION_COUNT] = {
+    [MAP_EAT] = CMD_EAT, [MAP_REFILL] = CMD_REFILL, [MAP_EQUIP_LIGHT] = CMD_WIELD,
+    [MAP_PICKUP] = CMD_PICKUP, [MAP_GO_UP] = CMD_GO_UP, [MAP_GO_DOWN] = CMD_GO_DOWN,
+    [MAP_RUN] = CMD_RUN, [MAP_OPEN] = CMD_OPEN,
+    [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_TUNNEL] = CMD_TUNNEL,
+    [MAP_OPEN_CHEST] = CMD_OPEN, [MAP_DISARM_CHEST] = CMD_DISARM, [MAP_STUDY] = CMD_STUDY,
+    [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
+    [MAP_ATTACK] = CMD_ALTER, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
+    [MAP_THROW] = CMD_THROW,
+};
+
 static bool map_cell_adjacent(struct loc grid)
 {
     return !loc_eq(grid, player->grid) &&
@@ -750,32 +761,35 @@ static unsigned map_actions(struct loc grid, struct monster *mon, struct object 
     return actions;
 }
 
-EM_JS(void, set_map_cell, (int x, int y, const char *description, bool here, bool menu,
-        unsigned enabled, const char *const *labels, int count), {
+EM_JS(void, set_map_cell, (int x, int y, const char *description, bool here, bool menu), {
     const mapCell = { x, y, here: !!here, description: UTF8ToString(description) };
-    if (menu) {
-        mapCell.actions = [];
-        for (let code = 0; code < count; code++) {
-            if (enabled & (1 << code))
-                mapCell.actions.push({ code, label: UTF8ToString(HEAPU32[(labels >>> 2) + code]) });
-        }
-    }
+    if (menu) mapCell.actions = [];
     Module['inputContext'] = { mapCell };
 });
 
-EM_JS(void, add_map_action_targets, (int x, int y, int direction, unsigned enabled,
-        const char *const *labels, int count), {
+EM_JS(void, add_map_action, (int x, int y, int direction, int code, const char *label, int key), {
     const actions = Module['inputContext'].mapCell.actions;
-    for (let code = 0; code < count; code++) {
-        if (!(enabled & (1 << code))) continue;
-        let action = actions.find((entry) => entry.code === code);
-        if (!action) {
-            action = { code, label: UTF8ToString(HEAPU32[(labels >>> 2) + code]), targets: [] };
-            actions.push(action);
-        }
+    let action = actions.find((entry) => entry.code === code);
+    if (!action) {
+        action = { code, label: UTF8ToString(label), key };
+        actions.push(action);
+    }
+    if (direction) {
+        if (!action.targets) action.targets = [];
         action.targets.push({ x, y, direction });
     }
 });
+
+static void describe_map_actions(int x, int y, int direction, unsigned enabled)
+{
+    int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
+    for (int code = 0; code < MAP_ACTION_COUNT; code++) {
+        if (!(enabled & (1U << code))) continue;
+        cmd_code command = map_action_commands[code];
+        int key = code == MAP_REST ? 'R' : command != CMD_NULL ? cmd_lookup_key(command, keymap) : 0;
+        add_map_action(x, y, direction, code, map_action_labels[code], key);
+    }
+}
 
 static void describe_nearby_map_actions(unsigned underfoot)
 {
@@ -792,7 +806,7 @@ static void describe_nearby_map_actions(unsigned underfoot)
             int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
             actions = nearby_map_actions(grid, objects, count, true);
         }
-        if (actions) add_map_action_targets(x, y, dir, actions, map_action_labels, MAP_ACTION_COUNT);
+        if (actions) describe_map_actions(x, y, dir, actions);
     }
 }
 
@@ -832,7 +846,9 @@ static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned
     strnfmt(description, sizeof(description), "%s%s%s, %s.", phrase, article, name, coordinates);
     const unsigned chest_actions = (1U << MAP_OPEN_CHEST) | (1U << MAP_DISARM_CHEST);
     unsigned underfoot = here ? actions & chest_actions : 0;
-    set_map_cell(x, y, description, here, menu, actions & ~underfoot, map_action_labels, MAP_ACTION_COUNT);
+    set_map_cell(x, y, description, here, menu);
+    if (!menu) return;
+    describe_map_actions(x, y, 0, actions & ~underfoot);
     if (here && !player->timed[TMD_IMAGE]) describe_nearby_map_actions(underfoot);
 }
 
@@ -876,16 +892,6 @@ bool web_map_cell(int x, int y, int gesture)
 
 bool web_act_on_map_cell(int x, int y, int action)
 {
-    static const cmd_code commands[MAP_ACTION_COUNT] = {
-        [MAP_EAT] = CMD_EAT, [MAP_REFILL] = CMD_REFILL, [MAP_EQUIP_LIGHT] = CMD_WIELD,
-        [MAP_PICKUP] = CMD_PICKUP, [MAP_GO_UP] = CMD_GO_UP, [MAP_GO_DOWN] = CMD_GO_DOWN,
-        [MAP_RUN] = CMD_RUN, [MAP_OPEN] = CMD_OPEN,
-        [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_TUNNEL] = CMD_TUNNEL,
-        [MAP_OPEN_CHEST] = CMD_OPEN, [MAP_DISARM_CHEST] = CMD_DISARM, [MAP_STUDY] = CMD_STUDY,
-        [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
-        [MAP_ATTACK] = CMD_ALTER, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
-        [MAP_THROW] = CMD_THROW,
-    };
     struct loc grid = web_map_grid(x, y);
     if (!square_in_bounds(cave, grid) || action < 0 || action >= MAP_ACTION_COUNT) return false;
     struct monster *mon = obvious_map_monster(grid);
@@ -904,7 +910,7 @@ bool web_act_on_map_cell(int x, int y, int action)
         return false;
     }
     int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
-    cmd_code command = commands[action];
+    cmd_code command = map_action_commands[action];
     if (!key_confirm_command(cmd_lookup_key(command, keymap)) || !queue_map_command(command, grid))
         return false;
     if (action == MAP_EQUIP_LIGHT) cmd_set_arg_choice(cmdq_peek(), "light source", 1);
