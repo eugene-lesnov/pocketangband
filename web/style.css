@@ -464,7 +464,7 @@ dt { color: var(--muted); }
     gap: 0.5rem;
 }
 .game-controls-row:has(#direction-pad[hidden]) { grid-template-columns: minmax(0, 1fr); }
-.game-controls-row:not(:has(fieldset:not([hidden]), #stop-action:not([hidden]))) { display: none; }
+.game-controls-row:not(:has(fieldset:not([hidden]))) { display: none; }
 .game-controls-buttons { display: grid; gap: 0.25rem; min-width: 0; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .direction-pad, .key-row, #play-keys, #map-cell-actions, #map-action-buttons,
@@ -486,9 +486,25 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 #center-caption { font: 0.625rem/1.05 system-ui, sans-serif; }
 .direction-pad.cardinal :is(.diagonal, #direction-center) { visibility: hidden; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#stop-action { border-color: var(--accent); background: #4c3820; }
+#stop-action { grid-column: 1 / -1; border-color: var(--accent); background: #4c3820; }
 #play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 #play-keys button { min-width: 0; }
+#play-keys.stopping > button:not(#stop-action, #movement-mode) { display: none; }
+#play-keys.stopping:has(#movement-mode:not([hidden])) #stop-action { grid-column: auto; }
+#movement-mode {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    padding: 0.125rem;
+}
+#movement-mode span {
+    display: grid;
+    place-items: center;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+}
+#movement-mode[aria-checked="false"] span:first-child,
+#movement-mode[aria-checked="true"] span:last-child { color: #171612; background: var(--accent); }
 button:has(> .key-hint) {
     display: grid;
     grid-template-rows: 1fr auto;

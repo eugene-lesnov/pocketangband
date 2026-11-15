@@ -222,7 +222,10 @@
                         <button id="use-action" type="button" data-key="U" aria-label="Use an item">Use</button>
                         <button id="combat-action" type="button" data-key="v" aria-label="Throw an item">Throw</button>
                         <button id="repeat-action" type="button" data-key="n" aria-label="Repeat previous command">Repeat</button>
-                        <button id="run-action" type="button" data-key="." aria-label="Start running">Run</button>
+                        <button id="stop-action" type="button" hidden>Stop</button>
+                        <button id="movement-mode" type="button" role="switch" aria-label="Run" aria-checked="false">
+                            <span>Walk</span><span>Run</span>
+                        </button>
                     </fieldset>
                     <fieldset id="keyboard-utilities" aria-label="Keyboard controls" disabled hidden></fieldset>
                     <fieldset id="terminal-keys" aria-label="Angband controls" disabled>
@@ -239,7 +242,6 @@
                         <button id="birth-start-over" type="button" data-key="s" hidden>Start over</button>
                         <button id="confirm-key" type="button" data-key="Enter">Continue</button>
                     </fieldset>
-                    <button id="stop-action" type="button" hidden>Stop</button>
                 </div>
                 <fieldset id="direction-pad" class="direction-pad" aria-label="Direction pad" disabled hidden>
                     <button class="diagonal" type="button" data-key="7" aria-label="Up left">↖</button>

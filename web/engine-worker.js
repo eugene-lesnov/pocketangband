@@ -50,6 +50,9 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
+    } else if (data.type === "run-direction") {
+        if (waiting?.mode !== "command" || data.request !== waiting.request ||
+            !Number.isInteger(data.code) || data.code < 1 || data.code > 9 || data.code === 5) return;
     } else if (data.type === "submit-name") {
         if (waiting?.mode !== "name" || data.request !== waiting.request || typeof data.value !== "string") return;
     } else if (data.type === "set-tiles") {

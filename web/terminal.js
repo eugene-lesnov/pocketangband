@@ -62,7 +62,7 @@ const heroActions = document.querySelector("#hero-actions");
 const useAction = document.querySelector("#use-action");
 const combatAction = document.querySelector("#combat-action");
 const repeatAction = document.querySelector("#repeat-action");
-const runAction = document.querySelector("#run-action");
+const movementMode = document.querySelector("#movement-mode");
 const mapCellActions = document.querySelector("#map-cell-actions");
 const mapActionButtons = document.querySelector("#map-action-buttons");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
@@ -231,6 +231,8 @@ let characterTrigger;
 let pendingInput;
 let stopTimer;
 let running = false;
+let runMode = false;
+let runningFromPad = false;
 let playingGame = false;
 let saving = false;
 let deletingSave = false;
@@ -855,7 +857,11 @@ function updateControls() {
     centerCaption.hidden = !here;
     directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
     const showPlayActions = playing && !stopVisible && !inspectingCell;
-    setActions(playKeys, showPlayActions, disabled);
+    setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
+    playKeys.classList.toggle("stopping", stopVisible);
+    movementMode.hidden = !(showPlayActions || runningFromPad);
+    movementMode.disabled = stopVisible ? stopAction.disabled : disabled;
+    movementMode.setAttribute("aria-checked", String(runMode));
     setActions(openMenu, showPlayActions, disabled);
     heroActions.disabled = !context.worldView;
     setActions(mapCellActions, inspectingCell, disabled);
@@ -1218,6 +1224,7 @@ function handleWorkerMessage({ data }) {
             const restoreSaveFocus = deletingSave && data.mode === "save-slots";
             const restorePlayFocus = document.activeElement === stopAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
+            const playFocus = runningFromPad ? movementMode : heroActions;
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.onMap !== menu?.onMap ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
@@ -1297,7 +1304,7 @@ function handleWorkerMessage({ data }) {
             }
             if (changed && (mode === "direction" || mode === "run-direction"))
                 activeView.viewport.focus({ preventScroll: true });
-            if (mode === "command" && restorePlayFocus) heroActions.focus({ preventScroll: true });
+            if (mode === "command" && restorePlayFocus) playFocus.focus({ preventScroll: true });
             if (!mapCellActions.hidden) mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
             break;
         }
@@ -1323,6 +1330,7 @@ function handleWorkerMessage({ data }) {
             break;
         case "restarting":
             clearPendingInput();
+            runMode = false;
             closeMessagePause();
             playingGame = false;
             request = mode = world = menu = undefined;
@@ -1369,6 +1377,7 @@ function clearPendingInput() {
     clearTimeout(stopTimer);
     pendingInput = undefined;
     running = false;
+    runningFromPad = false;
     stopAction.hidden = true;
     stopAction.disabled = false;
 }
@@ -1379,7 +1388,9 @@ function sendInput(input) {
     journal.open = false;
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
-    running = (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
+    runningFromPad = input.type === "run-direction";
+    running = runningFromPad ||
+        (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
         (mode === "run-direction" && (input.type === "aim-cell" ||
             (input.type === "key" && input.code !== keyCode("Escape"))));
     if (context.mapCell) {
@@ -1390,7 +1401,7 @@ function sendInput(input) {
     worker.postMessage({ ...input, request });
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
-        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action"].includes(input.type)) {
+        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
             stopTimer = setTimeout(() => {
@@ -1446,6 +1457,11 @@ main.addEventListener("click", (event) => {
     const key = button.dataset.key;
     if (mapDirectionAction && directionPad.contains(button)) {
         chooseMapDirection(mapDirections.findIndex((direction) => direction?.key === key));
+        return;
+    }
+    if (runMode && mode === "command" && button !== directionCenter && directionPad.contains(button)) {
+        const direction = mapDirections.findIndex((entry) => entry?.key === key);
+        sendInput({ type: "run-direction", code: direction });
         return;
     }
     const input = button.dataset.input ?
@@ -1610,8 +1626,7 @@ function renderQuickActions({ roguelike, quickActions }) {
     combatAction.textContent = combat[3];
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
-    runAction.dataset.key = commandKey(runCommand, roguelike);
-    for (const button of [combatAction, useAction, repeatAction, runAction]) setKeyHint(button);
+    for (const button of [combatAction, useAction, repeatAction]) setKeyHint(button);
 }
 
 function renderActionsPanel() {
@@ -2004,6 +2019,13 @@ function interruptAction(button) {
 }
 
 stopAction.addEventListener("click", () => interruptAction(stopAction));
+movementMode.addEventListener("click", () => {
+    if (movementMode.hidden || movementMode.disabled || !messagePause.hidden ||
+        (request === undefined && !runningFromPad)) return;
+    runMode = !runMode;
+    if (!runMode && runningFromPad) interruptAction(stopAction);
+    updateControls();
+});
 
 for (const view of Object.values(views)) {
     let tap;

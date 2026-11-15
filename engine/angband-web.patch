@@ -217,7 +217,7 @@ diff --git a/src/main.c b/src/main.c
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
-@@ -522,6 +522,11 @@ void textui_process_command(void)
+@@ -522,6 +522,14 @@ void textui_process_command(void)
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -225,11 +225,14 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +		case EVT_WEB_SAVE:
 +			save_game();
 +			return;
++		case EVT_WEB_RUN_DIRECTION:
++			web_run_direction(e.key.code);
++			return;
 +#endif
  		case EVT_RESIZE: do_cmd_redraw(); return;
  		case EVT_MOUSE: textui_process_click(e); return;
  		case EVT_BUTTON:
-@@ -627,10 +632,16 @@ errr textui_get_cmd(cmd_context context)
+@@ -627,10 +635,16 @@ errr textui_get_cmd(cmd_context context)
  void check_for_player_interrupt(game_event_type type, game_event_data *data,
  								void *user)
  {
@@ -511,7 +514,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,22 @@
+@@ -36,7 +36,23 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -531,11 +534,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_MAP_CELL = 0x200000,
 +	EVT_WEB_MAP_ACTION = 0x400000,
 +	EVT_WEB_NAME = 0x800000,
++	EVT_WEB_RUN_DIRECTION = 0x1000000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +211,14 @@
+@@ -196,6 +212,14 @@
  	uint8_t mods;
  };
  
@@ -550,7 +554,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +244,9 @@
+@@ -221,6 +245,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -1206,7 +1210,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,81 @@
+@@ -24,6 +24,82 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1239,6 +1243,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_map_gesture { WEB_MAP_TAP, WEB_MAP_HOLD, WEB_MAP_REPEAT };
 +bool web_map_cell(int x, int y, int gesture);
 +bool web_act_on_map_cell(int x, int y, int action);
++void web_run_direction(int direction);
 +bool web_can_equip_light(const struct object *obj);
 +bool web_get_map_aim_dir(int *dir, struct loc grid);
 +void web_set_details(const wchar_t *text, size_t length);

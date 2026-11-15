@@ -917,6 +917,15 @@ bool web_act_on_map_cell(int x, int y, int action)
     return true;
 }
 
+void web_run_direction(int direction)
+{
+    if (direction < DIR_SW || direction > DIR_NE || direction == DIR_TARGET) return;
+    int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
+    if (!key_confirm_command(cmd_lookup_key(CMD_RUN, keymap)) || cmdq_push(CMD_RUN)) return;
+    cmd_set_arg_direction(cmdq_peek(), "direction", direction);
+    pace_run = true;
+}
+
 EM_JS(bool, take_interrupt, (void), {
     return Module['takeInterrupt']();
 });
@@ -955,7 +964,7 @@ void web_poll_interrupt(void)
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
-        int buy_stat, int sell_stat, int tiles_event, int name_event, int delete_event), {
+        int buy_stat, int sell_stat, int tiles_event, int name_event, int delete_event, int run_direction), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -967,6 +976,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
     }
     switch (event.type) {
         case "key": return 1;
+        case "run-direction": return run_direction;
         case "submit-name":
             Module['submittedName'] = event.value;
             return name_event;
@@ -1098,7 +1108,7 @@ static errr queue_input(void)
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
-        EVT_WEB_NAME, EVT_WEB_DELETE);
+        EVT_WEB_NAME, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION);
 
     switch (type) {
         case EVT_NONE: return 1;
