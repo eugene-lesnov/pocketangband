@@ -175,7 +175,7 @@ dt { color: var(--muted); }
 }
 #open-menu:enabled:active { background: #4c3820; }
 
-#map-status {
+#map-status, #monster-health {
     position: absolute;
     grid-area: content;
     z-index: 1;
@@ -197,6 +197,22 @@ dt { color: var(--muted); }
 #depth { color: var(--muted); }
 #speed.fast { color: #cbe7a4; }
 #speed.slow { color: #ffd18d; }
+#monster-health {
+    inset-block-end: 0.25rem;
+    inset-inline-end: 3.5rem;
+    max-width: 10rem;
+}
+#monster-health-bar {
+    display: grid;
+    grid-template-columns: repeat(10, minmax(0, 1fr));
+    align-items: center;
+    gap: 2px;
+    height: 6px;
+}
+#monster-health-bar > span { height: 100%; border-radius: 1px; background: #494233; }
+#monster-health-bar > .filled { background: var(--monster-health-color); }
+#monster-health.unknown #monster-health-bar > span { height: 2px; background: var(--muted); }
+
 #zoom { display: flex; }
 .in-world .view-bar {
     position: absolute;

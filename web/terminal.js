@@ -27,6 +27,10 @@ const hpValue = document.querySelector("#hp-value");
 const sp = document.querySelector("#sp");
 const spValue = document.querySelector("#sp-value");
 const speed = document.querySelector("#speed");
+const monsterHealth = document.querySelector("#monster-health");
+const monsterBar = document.querySelector("#monster-health-bar");
+const monsterSegments = Array.from({ length: 10 }, () => document.createElement("span"));
+monsterBar.append(...monsterSegments);
 const hudStats = document.querySelector("#hud-stats");
 const activeConditions = document.querySelector("#active-conditions");
 const hiddenConditionCount = document.querySelector("#hidden-condition-count");
@@ -459,6 +463,17 @@ function changeZoom(step) {
     recenterView();
 }
 
+function renderMonsterHealth(health) {
+    monsterHealth.hidden = hud.hidden || !health;
+    if (monsterHealth.hidden) return;
+    const { name, segments, color } = health;
+    monsterHealth.classList.toggle("unknown", !name);
+    monsterHealth.setAttribute("aria-label", name ?
+        `${name}: ${segments} of 10 health segments` : "Monster health unknown");
+    monsterHealth.style.setProperty("--monster-health-color", color ?? "");
+    monsterSegments.forEach((segment, index) => segment.classList.toggle("filled", index < segments));
+}
+
 function renderResource(element, value, current, maximum) {
     value.textContent = `${current} / ${maximum}`;
     const fill = maximum > 0 ? Math.max(0, Math.min(100, current * 100 / maximum)) : 0;
@@ -488,6 +503,7 @@ function renderWorld(state, previousSpeed) {
     hp.classList.toggle("low", state.lowHp);
     renderResource(sp, spValue, state.sp, state.maxSp);
     sp.hidden = !state.magic;
+    renderMonsterHealth(state.monsterHealth);
     for (const [index, { label, value, reduced, lowered }] of state.stats.entries()) {
         let stat = hudStats.children[index];
         if (!stat) {
@@ -1046,6 +1062,7 @@ function showMessagePause(data) {
         if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
     }
     pausedMessage.textContent = terminalLine(0).replace(/\s*-more-\s*$/, "");
+    if (data.world) renderMonsterHealth(data.world.monsterHealth);
     messagePause.hidden = false;
     for (const element of pausedControls) element.inert = true;
     continueMessage.disabled = false;
@@ -1180,6 +1197,7 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("intro", showSplash);
     hud.hidden = !showMap || !world;
     mapStatus.hidden = hud.hidden;
+    if (hud.hidden) monsterHealth.hidden = true;
     const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
         context.resultsList?.title ?? context.resultsFile?.title ??
         (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :

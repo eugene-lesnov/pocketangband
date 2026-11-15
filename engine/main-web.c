@@ -465,6 +465,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
         conditions: Module['worldConditions'], stats: Module['worldStats'], statLoss: !!stat_loss,
+        monsterHealth: Module['worldMonsterHealth'],
         quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
 });
@@ -472,6 +473,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
 EM_JS(void, start_world_status, (void), {
     Module['worldConditions'] = [];
     Module['worldStats'] = [];
+    Module['worldMonsterHealth'] = null;
 });
 
 EM_JS(void, add_world_condition, (const char *label, int priority), {
@@ -483,6 +485,27 @@ EM_JS(void, add_world_stat, (const char *label, const char *value, bool reduced,
         label: UTF8ToString(label), value: UTF8ToString(value).trim(), reduced: !!reduced, lowered: !!lowered,
     });
 });
+
+EM_JS(void, set_world_monster_health, (const char *name, int segments, const uint8_t *color), {
+    Module['worldMonsterHealth'] = {
+        name: name ? UTF8ToString(name) : null, segments,
+        color: color ? `rgb(${HEAPU8[color + 1]} ${HEAPU8[color + 2]} ${HEAPU8[color + 3]})` : null,
+    };
+});
+
+static void publish_monster_health(void)
+{
+    const struct monster *mon = player->upkeep->health_who;
+    if (!mon) return;
+    if (!mon->race || !monster_is_visible(mon) || player->timed[TMD_IMAGE] ||
+            mon->hp < 0 || mon->maxhp <= 0) {
+        set_world_monster_health(NULL, 0, NULL);
+        return;
+    }
+    int pct = 100L * mon->hp / mon->maxhp;
+    int segments = (pct < 10) ? 1 : (pct < 90) ? pct / 10 + 1 : 10;
+    set_world_monster_health(mon->race->name, segments, angband_color_table[monster_health_attr()]);
+}
 
 static bool publish_stats(bool commands)
 {
@@ -540,6 +563,7 @@ static void publish_world(bool commands)
 
     start_world_status();
     bool stat_loss = publish_stats(commands);
+    publish_monster_health();
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
         struct timed_grade *grade = timed_effects[effect].grade;
