@@ -2575,6 +2575,11 @@ for (const view of Object.values(views)) {
     }
 }
 
+document.addEventListener("contextmenu", (event) => {
+    if (event.pointerType === "touch" && !event.target.matches('input[type="text"], textarea'))
+        event.preventDefault();
+});
+
 zoomOut.addEventListener("click", () => changeZoom(-1));
 zoomIn.addEventListener("click", () => changeZoom(1));
 
