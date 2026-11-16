@@ -165,14 +165,15 @@ dt { color: var(--muted); }
 .view > :is(.screen, .menu-screen) { grid-area: content; }
 .in-world .view { overflow: clip; }
 
-#open-menu {
+#open-menu, #open-map-lists {
     position: absolute;
     grid-area: content;
-    inset-inline-end: 0.25rem;
     inset-block-end: 0.25rem;
     z-index: 1;
 }
-#open-menu, .in-world #zoom button {
+#open-menu { inset-inline-end: 0.25rem; }
+#open-map-lists { inset-inline-start: 0.25rem; display: grid; place-items: center; }
+#open-menu, #open-map-lists, .in-world #zoom button {
     width: var(--map-button-size);
     height: var(--map-button-size);
     padding: 0;
@@ -181,17 +182,28 @@ dt { color: var(--muted); }
     color: var(--accent);
     font-size: 1.25rem;
 }
-#open-menu:enabled:active, .in-world #zoom button:enabled:active { background: #4c3820; }
+#open-menu:enabled:active, #open-map-lists:enabled:active,
+.in-world #zoom button:enabled:active { background: #4c3820; }
+#open-map-lists[aria-expanded="true"] { border-color: var(--accent); }
 
 #map-lists {
     position: absolute;
     grid-area: content;
     inset-inline-start: 0.25rem;
-    inset-block-end: 0.25rem;
-    z-index: 1;
+    inset-block-end: calc(var(--map-button-size) + 0.5rem);
+    z-index: 3;
     display: grid;
     gap: 0.25rem;
-    width: 6.5rem;
+    width: 8rem;
+    max-width: calc(100% - 0.5rem);
+    max-height: calc(100% - var(--map-button-size) - 0.75rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.375rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--panel);
+    box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 60%);
 }
 #map-lists button { min-height: var(--map-button-size); background: rgb(34 32 25 / 80%); }
 #map-lists button:enabled:active { background: #4c3820; }
@@ -226,7 +238,7 @@ dt { color: var(--muted); }
     border-radius: 0.375rem;
     background: rgb(34 32 25 / 90%);
 }
-.view:has(#map-lists:not([hidden])) #monster-health { inset-inline-start: 7.25rem; }
+.view:has(#open-map-lists:not([hidden])) #monster-health { inset-inline-start: 3.5rem; }
 #monster-name { display: block; margin-bottom: 0.25rem; font: 0.8125rem/1.2 system-ui, sans-serif; }
 #monster-health-bar {
     display: grid;

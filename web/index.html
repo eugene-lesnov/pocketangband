@@ -67,6 +67,14 @@
                     <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
                 </div>
             </div>
+            <button id="open-map-lists" type="button" aria-label="Visible lists" title="Visible lists"
+                aria-controls="map-lists" aria-expanded="false" disabled hidden>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                </svg>
+            </button>
             <fieldset id="map-lists" aria-label="Visible lists" disabled hidden></fieldset>
             <button id="open-menu" type="button" aria-label="Menu" aria-controls="actions-screen" disabled hidden>☰</button>
             <div id="target-screen" class="screen" role="region" aria-label="Targeting map" tabindex="0" hidden>

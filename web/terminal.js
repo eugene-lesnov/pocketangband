@@ -77,6 +77,7 @@ const mapActionButtons = document.querySelector("#map-action-buttons");
 const mapActionDirection = document.querySelector("#map-action-direction");
 const mapActionFooter = document.querySelector("#map-action-footer");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
+const openMapLists = document.querySelector("#open-map-lists");
 const mapLists = document.querySelector("#map-lists");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
@@ -843,6 +844,11 @@ function isTextEntry(state) {
 }
 
 function closeInputPanel(closeKeyboard = true) {
+    if (!mapLists.hidden) {
+        setMapListsOpen(false);
+        openMapLists.focus({ preventScroll: true });
+        return true;
+    }
     if (!mapCellActions.hidden) {
         dismissMapActions();
         return true;
@@ -954,7 +960,9 @@ function updateControls() {
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
     setActions(openMenu, playing && !stopVisible, disabled);
-    setActions(mapLists, playing && !stopVisible && context.worldView, disabled || !!mapDirectionAction);
+    setActions(openMapLists, playing && !stopVisible && context.worldView, disabled || !!mapDirectionAction);
+    if (openMapLists.hidden || openMapLists.disabled) setMapListsOpen(false);
+    mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
     heroActions.setAttribute("aria-expanded", String(inspectingCell));
     combatAction.disabled = !!combatUnavailable;
@@ -1535,6 +1543,7 @@ function clearPendingInput() {
 
 function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || applyingUpdate || !messagePause.hidden) return false;
+    setMapListsOpen(false);
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
@@ -1740,6 +1749,17 @@ function dismissMapActions() {
 
 closeMapCellActions.addEventListener("click", dismissMapActions);
 
+document.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || mapLists.hidden || mapLists.contains(event.target) ||
+        openMapLists.contains(event.target)) return;
+    setMapListsOpen(false);
+    if (views.map.viewport.contains(event.target)) {
+        openMapLists.focus({ preventScroll: true });
+        event.preventDefault();
+        event.stopPropagation();
+    }
+}, { capture: true });
+
 main.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary || mapCellActions.hidden || mapCellActions.contains(event.target) ||
         heroActions.contains(event.target)) return;
@@ -1779,6 +1799,23 @@ function setKeyHint(button, key = button.dataset.key) {
     }
     button.setAttribute("aria-description", `Shortcut: ${label}`);
 }
+
+function setMapListsOpen(open) {
+    mapLists.hidden = !open;
+    openMapLists.setAttribute("aria-expanded", String(open));
+}
+
+openMapLists.addEventListener("click", () => {
+    const open = mapLists.hidden;
+    if (open && !mapCellActions.hidden) dismissMapActions();
+    setMapListsOpen(open);
+    if (open) mapLists.querySelector("button:enabled")?.focus({ preventScroll: true });
+});
+
+mapLists.addEventListener("focusout", (event) => {
+    if (event.relatedTarget && !mapLists.contains(event.relatedTarget) && event.relatedTarget !== openMapLists)
+        setMapListsOpen(false);
+});
 
 mapLists.replaceChildren(...visibleListCommands.map(([key, announcement, , label]) => {
     const button = makeKey(key, label, announcement);
@@ -2494,6 +2531,14 @@ document.addEventListener("keydown", (event) => {
     }
     if ((event.key === "Enter" || event.key === " ") &&
         event.target instanceof Element && event.target.closest("button, a, summary")) return;
+    if (!mapLists.hidden && ["ArrowUp", "ArrowDown"].includes(event.key)) {
+        event.preventDefault();
+        const buttons = [...mapLists.querySelectorAll("button")];
+        const index = buttons.indexOf(document.activeElement);
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        buttons[(index + step + buttons.length) % buttons.length].focus({ preventScroll: true });
+        return;
+    }
     if (mapDirectionAction && event.key !== "Tab") {
         event.preventDefault();
         if (!event.repeat) {
