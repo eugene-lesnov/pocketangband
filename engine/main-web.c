@@ -110,9 +110,9 @@ cmd_code web_set_direction_command(cmd_code code)
     return previous;
 }
 
-EM_JS(void, set_aim_options, (bool current, bool nearest, int x, int y,
+EM_JS(void, set_aim_options, (bool current, bool nearest, bool selecting, int x, int y,
         const int *path, int length, const char *description), {
-    Module['inputContext'] = { current: !!current, nearest: !!nearest,
+    Module['inputContext'] = { current: !!current, nearest: !!nearest, selecting: !!selecting,
         target: current ? { x, y } : undefined,
         aimPath: length ? HEAP32.slice(path >>> 2, (path >>> 2) + length) : undefined,
         targetDescription: UTF8ToString(description), prepared: Module['aimCommand'] };
@@ -420,12 +420,11 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
     Module['sendFrame'](frame);
 });
 
-EM_JS(void, send_quick_actions, (const char *spell_action, const char *spell_hint,
-        bool launcher, bool has_ammo, bool can_steal, const char *repeat), {
+EM_JS(void, send_quick_actions, (const char *spell_action,
+        bool launcher, bool can_steal, const char *repeat), {
     Module['worldQuickActions'] = {
         spell: UTF8ToString(spell_action),
-        spellHint: spell_hint ? UTF8ToString(spell_hint) : "",
-        launcher: !!launcher, hasAmmo: !!has_ammo, canSteal: !!can_steal,
+        launcher: !!launcher, canSteal: !!can_steal,
         repeat: repeat ? UTF8ToString(repeat) : "",
     };
 });
@@ -463,17 +462,10 @@ static void publish_quick_actions(void)
 {
     bool launcher = player_can_fire(player, false);
     const char *spell_action = "look";
-    const char *spell_hint = NULL;
 
     if (player->class->magic.total_spells) {
         if (has_learned_spell()) {
             spell_action = "cast";
-            if (!has_action_item(obj_can_cast_from, USE_INVEN | USE_FLOOR)) spell_hint = "No book";
-            else if (!player_can_cast(player, false)) {
-                if (player->timed[TMD_BLIND]) spell_hint = "Blind";
-                else if (no_light(player)) spell_hint = "Darkness";
-                else if (player->timed[TMD_CONFUSED]) spell_hint = "Confused";
-            }
         } else if (player_can_study(player, false) && has_action_item(obj_can_study, USE_INVEN | USE_FLOOR)) {
             spell_action = "study";
         } else if (has_action_item(obj_can_browse, USE_INVEN | USE_FLOOR)) {
@@ -482,8 +474,7 @@ static void publish_quick_actions(void)
     }
 
     const struct command *repeat = web_repeat_command();
-    send_quick_actions(spell_action, spell_hint, launcher,
-        launcher && has_action_item(obj_can_fire, USE_INVEN | USE_FLOOR | USE_QUIVER),
+    send_quick_actions(spell_action, launcher,
         player_has(player, PF_STEAL), repeat ? cmd_verb(repeat->code) : NULL);
 }
 
@@ -491,7 +482,7 @@ enum { LOW_LIGHT_FUEL = 50 };
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool stat_loss, bool roguelike, bool commands,
+        int count, const char *const *lines, const int *repeats, bool roguelike, bool commands,
         int turns), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
@@ -503,7 +494,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
-        conditions: Module['worldConditions'], stats: Module['worldStats'], statLoss: !!stat_loss,
+        conditions: Module['worldConditions'], stats: Module['worldStats'],
         monsterHealth: Module['worldMonsterHealth'],
         quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
@@ -546,12 +537,10 @@ static void publish_monster_health(void)
     set_world_monster_health(mon->race->name, segments, angband_color_table[monster_health_attr()]);
 }
 
-static bool publish_stats(bool commands)
+static void publish_stats(bool commands)
 {
     static bool have_stats;
-    static int previous_cur[STAT_MAX], previous_max[STAT_MAX], previous_use[STAT_MAX];
-    char notice[256] = "";
-    bool stat_loss = false;
+    static int previous_cur[STAT_MAX], previous_max[STAT_MAX];
 
     for (int stat = 0; stat < STAT_MAX; ++stat) {
         char label[4], value[8];
@@ -562,31 +551,12 @@ static bool publish_stats(bool commands)
         strnfmt(label, sizeof(label), "%.3s", stat_names[stat]);
         cnv_stat(use, value, sizeof(value));
         add_world_stat(label, value, cur < max, lower_cur || lower_max);
-        if (lower_cur || lower_max) {
-            char before[8], after[8];
-            cnv_stat(lower_cur ? previous_use[stat] : previous_max[stat], before, sizeof(before));
-            cnv_stat(lower_cur ? use : max, after, sizeof(after));
-            const char *from = before + strspn(before, " ");
-            const char *to = after + strspn(after, " ");
-            if (stat_loss) my_strcat(notice, " · ", sizeof(notice));
-            my_strcat(notice, label, sizeof(notice));
-            if (lower_cur && (use >= previous_use[stat] || streq(from, to))) {
-                my_strcat(notice, " decreased", sizeof(notice));
-            } else {
-                if (!lower_cur) my_strcat(notice, " max", sizeof(notice));
-                my_strcat(notice, format(" %s → %s", from, to), sizeof(notice));
-            }
-            stat_loss = true;
-        }
         if (commands) {
             previous_cur[stat] = cur;
             previous_max[stat] = max;
-            previous_use[stat] = use;
         }
     }
     if (commands) have_stats = true;
-    if (stat_loss) message_add(notice, MSG_DRAIN_STAT);
-    return stat_loss;
 }
 
 static void publish_world(bool commands)
@@ -601,7 +571,7 @@ static void publish_world(bool commands)
     const char *food_grade = "";
 
     start_world_status();
-    bool stat_loss = publish_stats(commands);
+    publish_stats(commands);
     publish_monster_health();
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
@@ -637,14 +607,7 @@ static void publish_world(bool commands)
     }
     if (player->word_recall) add_world_condition("Recall", 55);
     if (player->deep_descent) add_world_condition("Descent", 55);
-    if (light) {
-        object_desc(light_name, sizeof(light_name), light, ODESC_BASE | ODESC_COMBAT, player);
-        if (!of_has(light->flags, OF_NO_FUEL) && light->timeout > 0 && light->timeout < LOW_LIGHT_FUEL)
-            add_world_condition("Low light fuel", 65);
-    } else {
-        my_strcpy(light_name, "No light source equipped", sizeof(light_name));
-    }
-    if (!player->timed[TMD_BLIND] && no_light(player)) add_world_condition("Darkness", 66);
+    object_desc(light_name, sizeof(light_name), light, ODESC_BASE | ODESC_COMBAT, player);
 
     my_strcpy(speed, "Normal", sizeof(speed));
     if (speed_offset) {
@@ -667,7 +630,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        stat_loss, OPT(player, rogue_like_commands), commands, player->total_energy / 100);
+        OPT(player, rogue_like_commands), commands, player->total_energy / 100);
 }
 
 static double last_interrupt_poll;
@@ -690,14 +653,14 @@ struct loc web_direction_grid(int x, int y)
         Term->offset_y + (y - ROW_MAP) / tile_height);
 }
 
-void web_set_aim_options(bool selected, struct loc location)
+void web_set_aim_options(bool selecting, struct loc location)
 {
     struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
     const bool overhead = web_has_overhead_map();
     const term *map = overhead ? angband_term[MAP_TERM] : Term;
     const int origin_x = overhead ? 0 : COL_MAP;
     const int origin_y = overhead ? 0 : ROW_MAP;
-    const bool current = location.x || (selected && target_okay());
+    const bool current = location.x || target_okay();
     struct loc grid = location;
     if (!location.x) target_get(&grid);
 
@@ -719,17 +682,14 @@ void web_set_aim_options(bool selected, struct loc location)
         if (target_able(mon)) monster_desc(description, sizeof(description), mon, MDESC_IND_VIS);
         else coords_desc(description, sizeof(description), grid.y, grid.x);
     }
-    set_aim_options(current, point_set_size(targets) > 0,
+    set_aim_options(current, point_set_size(targets) > 0, selecting,
         origin_x + (grid.x - map->offset_x) * tile_width,
         origin_y + (grid.y - map->offset_y) * tile_height, path_cells, path_count, description);
     point_set_dispose(targets);
 }
 
-bool web_aim_at_cell(int x, int y, struct loc *location)
+static bool aim_at_grid(struct loc grid, struct loc *location)
 {
-    struct loc grid = web_has_overhead_map() ? web_map_grid(x, y) :
-        loc(Term->offset_x + (x - COL_MAP) / tile_width,
-            Term->offset_y + (y - ROW_MAP) / tile_height);
     if (!square_in_bounds_fully(cave, grid)) return false;
     struct monster *mon = square_monster(cave, grid);
     if (!target_able(mon)) {
@@ -739,7 +699,30 @@ bool web_aim_at_cell(int x, int y, struct loc *location)
     target_set_monster(mon);
     monster_race_track(player->upkeep, mon->race);
     health_track(player->upkeep, mon);
+    *location = loc(0, 0);
     return true;
+}
+
+bool web_aim_at_cell(int x, int y, struct loc *location)
+{
+    struct loc grid = web_has_overhead_map() ? web_map_grid(x, y) :
+        loc(Term->offset_x + (x - COL_MAP) / tile_width,
+            Term->offset_y + (y - ROW_MAP) / tile_height);
+    return aim_at_grid(grid, location);
+}
+
+void web_move_aim(int direction, struct loc *location)
+{
+    struct loc grid = *location;
+    if (!grid.x) target_get(&grid);
+    grid = loc_sum(grid, ddgrid[direction]);
+    const bool overhead = web_has_overhead_map();
+    const term *map = overhead ? angband_term[MAP_TERM] : Term;
+    int width = overhead ? map->wid / tile_width : SCREEN_WID;
+    int height = overhead ? map->hgt / tile_height : SCREEN_HGT;
+    if (grid.x < map->offset_x || grid.x >= map->offset_x + width ||
+            grid.y < map->offset_y || grid.y >= map->offset_y + height) return;
+    aim_at_grid(grid, location);
 }
 
 enum web_map_action {
@@ -1100,9 +1083,6 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "menu-section": return section;
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
-        case "aim-nearest":
-            HEAP32[code >>> 2] = 2;
-            return aim_cell;
         case "target-cell": return target_cell;
         case "map-cell": return map_cell;
         case "map-action": return map_action;

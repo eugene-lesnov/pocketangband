@@ -274,7 +274,6 @@ let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
 let pickerExpanded = false;
-let combatUnavailable = "";
 let repeatName = "";
 let graphicsRestored = false;
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
@@ -509,9 +508,10 @@ function renderMonsterHealth(health) {
     if (monsterHealth.hidden) return;
     const { name, segments, color } = health;
     monsterHealth.classList.toggle("unknown", !name);
-    monsterName.textContent = name || "Monster health unknown";
+    monsterName.hidden = !name;
+    monsterName.textContent = name || "";
     monsterHealth.setAttribute("aria-label", name ?
-        `${name}: ${segments} of 10 health segments` : "Monster health unknown");
+        `${name}: ${segments} of 10 health segments` : "Monster health");
     monsterHealth.style.setProperty("--monster-health-color", color ?? "");
     monsterSegments.forEach((segment, index) => segment.classList.toggle("filled", index < segments));
 }
@@ -944,7 +944,7 @@ function updateControls() {
     directionPad.classList.toggle("run-direction", runDirection);
     directionPad.classList.toggle("running-mode", command && runMode);
     directionPad.setAttribute("aria-label", command && runMode ? "Direction pad: Run" :
-        aiming && !preferences.fastAim ? "Adjust target selection" : "Direction pad");
+        aiming && context.selecting ? "Adjust target selection" : "Direction pad");
     const here = (directing && context.center) || mapDirectionAction?.targets.some(({ direction }) => direction === 5);
     for (const button of directionButtons) {
         if (button !== directionCenter) button.disabled = !!mapDirectionAction &&
@@ -967,7 +967,6 @@ function updateControls() {
     mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
     heroActions.setAttribute("aria-expanded", String(inspectingCell));
-    combatAction.disabled = !!combatUnavailable;
     repeatAction.disabled = !repeatName;
     setActions(mapCellActions, inspectingCell, disabled);
     mapCellActions.classList.toggle("choosing-direction", !!mapDirectionAction);
@@ -990,7 +989,8 @@ function updateControls() {
     confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" :
         aiming ? "5" : details || character || overview ? "Escape" : "Enter";
     cancelKey.dataset.key = confirming ? "n" : "Escape";
-    const useTarget = context.verb === "Use" ? "Use target" : `${context.verb} at target`;
+    const useTarget = context.verb === "Use" ? "Use Item On" :
+        context.verb === "Throw" ? "Throw To" : `${context.verb} On`;
     const targetLabel = selecting && !context.attack ? "Select target" : useTarget;
     confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
         confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
@@ -1022,8 +1022,8 @@ function updateControls() {
     }
     nearest.hidden = !aiming || !!openPanel || showKeyboard;
     nearest.disabled = !context.nearest;
-    if (aiming) nearest.setAttribute("aria-label", preferences.fastAim ?
-        `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest target` : "Select nearest target");
+    if (aiming) nearest.setAttribute("aria-label",
+        `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest target`);
     previousTarget.hidden = nextTarget.hidden = !selecting || context.freeAim || context.targetCount < 2;
     targetMode.hidden = attackTargeting;
     targetTypes.hidden = !attackTargeting;
@@ -1185,8 +1185,10 @@ function updatePrompt() {
         else {
             const prepared = context.prepared;
             const action = prepared ? `${prepared.name}${prepared.mana >= 0 ? ` · Mana ${prepared.mana}` : ""}` : context.verb;
-            text = `${action}\n${context.current ? context.targetDescription : preferences.fastAim ?
-                "Tap a monster to attack." : "Select a target, then confirm."}`;
+            const target = context.current ?
+                `${context.selecting ? "Select target: " : ""}${context.targetDescription}` :
+                preferences.fastAim ? "Choose a direction or tap a monster." : "Choose a direction or select a target.";
+            text = `${action}\n${target}`;
         }
     }
     if (mode === "command" && context.mapCell && !context.mapCell.actions)
@@ -1222,7 +1224,6 @@ function updateJournal() {
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
     journal.classList.toggle("empty", !prompt && !messages.childElementCount);
-    latestMessage.classList.toggle("stat-loss", !prompt && !!world?.statLoss);
     journal.disabled = !messages.childElementCount || (!prompt && messages.childElementCount === 1 &&
         latestMessage.scrollHeight <= latestMessage.clientHeight);
 }
@@ -1646,20 +1647,6 @@ main.addEventListener("click", (event) => {
         chooseMapDirection(mapDirections.findIndex((direction) => direction?.key === key));
         return;
     }
-    if (mode === "aim" && !preferences.fastAim) {
-        if (button === nearest) {
-            sendInput({ type: "aim-nearest" });
-            return;
-        }
-        if (directionPad.contains(button) && button !== directionCenter) {
-            const direction = mapDirections.findIndex((entry) => entry?.key === key);
-            const offset = [[0, 0], [-1, 1], [0, 1], [1, 1], [-1, 0], [0, 0], [1, 0], [-1, -1], [0, -1], [1, -1]][direction];
-            const cell = context.target ?? (activeView === views.map ? world : context.player);
-            const target = cell && offset && { x: cell.x + offset[0], y: cell.y + offset[1] };
-            if (target && containsCell(views.target.crop, target)) sendInput({ type: "aim-cell", ...target });
-            return;
-        }
-    }
     if (runMode && mode === "command" && button !== directionCenter && directionPad.contains(button)) {
         const direction = mapDirections.findIndex((entry) => entry?.key === key);
         sendInput({ type: "run-direction", code: direction });
@@ -1867,21 +1854,16 @@ function commandKey([key, , alternative], roguelike) {
 }
 
 function renderQuickActions({ roguelike, quickActions }) {
-    const { spell, spellHint, launcher, hasAmmo } = quickActions;
+    const { spell, launcher } = quickActions;
     const spellAction = spell === "look" ? undefined : spellCommands[spell];
     const combat = spell === "cast" && spellAction ? spellAction :
         launcher ? fireCommand : spellAction ?? throwCommand;
-    combatUnavailable = combat === spellAction ? spellHint : combat === fireCommand && !hasAmmo ? "No ammo" : "";
     combatAction.dataset.key = commandKey(combat, roguelike);
     combatAction.setAttribute("aria-label", combat[1]);
     combatAction.textContent = combat[3];
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
     for (const button of [combatAction, useAction, repeatAction]) setKeyHint(button);
-    if (combatUnavailable) {
-        combatAction.lastElementChild.textContent = combatUnavailable;
-        combatAction.setAttribute("aria-label", `${combat[1]}: ${combatUnavailable}`);
-    }
     repeatName = quickActions.repeat;
     repeatAction.textContent = "Repeat";
     repeatAction.setAttribute("aria-label", repeatName ? `Repeat ${repeatName}` : "No command to repeat");
@@ -1898,7 +1880,7 @@ function renderActionsPanel() {
             ["compactHud", "Compact status", "Show HP, SP, and conditions. Open Character for all stats."],
             ["leftHanded", "Direction pad on the left", "Keep movement controls beside your left thumb."],
             ["largeText", "Larger interface text", "Increase labels and list text without changing map zoom."],
-            ["fastAim", "Fast targeting", "A monster tap or Nearest attacks immediately. Turn off to select and confirm."],
+            ["fastAim", "Fast targeting", "Tap a monster to use the prepared spell or item immediately. Turn off to preview and confirm."],
         ].map(([key, label, detail]) => {
             const button = makeButton(`${label}. ${detail}`);
             const text = document.createElement("span");

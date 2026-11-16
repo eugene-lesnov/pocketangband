@@ -32,12 +32,6 @@ self.addEventListener("message", ({ data }) => {
         else if (!waiting || waiting.playing) backgroundSavePending = true;
         return;
     }
-    if (data.type === "aim-nearest") {
-        if (waiting?.mode !== "aim" || data.request !== waiting.request) return;
-        input.push(data);
-        wakeInput();
-        return;
-    }
     if (data.type === "interrupt") {
         if (!waiting && runningRequest !== undefined && data.request === runningRequest) {
             interruptPending = true;

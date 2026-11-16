@@ -126,8 +126,7 @@ a { color: var(--muted); font-size: 0.75rem; }
     white-space: nowrap;
 }
 #hud-stats small { color: var(--muted); font: 0.6875rem/13px var(--mono); }
-#hud-stats :is(.reduced, .lowered), #hud-stats :is(.reduced, .lowered) small,
-#latest-message.stat-loss { color: #ffe080; }
+#hud-stats :is(.reduced, .lowered), #hud-stats :is(.reduced, .lowered) small { color: #ffe080; }
 #hud-stats .lowered { background: #3a3120; }
 #hp { --meter-color: #cbe7a4; }
 #hp.low { --meter-color: #ffb3a0; color: var(--meter-color); }

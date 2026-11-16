@@ -1119,28 +1119,18 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1613,7 +1714,7 @@
-  * Note that "Force Target", if set, will pre-empt user interaction,
-  * if there is a usable target already set.
-  */
--static bool textui_get_aim_dir(int *dp)
-+static bool textui_get_aim_dir_aux(int *dp, bool confirm)
- {
- 	/* Global direction */
- 	int dir = 0;
-@@ -1625,7 +1726,10 @@
- 	(*dp) = 0;
+@@ -1626,6 +1727,10 @@
  
  	/* Auto-target if requested */
--	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
-+	if (!confirm && OPT(player, use_old_target) && target_okay()) dir = 5;
+ 	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
 +#ifdef __EMSCRIPTEN__
 +	struct loc location = loc(0, 0);
++	bool selecting = false;
 +#endif
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1746,31 @@
+@@ -1642,8 +1747,25 @@
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1148,7 +1138,8 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 -
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_AIM);
-+		web_set_aim_options(confirm, location);
++		if (selecting && !location.x && !target_okay()) selecting = false;
++		web_set_aim_options(selecting, location);
 +#endif
 +		bool entered = get_com_ex(p, &ke);
 +#ifdef __EMSCRIPTEN__
@@ -1158,23 +1149,16 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +
 +#ifdef __EMSCRIPTEN__
 +		if (ke.type == EVT_WEB_AIM_CELL) {
-+			if (ke.mouse.button == 2) {
-+				if (target_set_closest(TARGET_KILL | TARGET_QUIET, NULL)) {
-+					location = loc(0, 0);
-+					confirm = true;
-+				}
-+			} else if (web_aim_at_cell(ke.mouse.x, ke.mouse.y, &location)) {
-+				location = loc(0, 0);
-+				confirm = true;
-+				if (ke.mouse.button == 1) dir = DIR_TARGET;
-+			}
++			bool aimed = web_aim_at_cell(ke.mouse.x, ke.mouse.y, &location);
++			if (aimed || location.x) selecting = true;
++			if (aimed && ke.mouse.button == 1) dir = DIR_TARGET;
 +			continue;
 +		}
 +#endif
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,13 +1788,20 @@
+@@ -1661,18 +1783,35 @@
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1196,15 +1180,25 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  				if (target_okay()) {
  					dir = 5;
  				} else {
-@@ -1719,6 +1853,22 @@
+ 					need_beep = true;
+ 				}
++#ifdef __EMSCRIPTEN__
++			} else if (selecting) {
++				int direction = target_dir_allow(ke.key, false, true);
++				if (direction == ESCAPE) return false;
++				if (direction > 0 && direction < 10) {
++					web_move_aim(direction, &location);
++				} else {
++					need_beep = true;
++				}
++#endif
+ 			} else {
+ 				/* Possible direction */
+ 				int keypresses_handled = 0;
+@@ -1719,6 +1858,18 @@
  	/* A "valid" direction was entered */
  	return (true);
  }
-+
-+static bool textui_get_aim_dir(int *dp)
-+{
-+	return textui_get_aim_dir_aux(dp, false);
-+}
 +
 +#ifdef __EMSCRIPTEN__
 +bool web_get_map_aim_dir(int *dir, struct loc grid)
@@ -1213,13 +1207,14 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +	struct monster *mon = square_monster(cave, grid);
 +	if (!target_able(mon)) return false;
 +	target_set_monster(mon);
-+	return textui_get_aim_dir_aux(dir, true);
++	*dir = DIR_TARGET;
++	return true;
 +}
 +#endif
  
  /**
   * Initialise the UI hooks to give input asked for by the game
-@@ -1840,6 +1990,21 @@
+@@ -1840,6 +1991,21 @@
  			Term_set_cursor(false);
  		}
  
@@ -1244,7 +1239,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,85 @@
+@@ -23,6 +23,86 @@
  #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
@@ -1269,8 +1264,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_aim_command(struct command *cmd);
 +const struct command *web_repeat_command(void);
 +struct loc web_direction_grid(int x, int y);
-+void web_set_aim_options(bool selected, struct loc location);
++void web_set_aim_options(bool selecting, struct loc location);
 +bool web_aim_at_cell(int x, int y, struct loc *location);
++void web_move_aim(int direction, struct loc *location);
 +void web_set_edit_value(const char *value, int cursor, bool initial);
 +void web_set_name_value(const char *value, size_t size);
 +bool web_read_name(char *buf, size_t size);
