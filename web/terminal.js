@@ -1,5 +1,6 @@
+import { renderFrame } from "./frame-renderer.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
-import { graphicsModes, loadTiles, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
+import { graphicsModes, loadTiles } from "./tiles.js";
 
 const main = document.querySelector("main");
 const launch = document.querySelector("#launch");
@@ -313,74 +314,6 @@ function applyPreferences() {
 }
 applyPreferences();
 
-function render(view, frame, region = {}) {
-    const { width, height, palette } = frame;
-    const { x = 0, y = 0, width: columns = width, height: rows = height } = region;
-    const colors = [];
-    for (let offset = 0; offset < palette.length; offset += 4) {
-        colors.push(`rgb(${palette[offset + 1]} ${palette[offset + 2]} ${palette[offset + 3]})`);
-    }
-
-    const graphics = graphicsModes.get(frame.graphicsMode);
-    const tiles = graphics?.atlas && frame.terrainAttributes ? graphics : undefined;
-    view.grid = { x, y, columns, rows };
-    view.gridElement = view.pre;
-    if (view.canvas) {
-        view.canvas.hidden = !tiles;
-        view.pre.hidden = !!tiles;
-        if (tiles) {
-            renderTileMap(view.canvas, tiles, frame, view.grid, colors);
-            view.gridElement = view.canvas;
-            return;
-        }
-    }
-    renderText(view.pre, frame, view.grid, colors, tiles);
-}
-
-function renderText(pre, frame, grid, colors, tiles) {
-    const { width, codepoints, attributes, backgroundStride, shade, cursor, highlighted } = frame;
-    const { x, y, columns, rows } = grid;
-    const fragment = document.createDocumentFragment();
-    for (let row = 0; row < rows; row++) {
-        const line = document.createElement("div");
-        line.className = "term-line";
-        const rowStart = (row + y) * width + x;
-        const rowEnd = rowStart + columns;
-        for (let start = rowStart; start < rowEnd;) {
-            const attr = attributes[start];
-            const span = document.createElement("span");
-            const marked = highlighted?.has(start) ?? false;
-            const tile = tiles && tileAt(tiles, attr, codepoints[start]);
-            let end = start + 1;
-            if (tile) {
-                styleTerminalTile(span, tiles, frame, start, tile);
-            } else {
-                if (start !== cursor) {
-                    while (end < rowEnd && attributes[end] === attr && end !== cursor &&
-                        (highlighted?.has(end) ?? false) === marked &&
-                        !(tiles && tileAt(tiles, attr, codepoints[end]))) end++;
-                }
-                span.textContent = String.fromCodePoint(...codepoints.subarray(start, end));
-                span.style.color = colors[attr % colors.length];
-                switch (Math.floor(attr / backgroundStride)) {
-                    case 1:
-                        span.style.backgroundColor = span.style.color;
-                        break;
-                    case 2:
-                        span.style.backgroundColor = colors[shade];
-                        break;
-                }
-            }
-            if (start === cursor) span.classList.add("cursor");
-            if (marked) span.classList.add("highlighted-cell");
-            line.append(span);
-            start = end;
-        }
-        fragment.append(line);
-    }
-    pre.replaceChildren(fragment);
-}
-
 function draw() {
     if (drawPending) return;
     drawPending = true;
@@ -415,7 +348,9 @@ function draw() {
             const highlighted = path ? new Set(path) :
                 positions?.length ? new Set(positions.map(({ x, y }) => y * source.width + x)) : undefined;
             const frame = cursor === source.cursor && !highlighted ? source : { ...source, cursor, highlighted };
-            render(view, frame, region);
+            const { grid, gridElement } = renderFrame(view, frame, region);
+            view.grid = grid;
+            view.gridElement = gridElement;
             view.rendered = source;
             view.region = region;
             view.cursor = cursor;
