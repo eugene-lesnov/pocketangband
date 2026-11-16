@@ -143,7 +143,10 @@ const birthStatRows = document.querySelector("#birth-stat-rows");
 const resetStats = document.querySelector("#reset-stats");
 const birthRollActions = document.querySelector("#birth-roll-actions");
 const previousRoll = document.querySelector("#previous-roll");
-const birthRollHistory = document.querySelector("#birth-roll-history");
+const birthHistoryPreview = document.querySelector("#birth-history-preview");
+const birthHistoryEdit = document.querySelector("#birth-history-edit");
+const birthHistoryEditor = document.querySelector("#birth-history-editor");
+const birthHistoryValue = document.querySelector("#birth-history-value");
 const actionsScreen = document.querySelector("#actions-screen");
 const tilesMenu = makeButton("Tiles: ASCII");
 tilesMenu.removeAttribute("aria-label");
@@ -920,6 +923,7 @@ function updateControls() {
     const rolling = mode === "birth-roll";
     const reviewing = mode === "birth-review";
     const stats = mode === "birth-stats" || rolling;
+    const editingHistory = stats && !birthHistoryEditor.hidden;
     const birthChoiceMenu = !!menu?.birth;
     const overview = mode === "overview";
     const details = mode === "details";
@@ -987,7 +991,7 @@ function updateControls() {
     mapActionDirection.textContent = mapDirectionAction ? `${mapDirectionAction.label} · Choose a direction.` : "";
     nameFields.disabled = disabled;
     setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
-        !(command && showKeyboard), disabled);
+        !(command && showKeyboard), disabled || editingHistory);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("single-row-controls", playingGame && !showPad);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
@@ -1022,8 +1026,12 @@ function updateControls() {
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     setKeyHint(cancelKey);
     cancelKey.hidden = details || character || overview || victory;
-    birthStatRows.disabled = resetStats.disabled = birthNameFields.disabled = disabled;
-    setActions(birthRollActions, rolling, disabled);
+    birthStatRows.disabled = resetStats.disabled = birthNameFields.disabled = disabled || editingHistory;
+    setActions(birthRollActions, rolling, disabled || editingHistory);
+    birthHistoryEdit.disabled = disabled || editingHistory;
+    setActions(birthHistoryEditor, editingHistory, disabled);
+    birthHistoryPreview.hidden = editingHistory;
+    birthHistoryEdit.setAttribute("aria-expanded", String(editingHistory));
     previousRoll.disabled = !context.birthStats?.roll?.previous;
     setActions(targetActions, showTargetControls, disabled);
     if (selecting) {
@@ -1684,6 +1692,37 @@ function submitName(field, maxBytes) {
     return sendInput({ type: "submit-name", value });
 }
 
+function editBirthHistory(open) {
+    if (open) {
+        birthHistoryValue.value = context.birthStats.history;
+        birthHistoryValue.setCustomValidity("");
+    }
+    birthHistoryEditor.hidden = !open;
+    updateControls();
+    (open ? birthHistoryValue : birthHistoryEdit).focus();
+}
+
+birthHistoryEdit.addEventListener("click", () => editBirthHistory(true));
+birthHistoryValue.addEventListener("input", () => birthHistoryValue.setCustomValidity(""));
+document.querySelector("#birth-history-cancel").addEventListener("click", () => editBirthHistory(false));
+document.querySelector("#birth-history-done").addEventListener("click", () => {
+    const { history, historyMaxBytes } = context.birthStats;
+    const value = birthHistoryValue.value;
+    if (value === history) {
+        editBirthHistory(false);
+        return;
+    }
+    const error = /(?!\n)[\p{Cc}\p{Cs}]/u.test(value) ? "The history contains unsupported characters." :
+        new TextEncoder().encode(value).length > historyMaxBytes ? "The history is too long." : "";
+    if (error) {
+        birthHistoryValue.setCustomValidity(error);
+        birthHistoryValue.reportValidity();
+        return;
+    }
+    editBirthHistory(false);
+    sendInput({ type: "submit-history", value });
+});
+
 function updateBirthViewport() {
     if (context.birthStats && window.visualViewport) {
         main.style.setProperty("--birth-viewport-height", `${window.visualViewport.height}px`);
@@ -2086,8 +2125,7 @@ function renderBirthStats(stats, changed) {
     birthIdentity.textContent = `${stats.race} / ${stats.className}`;
     birthPoints.textContent = roll ? `HP ${roll.hp} · SP ${roll.mana}` : `Points left: ${stats.remaining}`;
     resetStats.hidden = !!roll;
-    birthRollHistory.hidden = !roll?.history;
-    birthRollHistory.textContent = roll?.history ?? "";
+    if (birthHistoryPreview.textContent !== stats.history) birthHistoryPreview.textContent = stats.history;
     birthStatRows.replaceChildren(...stats.rows.map((stat, index) => {
         const row = document.createElement("div");
         row.className = "birth-stat";
@@ -2620,6 +2658,13 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
+    if (!birthHistoryEditor.hidden) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            if (!event.repeat) editBirthHistory(false);
+        }
+        return;
+    }
     if (context.birthStats && event.target === birthNameValue) {
         if (event.key === "Escape") {
             event.preventDefault();

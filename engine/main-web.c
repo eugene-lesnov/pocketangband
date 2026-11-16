@@ -151,9 +151,9 @@ EM_JS(void, web_set_name_value, (const char *value, size_t size), {
     Module['inputContext'] = { value: UTF8ToString(value), nameMaxBytes: size - 1 };
 });
 
-EM_JS(bool, web_read_name, (char *buf, size_t size), {
-    const value = Module['submittedName'];
-    Module['submittedName'] = undefined;
+EM_JS(bool, web_read_text, (char *buf, size_t size), {
+    const value = Module['submittedText'];
+    Module['submittedText'] = undefined;
     if (typeof value !== "string" || value.includes(String.fromCharCode(0)) ||
             lengthBytesUTF8(value) >= size) return false;
     stringToUTF8(value, buf, size);
@@ -399,15 +399,18 @@ EM_JS(void, web_set_birth_stats, (const char *race, const char *class_name, int 
         remaining, cursor, rows: [] } };
 });
 
-EM_JS(void, web_set_birth_roll, (bool previous, int hp, int mana, const char *history), {
-    Module['inputContext'].birthStats.roll = {
-        previous: !!previous, hp, mana, history: history ? UTF8ToString(history) : "",
-    };
+EM_JS(void, web_set_birth_roll, (bool previous, int hp, int mana), {
+    Module['inputContext'].birthStats.roll = { previous: !!previous, hp, mana };
 });
 
 EM_JS(void, web_set_birth_name, (const char *name, size_t size), {
     Module['inputContext'].birthStats.name = UTF8ToString(name);
     Module['inputContext'].birthStats.nameMaxBytes = size - 1;
+});
+
+EM_JS(void, web_set_birth_history, (const char *history, size_t size), {
+    Module['inputContext'].birthStats.history = history ? UTF8ToString(history) : "";
+    Module['inputContext'].birthStats.historyMaxBytes = size - 1;
 });
 
 EM_JS(void, web_add_birth_stat, (const char *label, int base, const char *value, int cost,
@@ -1094,7 +1097,8 @@ void web_poll_interrupt(void)
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
-        int buy_stat, int sell_stat, int tiles_event, int name_event, int delete_event, int run_direction), {
+        int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
+        int delete_event, int run_direction), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -1108,9 +1112,12 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "key": return 1;
         case "run-direction": return run_direction;
         case "submit-name":
-            Module['submittedName'] = event.value;
+            Module['submittedText'] = event.value;
             HEAP32[code >>> 2] = 0;
             return name_event;
+        case "submit-history":
+            Module['submittedText'] = event.value;
+            return history_event;
         case "random-name":
             HEAP32[code >>> 2] = 1;
             return name_event;
@@ -1250,7 +1257,7 @@ static errr queue_input(void)
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
-        EVT_WEB_NAME, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION);
+        EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION);
 
     switch (type) {
         case EVT_NONE: return 1;

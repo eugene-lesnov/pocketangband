@@ -132,7 +132,22 @@
                     <button id="previous-roll" type="button" data-key="p">Previous roll</button>
                     <button type="button" data-key="r">Reroll</button>
                 </fieldset>
-                <p id="birth-roll-history" hidden></p>
+                <section class="birth-history" aria-labelledby="birth-history-title">
+                    <div class="birth-history-heading">
+                        <h3 id="birth-history-title">Character history</h3>
+                        <button id="birth-history-edit" type="button" aria-controls="birth-history-editor"
+                            aria-expanded="false" disabled>Edit history</button>
+                    </div>
+                    <p id="birth-history-preview" aria-live="polite"></p>
+                    <fieldset id="birth-history-editor" hidden disabled>
+                        <textarea id="birth-history-value" aria-label="Edit character history" rows="4"
+                            autocapitalize="sentences"></textarea>
+                        <div class="key-row">
+                            <button id="birth-history-cancel" type="button">Cancel</button>
+                            <button id="birth-history-done" type="button">Done</button>
+                        </div>
+                    </fieldset>
+                </section>
             </section>
             <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
             <section id="character-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
