@@ -110,11 +110,37 @@ cmd_code web_set_direction_command(cmd_code code)
 }
 
 EM_JS(void, set_aim_options, (bool current, bool nearest, int x, int y,
-        const int *path, int length), {
+        const int *path, int length, const char *description), {
     Module['inputContext'] = { current: !!current, nearest: !!nearest,
         target: current ? { x, y } : undefined,
-        aimPath: length ? HEAP32.slice(path >>> 2, (path >>> 2) + length) : undefined };
+        aimPath: length ? HEAP32.slice(path >>> 2, (path >>> 2) + length) : undefined,
+        targetDescription: UTF8ToString(description), prepared: Module['aimCommand'] };
 });
+
+EM_JS(void, set_aim_command, (const char *name, int mana), {
+    Module['aimCommand'] = name ? { name: UTF8ToString(name), mana } : undefined;
+});
+
+void web_set_aim_command(struct command *cmd)
+{
+    char name[192];
+    int mana = -1, index;
+    struct object *obj;
+    if (!cmd) {
+        set_aim_command(NULL, -1);
+        return;
+    }
+    if (cmd->code == CMD_CAST && cmd_get_arg_choice(cmd, "spell", &index) == CMD_OK) {
+        const struct class_spell *spell = spell_by_index(player, index);
+        my_strcpy(name, spell->name, sizeof(name));
+        mana = spell->smana;
+    } else if (cmd_get_arg_item(cmd, "item", &obj) == CMD_OK && obj) {
+        object_desc(name, sizeof(name), obj, ODESC_PREFIX | ODESC_FULL, player);
+    } else {
+        my_strcpy(name, cmd_verb(cmd->code), sizeof(name));
+    }
+    set_aim_command(name, mana);
+}
 
 EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
@@ -270,6 +296,15 @@ EM_JS(void, web_set_menu_on_map, (void), {
     Module['inputMenu'].onMap = true;
 });
 
+EM_JS(int, web_set_save_slots, (const char *const *names, int count, int cursor), {
+    Module['saveSlots'] = Array.from({ length: count }, (_, index) => {
+        const name = HEAPU32[(names >>> 2) + index];
+        return name ? UTF8ToString(name) : "";
+    });
+    const preferred = Module['saveSlots'].indexOf(Module['preferredSaveSlot']);
+    return preferred > 0 ? preferred : cursor;
+});
+
 EM_JS(void, web_set_options_title, (const char *title), {
     Module['inputMenu'].options = UTF8ToString(title);
 });
@@ -385,11 +420,12 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
 });
 
 EM_JS(void, send_quick_actions, (const char *spell_action, const char *spell_hint,
-        bool launcher, bool has_ammo, bool can_steal), {
+        bool launcher, bool has_ammo, bool can_steal, const char *repeat), {
     Module['worldQuickActions'] = {
         spell: UTF8ToString(spell_action),
         spellHint: spell_hint ? UTF8ToString(spell_hint) : "",
         launcher: !!launcher, hasAmmo: !!has_ammo, canSteal: !!can_steal,
+        repeat: repeat ? UTF8ToString(repeat) : "",
     };
 });
 
@@ -444,16 +480,18 @@ static void publish_quick_actions(void)
         }
     }
 
+    const struct command *repeat = web_repeat_command();
     send_quick_actions(spell_action, spell_hint, launcher,
         launcher && has_action_item(obj_can_fire, USE_INVEN | USE_FLOOR | USE_QUIVER),
-        player_has(player, PF_STEAL));
+        player_has(player, PF_STEAL), repeat ? cmd_verb(repeat->code) : NULL);
 }
 
 enum { LOW_LIGHT_FUEL = 50 };
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool stat_loss, bool roguelike, bool commands), {
+        int count, const char *const *lines, const int *repeats, bool stat_loss, bool roguelike, bool commands,
+        int turns), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -463,7 +501,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     }
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
-        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike,
+        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
         conditions: Module['worldConditions'], stats: Module['worldStats'], statLoss: !!stat_loss,
         monsterHealth: Module['worldMonsterHealth'],
         quickActions: commands ? Module['worldQuickActions'] : undefined,
@@ -628,7 +666,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        stat_loss, OPT(player, rogue_like_commands), commands);
+        stat_loss, OPT(player, rogue_like_commands), commands, player->total_energy / 100);
 }
 
 static double last_interrupt_poll;
@@ -674,9 +712,15 @@ void web_set_aim_options(bool selected, struct loc location)
                 path_cells[path_count++] = y * map->wid + x;
         }
     }
+    char description[192] = "";
+    if (current) {
+        struct monster *mon = square_monster(cave, grid);
+        if (target_able(mon)) monster_desc(description, sizeof(description), mon, MDESC_IND_VIS);
+        else coords_desc(description, sizeof(description), grid.y, grid.x);
+    }
     set_aim_options(current, point_set_size(targets) > 0,
         origin_x + (grid.x - map->offset_x) * tile_width,
-        origin_y + (grid.y - map->offset_y) * tile_height, path_cells, path_count);
+        origin_y + (grid.y - map->offset_y) * tile_height, path_cells, path_count, description);
     point_set_dispose(targets);
 }
 
@@ -1055,6 +1099,9 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "menu-section": return section;
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
+        case "aim-nearest":
+            HEAP32[code >>> 2] = 2;
+            return aim_cell;
         case "target-cell": return target_cell;
         case "map-cell": return map_cell;
         case "map-action": return map_action;
@@ -1101,13 +1148,14 @@ EM_JS(void, flush_input, (void), {
     Module['flushInput']();
 });
 
-EM_ASYNC_JS(int, persist_profile, (int saved, int outcome), {
+EM_ASYNC_JS(int, persist_profile, (int saved, int outcome, const char *path), {
+    Module['saveSlot'] = UTF8ToString(path).split("/").pop();
     return (await Module['persistProfile'](!!saved, !!outcome)) ? 1 : 0;
 });
 
 bool web_persist_profile(bool saved)
 {
-    return persist_profile(saved, player && player->is_dead);
+    return persist_profile(saved, player && player->is_dead, savefile);
 }
 
 EM_ASYNC_JS(bool, web_sync_profile, (void), {
@@ -1146,7 +1194,10 @@ static ui_event_type wait_for_input(void)
     if (mode == WEB_INPUT_CHARACTER ||
             (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible))))
         publish_world(mode == WEB_INPUT_COMMAND);
-    if (playing && aiming && map_visible) web_character_sheet(false);
+    if (playing && ((aiming && map_visible) || mode == WEB_INPUT_MENU)) {
+        if (mode == WEB_INPUT_MENU) publish_world(false);
+        web_character_sheet(false);
+    }
     if ((mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_RUN_DIRECTION) && world_view) {
         const term *map = angband_term[MAP_TERM];
         width = MIN(map->wid, (cave->width - map->offset_x) * tile_width);
@@ -1188,7 +1239,8 @@ static errr queue_input(void)
         case EVT_WEB_MAP_ACTION:
         case EVT_WEB_TARGET_CELL: {
             const ui_event action = { .mouse = { .type = type, .x = x, .y = y,
-                .button = type == EVT_WEB_MAP_CELL || type == EVT_WEB_MAP_ACTION ? code : 1 } };
+                .button = type == EVT_WEB_MAP_CELL || type == EVT_WEB_MAP_ACTION ||
+                    type == EVT_WEB_AIM_CELL ? code : 1 } };
             return Term_event_push(&action);
         }
         case EVT_WEB_STORE_ACTION: {

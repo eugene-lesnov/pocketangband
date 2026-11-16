@@ -217,7 +217,7 @@ diff --git a/src/main.c b/src/main.c
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
-@@ -522,6 +522,14 @@ void textui_process_command(void)
+@@ -522,6 +522,14 @@
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -232,7 +232,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		case EVT_RESIZE: do_cmd_redraw(); return;
  		case EVT_MOUSE: textui_process_click(e); return;
  		case EVT_BUTTON:
-@@ -627,10 +635,16 @@ errr textui_get_cmd(cmd_context context)
+@@ -627,10 +635,16 @@
  void check_for_player_interrupt(game_event_type type, game_event_data *data,
  								void *user)
  {
@@ -250,7 +250,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +769,34 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -758,6 +772,34 @@
  	mem_free(entries);
  }
  
@@ -285,17 +285,19 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +804,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -765,10 +807,16 @@
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
 - * game.  Otherwise, it will be false.
+- */
+-static void select_savefile(bool retry, bool *new_game)
+-{
 + * game.  Otherwise, it will be false when a save was selected.  Returns
 + * false when the menu needs to be rebuilt.
-  */
--static void select_savefile(bool retry, bool *new_game)
++ */
 +static bool select_savefile(bool retry, bool *new_game)
- {
++{
 +#ifdef __EMSCRIPTEN__
 +	const int notify = EVT_WEB_DELETE;
 +#else
@@ -304,7 +306,17 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -875,11 +920,25 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -868,6 +916,9 @@
+ 	menu_layout(m, &m_region);
+ 	m->cursor = default_entry;
+ 	m->flags |= MN_DBL_TAP;
++#ifdef __EMSCRIPTEN__
++	m->cursor = web_set_save_slots((const char *const *)names, count, m->cursor);
++#endif
+ 
+ 	screen_save();
+ 	prt("Select the save to use (movement keys and enter or mouse) or quit",
+@@ -875,11 +926,25 @@
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -331,20 +343,31 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -896,6 +955,12 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -890,12 +955,22 @@
+ 	}
+ 
+ 	menu_free(m);
++
++#ifdef __EMSCRIPTEN__
++	web_set_save_slots(NULL, 0, 0);
++#endif
+ 	cleanup_savefile_selection_strings(names, count);
+ 	cleanup_savefile_selection_strings(entries, count);
+ 
  	if (selection.type == EVT_ESCAPE) {
 +#ifdef __EMSCRIPTEN__
 +		web_show_splash(false);
 +		return false;
 +#else
  		quit(NULL);
+-	}
 +#endif
- 	}
++	}
 +	return !(selection.type & notify);
  }
  
  /**
-@@ -910,6 +975,12 @@ void play_game(enum game_mode_type mode)
+@@ -910,6 +985,12 @@
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -357,7 +380,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -920,7 +991,9 @@ void play_game(enum game_mode_type mode)
+@@ -920,7 +1001,9 @@
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -368,7 +391,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -946,6 +1019,14 @@ void play_game(enum game_mode_type mode)
+@@ -946,6 +1029,14 @@
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -383,7 +406,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1010,6 +1091,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1010,6 +1101,19 @@
  	return result;
  }
  
@@ -403,7 +426,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1140,25 @@ bool save_game_checked(void)
+@@ -1046,11 +1150,25 @@
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -430,7 +453,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1172,6 @@ bool save_game_checked(void)
+@@ -1064,23 +1182,6 @@
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -454,7 +477,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1094,10 +1185,8 @@ bool save_game_checked(void)
+@@ -1094,10 +1195,8 @@
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -467,7 +490,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1129,17 +1218,26 @@ void close_game(bool prompt_failed_save)
+@@ -1129,17 +1228,26 @@
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -495,15 +518,18 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1149,6 +1247,7 @@ void close_game(bool prompt_failed_save)
+@@ -1149,6 +1257,10 @@
  			}
  		}
  
++#ifdef __EMSCRIPTEN__
++		if (prompting) web_finish_run(false);
++#endif
 +#ifndef __EMSCRIPTEN__
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1256,7 @@ void close_game(bool prompt_failed_save)
+@@ -1157,6 +1269,7 @@
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -883,7 +909,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 diff --git a/src/ui-input.c b/src/ui-input.c
 --- a/src/ui-input.c
 +++ b/src/ui-input.c
-@@ -364,7 +364,11 @@ ui_event inkey_m(void)
+@@ -364,7 +364,11 @@
  
  	/* Only accept a keypress */
  	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD	&&
@@ -896,7 +922,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		ke = inkey_ex();
  	if (ke.type == EVT_ESCAPE) {
  		ke.type = EVT_KBRD;
-@@ -389,8 +393,22 @@ static void msg_flush(int x)
+@@ -389,8 +393,22 @@
  	/* Pause for response */
  	Term_putstr(x, 0, -1, a, "-more-");
  
@@ -920,7 +946,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the line */
  	Term_erase(0, 0, 255);
-@@ -496,6 +514,9 @@ void display_message(game_event_type unused, game_event_data *data, void *user)
+@@ -496,6 +514,9 @@
  
  	type = data->message.type;
  	msg = data->message.msg;
@@ -930,7 +956,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	if (Term && type == MSG_BELL) {
  		Term_xtra(TERM_XTRA_NOISE, 0);
-@@ -894,7 +915,24 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
+@@ -894,7 +915,24 @@
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
@@ -955,7 +981,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,6 +1030,15 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -992,7 +1030,16 @@
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -971,7 +997,8 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +#endif
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
-@@ -1171,7 +1218,20 @@ bool get_character_name(char *buf, size_t buflen)
+ 			}
+@@ -1171,7 +1218,20 @@
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -992,7 +1019,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1264,13 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1204,7 +1264,13 @@
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -1006,7 +1033,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1286,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+@@ -1220,6 +1286,7 @@
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -1014,7 +1041,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1307,14 @@ static int textui_get_quantity(const char *prompt, int max)
+@@ -1240,7 +1307,14 @@
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -1030,7 +1057,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1358,15 @@ static bool textui_get_check(const char *prompt)
+@@ -1284,7 +1358,15 @@
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -1046,7 +1073,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1534,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
+@@ -1452,7 +1534,11 @@
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1059,7 +1086,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,15 +1611,30 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,16 +1611,31 @@
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1091,7 +1118,8 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +#endif
  
  				dir = pathfind_direction_to(from, to);
-@@ -1613,7 +1710,7 @@
+ 			} else if (ke.mouse.button == 2) {
+@@ -1613,7 +1714,7 @@
   * Note that "Force Target", if set, will pre-empt user interaction,
   * if there is a usable target already set.
   */
@@ -1100,7 +1128,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  {
  	/* Global direction */
  	int dir = 0;
-@@ -1625,7 +1722,10 @@
+@@ -1625,7 +1726,10 @@
  	(*dp) = 0;
  
  	/* Auto-target if requested */
@@ -1112,13 +1140,12 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,9 +1742,23 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1642,8 +1746,31 @@
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
 -		if (!get_com_ex(p, &ke)) break;
 -
--		if (ke.type == EVT_MOUSE) {
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_AIM);
 +		web_set_aim_options(confirm, location);
@@ -1131,15 +1158,23 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +
 +#ifdef __EMSCRIPTEN__
 +		if (ke.type == EVT_WEB_AIM_CELL) {
-+			if (web_aim_at_cell(ke.mouse.x, ke.mouse.y, &location)) dir = DIR_TARGET;
++			if (ke.mouse.button == 2) {
++				if (target_set_closest(TARGET_KILL | TARGET_QUIET, NULL)) {
++					location = loc(0, 0);
++					confirm = true;
++				}
++			} else if (web_aim_at_cell(ke.mouse.x, ke.mouse.y, &location)) {
++				location = loc(0, 0);
++				confirm = true;
++				if (ke.mouse.button == 1) dir = DIR_TARGET;
++			}
 +			continue;
 +		}
 +#endif
-+		if (ke.type == EVT_MOUSE) {
+ 		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
- 						KEY_GRID_X(ke), KEY_GRID_Y(ke),
-@@ -1661,7 +1775,11 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1661,13 +1788,20 @@
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1152,7 +1187,6 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  					dir = 5;
  				} else {
  					need_beep = true;
-@@ -1668,6 +1786,9 @@ static bool textui_get_aim_dir(int *dp)
  				}
  			} else if (ke.key.code == 't' || ke.key.code == '5' ||
  					   ke.key.code == '0' || ke.key.code == '.') {
@@ -1162,7 +1196,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  				if (target_okay()) {
  					dir = 5;
  				} else {
-@@ -1719,6 +1840,22 @@
+@@ -1719,6 +1853,22 @@
  	/* A "valid" direction was entered */
  	return (true);
  }
@@ -1185,7 +1219,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  /**
   * Initialise the UI hooks to give input asked for by the game
-@@ -1840,6 +1977,21 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +1990,21 @@
  			Term_set_cursor(false);
  		}
  
@@ -1210,10 +1244,11 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,82 @@
+@@ -23,6 +23,85 @@
+ #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
- 
++
 +#ifdef __EMSCRIPTEN__
 +enum web_input_mode {
 +	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
@@ -1231,6 +1266,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +const char *web_set_prompt(const char *prompt);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
++void web_set_aim_command(struct command *cmd);
++const struct command *web_repeat_command(void);
 +struct loc web_direction_grid(int x, int y);
 +void web_set_aim_options(bool selected, struct loc location);
 +bool web_aim_at_cell(int x, int y, struct loc *location);
@@ -1274,6 +1311,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
 +void web_set_menu_title(const char *title);
 +void web_set_menu_on_map(void);
++int web_set_save_slots(const char *const *names, int count, int cursor);
 +void web_set_options_title(const char *title);
 +void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
 +bool web_sync_profile(void);
@@ -1289,10 +1327,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_menu_action(int key, const char *label);
 +void web_set_tiles(uint8_t id);
 +#endif
-+
+ 
  /**
   * Holds a generic command.  If hook is not NULL, that function
-  * will be called.  Otherwise, if cmd is not CMD_NULL, that command
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
@@ -1840,7 +1877,21 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  
  errr (*cmd_get_hook)(cmd_context c);
  
-@@ -905,7 +908,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
+@@ -261,6 +264,13 @@
+ static bool repeat_prev_allowed = false;
+ static bool repeating = false;
+ 
++#ifdef __EMSCRIPTEN__
++const struct command *web_repeat_command(void)
++{
++	if (!repeat_prev_allowed) return NULL;
++	return last_command_idx >= 0 ? &cmd_queue[last_command_idx] : &last_command;
++}
++#endif
+ 
+ struct command *cmdq_peek(void)
+ {
+@@ -905,7 +915,14 @@
  	}
  
  	/* We need to do extra work */
@@ -1856,7 +1907,7 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  		cmd_set_arg_direction(cmd, arg, *dir);
  		return CMD_OK;
  	}
-@@ -961,7 +971,16 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+@@ -961,7 +978,18 @@
  			return CMD_OK;
  	}
  
@@ -1864,8 +1915,10 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
 +#ifdef __EMSCRIPTEN__
 +	cmd_code previous = web_set_direction_command(cmd->code);
 +	struct loc grid;
++	web_set_aim_command(cmd);
 +	bool aimed = cmd_get_arg_point(cmd, "map target", &grid) == CMD_OK ?
 +		web_get_map_aim_dir(target, grid) : get_aim_dir(target);
++	web_set_aim_command(NULL);
 +	web_set_direction_command(previous);
 +#else
 +	bool aimed = get_aim_dir(target);
@@ -1912,13 +1965,12 @@ diff --git a/src/ui-command.c b/src/ui-command.c
 diff --git a/src/ui-context.c b/src/ui-context.c
 --- a/src/ui-context.c
 +++ b/src/ui-context.c
-@@ -795,7 +795,14 @@ int context_menu_object(struct object *o
+@@ -795,7 +795,13 @@
  	region_erase_bordered(&r);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
 +#ifdef __EMSCRIPTEN__
 +	const char *previous_prompt = web_set_prompt(header);
-+	m->web_on_map = !square_isshop(cave, player->grid);
 +#endif
  	selected = menu_dynamic_select(m);
 +#ifdef __EMSCRIPTEN__
@@ -1927,7 +1979,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1153,6 +1159,34 @@ static void cmd_sub_entry(struct menu *m
+@@ -1153,6 +1159,34 @@
  	}
  }
  
@@ -1962,7 +2014,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  /**
   * Display a list of commands.
   */
-@@ -1177,6 +1211,10 @@ static bool cmd_menu(struct command_list
+@@ -1177,6 +1211,10 @@
  	area.row -= list->menu_level;
  	assert(area.row > 1);
  	menu_layout(&menu, &area);
@@ -1973,7 +2025,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	/* Set up the screen */
  	screen_save();
-@@ -1278,6 +1316,9 @@ struct cmd_info *textui_action_menu_choo
+@@ -1278,6 +1316,9 @@
  
  	if (!command_menu)
  		command_menu = menu_new(MN_SKIN_SCROLL, &command_menu_iter);
@@ -2018,7 +2070,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -1002,6 +1002,72 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+@@ -1002,6 +1002,69 @@
  	return false;
  }
  
@@ -2035,10 +2087,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	struct object_menu_data *choices = menu_priv(menu);
 +
 +	web_set_menu(menu, menu->cursor, prompt);
-+	int browsing = SHOW_EMPTY | IS_HARMLESS;
-+	bool inventory = item_cmd == CMD_NULL && (item_mode & browsing) == browsing;
-+	if ((inventory && !square_isshop(cave, player->grid)) ||
-+			item_cmd == CMD_CAST || item_cmd == CMD_FIRE || item_cmd == CMD_THROW ||
++	if (item_cmd == CMD_CAST || item_cmd == CMD_FIRE || item_cmd == CMD_THROW ||
 +			item_cmd == CMD_USE || item_cmd == CMD_USE_WAND || item_cmd == CMD_USE_ROD ||
 +			item_cmd == CMD_USE_STAFF || item_cmd == CMD_EAT || item_cmd == CMD_REFILL ||
 +			(item_cmd == CMD_WIELD && tester_m == web_can_equip_light))
@@ -2091,7 +2140,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1225,9 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1159,6 +1222,9 @@
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
@@ -2101,7 +2150,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1291,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1222,6 +1288,14 @@
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -2116,7 +2165,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
-@@ -1457,6 +1534,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+@@ -1457,6 +1531,14 @@
  	throwing_num = scan_items(throwing_list, throwing_max, player,
  		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
  

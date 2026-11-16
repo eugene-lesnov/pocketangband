@@ -21,6 +21,7 @@
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
+                <button id="panel-character" type="button" hidden>Character</button>
                 <div id="zoom" role="group" aria-label="Zoom" hidden>
                     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
                     <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
@@ -32,9 +33,8 @@
             <section id="splash-screen" class="menu-screen" aria-labelledby="view-title" hidden>
                 <img src="icon-192.png" width="96" height="96" alt="">
                 <div>
-                    <h3>PocketBand</h3>
-                    <div class="splash-version">
-                        <span>__POCKETBAND_VERSION__</span>
+                    <div class="splash-title">
+                        <h3>PocketBand __POCKETBAND_VERSION__</h3>
                         <button id="update-app" type="button" aria-label="Update PocketBand" hidden>Update</button>
                     </div>
                     <p class="splash-subtitle">Angband <span id="angband-version"></span></p>
@@ -76,6 +76,7 @@
             </div>
             <p id="map-status" hidden><span id="depth"></span><span id="speed" hidden></span></p>
             <div id="monster-health" role="img" hidden>
+                <span id="monster-name"></span>
                 <span id="monster-health-bar" aria-hidden="true"></span>
             </div>
             <div id="menu-screen" class="menu-screen" hidden>
@@ -157,6 +158,7 @@
                 <a id="download-result" download target="_blank" rel="noopener" hidden>Download file</a>
             </section>
             <p id="input-prompt" role="status" hidden></p>
+            <button id="recall-messages" type="button" aria-label="Message recall" hidden>Log</button>
             <details id="journal" hidden>
                 <summary aria-labelledby="journal-label recent-messages">
                     <span id="recent-messages">
@@ -198,7 +200,10 @@
 
         <div class="controls">
             <section id="map-picker" aria-labelledby="map-picker-title" hidden>
-                <h2 id="map-picker-title"></h2>
+                <div class="picker-heading">
+                    <h2 id="map-picker-title"></h2>
+                    <button id="expand-picker" type="button" aria-expanded="false">Expand</button>
+                </div>
             </section>
             <fieldset id="birth-roll-actions" class="key-row" aria-label="Dice roll" disabled hidden>
                 <button id="previous-roll" type="button" data-key="p">Previous roll</button>
@@ -233,9 +238,10 @@
                         <button id="combat-action" type="button" data-key="v" aria-label="Throw an item">Throw</button>
                         <button id="repeat-action" type="button" data-key="n" aria-label="Repeat previous command">Repeat</button>
                         <button id="stop-action" type="button" hidden>Stop</button>
-                        <button id="movement-mode" type="button" role="switch" aria-label="Run" aria-checked="false">
-                            <span>Walk</span><span>Run</span>
-                        </button>
+                        <div id="movement-mode" role="group" aria-label="Direction pad movement">
+                            <button id="walk-mode" type="button" aria-pressed="true">Walk</button>
+                            <button id="run-mode" type="button" aria-pressed="false">Run</button>
+                        </div>
                     </fieldset>
                     <fieldset id="keyboard-utilities" aria-label="Keyboard controls" disabled hidden></fieldset>
                     <fieldset id="terminal-keys" aria-label="Angband controls" disabled>
@@ -271,6 +277,11 @@
             <fieldset id="outcome-actions" class="key-row" aria-label="After this run" disabled hidden></fieldset>
         </div>
     </main>
+    <dialog id="message-dialog" aria-labelledby="message-dialog-title">
+        <h2 id="message-dialog-title">Message recall</h2>
+        <ol id="recalled-messages"></ol>
+        <form method="dialog"><button autofocus>Close</button></form>
+    </dialog>
     <dialog id="delete-save-dialog" aria-labelledby="delete-save-title" aria-describedby="delete-save-label delete-save-warning">
         <form method="dialog">
             <h2 id="delete-save-title">Delete save?</h2>

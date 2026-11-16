@@ -28,6 +28,7 @@ const sp = document.querySelector("#sp");
 const spValue = document.querySelector("#sp-value");
 const speed = document.querySelector("#speed");
 const monsterHealth = document.querySelector("#monster-health");
+const monsterName = document.querySelector("#monster-name");
 const monsterBar = document.querySelector("#monster-health-bar");
 const monsterSegments = Array.from({ length: 10 }, () => document.createElement("span"));
 monsterBar.append(...monsterSegments);
@@ -69,6 +70,9 @@ const useAction = document.querySelector("#use-action");
 const combatAction = document.querySelector("#combat-action");
 const repeatAction = document.querySelector("#repeat-action");
 const movementMode = document.querySelector("#movement-mode");
+const walkMode = document.querySelector("#walk-mode");
+const runModeButton = document.querySelector("#run-mode");
+const panelCharacter = document.querySelector("#panel-character");
 const mapCellActions = document.querySelector("#map-cell-actions");
 const mapActionButtons = document.querySelector("#map-action-buttons");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
@@ -85,6 +89,8 @@ const targetLocation = document.querySelector("#target-location");
 const confirmTarget = document.querySelector("#confirm-target");
 const targetInspect = document.querySelector("#target-inspect");
 const inputPrompt = document.querySelector("#input-prompt");
+const recallMessages = document.querySelector("#recall-messages");
+const messageDialog = document.querySelector("#message-dialog");
 const nameScreen = document.querySelector("#name-screen");
 const nameFields = document.querySelector("#name-fields");
 const nameValue = document.querySelector("#name-value");
@@ -118,6 +124,7 @@ const menuActions = document.querySelector("#menu-actions");
 const menuDescription = document.querySelector("#menu-description");
 const mapPicker = document.querySelector("#map-picker");
 const mapPickerTitle = document.querySelector("#map-picker-title");
+const expandPicker = document.querySelector("#expand-picker");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
@@ -166,6 +173,10 @@ const throwCommand = ["v", "Throw an item", null, "Throw"];
 const restCommand = ["R", "Rest for a while", null, "Rest"];
 const runCommand = [".", "Start running", ","];
 const stealCommand = ["s", "Steal from a monster"];
+const visibleListCommands = [
+    ["[", "Display visible monster list", null, "Monster list"],
+    ["]", "Display visible item list", null, "Item list"],
+];
 const extraCommands = [
     runCommand, restCommand, spellCommands.look, useCommand, repeatCommand,
     ["r", "Read a scroll"], ["q", "Quaff a potion"], ["d", "Drop an item"],
@@ -174,11 +185,12 @@ const extraCommands = [
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
-    ["*", "Target monster or location"], ["[", "Display visible monster list"], ["]", "Display visible item list"],
+    ["*", "Target monster or location"], ...visibleListCommands,
     ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
 ];
-const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles" };
+const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles", character: "Character",
+    "touch-settings": "Touch settings" };
 const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 const mapDirections = [
@@ -197,7 +209,7 @@ const mapDirections = [
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const mapScales = [...scales, 2, 2.25];
 const defaultAsciiZoom = scales.indexOf(1.5);
-const defaultTileZoom = scales.indexOf(1);
+const defaultTileZoom = scales.indexOf(1.5);
 const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
@@ -237,6 +249,7 @@ let characterTrigger;
 let pendingInput;
 let stopTimer;
 let speedHighlightTimer;
+let saveNoticeTimer;
 let running = false;
 let runMode = false;
 let runningFromPad = false;
@@ -256,6 +269,30 @@ let centerPending = false;
 let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
+let pickerExpanded = false;
+let combatUnavailable = "";
+let repeatName = "";
+let graphicsRestored = false;
+const preferences = { compactHud: false, leftHanded: false, largeText: false,
+    fastAim: false, tiles: 0, lastSave: "" };
+try {
+    const saved = JSON.parse(localStorage.getItem("pocketband-touch") || "{}");
+    for (const key of Object.keys(preferences)) {
+        if (typeof saved[key] === typeof preferences[key]) preferences[key] = saved[key];
+    }
+    if (!graphicsModes.has(preferences.tiles)) preferences.tiles = 0;
+} catch {}
+
+function savePreferences() {
+    try { localStorage.setItem("pocketband-touch", JSON.stringify(preferences)); } catch {}
+}
+
+function applyPreferences() {
+    main.classList.toggle("compact-hud", preferences.compactHud);
+    main.classList.toggle("left-handed", preferences.leftHanded);
+    main.classList.toggle("large-text", preferences.largeText);
+}
+applyPreferences();
 
 function render(view, frame, region = {}) {
     const { width, height, palette } = frame;
@@ -468,6 +505,7 @@ function renderMonsterHealth(health) {
     if (monsterHealth.hidden) return;
     const { name, segments, color } = health;
     monsterHealth.classList.toggle("unknown", !name);
+    monsterName.textContent = name || "Monster health unknown";
     monsterHealth.setAttribute("aria-label", name ?
         `${name}: ${segments} of 10 health segments` : "Monster health unknown");
     monsterHealth.style.setProperty("--monster-health-color", color ?? "");
@@ -811,7 +849,8 @@ function closeInputPanel(closeKeyboard = true) {
         dismissMapActions();
         return true;
     }
-    if (openPanel === "tiles" || (openPanel === "commands" && panelTrigger === openMenu)) {
+    if ((["tiles", "touch-settings"].includes(openPanel) && panelTrigger === openMenu) ||
+        (openPanel === "commands" && panelTrigger === openMenu)) {
         showPanel("menu", panelTrigger);
         return true;
     }
@@ -843,8 +882,11 @@ function showPanel(panel, trigger) {
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped || applyingUpdate;
     renderAppUpdate();
-    const pickingOnMap = Boolean(menu?.onMap);
+    const pickingOnMap = Boolean(menu?.onMap) && !openPanel;
     mapPicker.hidden = !pickingOnMap;
+    expandPicker.textContent = pickerExpanded ? "Show map" : "Expand";
+    expandPicker.setAttribute("aria-expanded", String(pickerExpanded));
+    expandPicker.disabled = disabled;
     const command = mode === "command";
     const runDirection = mode === "run-direction";
     const selecting = mode === "target";
@@ -884,7 +926,9 @@ function updateControls() {
     stopAction.hidden = !stopVisible;
     const inspectingCell = playing && !stopVisible && !!context.mapCell?.actions;
     const showTargetControls = selecting && !showKeyboard && !openPanel && !stopVisible;
-    vitals.disabled = disabled || !(command || ((selecting || aiming || directing) && context.character));
+    vitals.disabled = disabled || !(command || context.character);
+    panelCharacter.hidden = !playingGame || !menu || !!context.outcome || !!openPanel || pickingOnMap;
+    panelCharacter.disabled = disabled || !context.character;
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", targeting || directing || runDirection);
     const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
@@ -893,6 +937,9 @@ function updateControls() {
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", runDirection);
+    directionPad.classList.toggle("running-mode", command && runMode);
+    directionPad.setAttribute("aria-label", command && runMode ? "Direction pad: Run" :
+        aiming && !preferences.fastAim ? "Adjust target selection" : "Direction pad");
     const here = (directing && context.center) || mapDirectionAction?.targets.some(({ direction }) => direction === 5);
     for (const button of directionButtons) {
         if (button !== directionCenter) button.disabled = !!mapDirectionAction &&
@@ -906,10 +953,13 @@ function updateControls() {
     setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
     playKeys.classList.toggle("stopping", stopVisible);
     movementMode.hidden = !(showPlayActions || runningFromPad);
-    movementMode.disabled = stopVisible ? stopAction.disabled : disabled;
-    movementMode.setAttribute("aria-checked", String(runMode));
+    walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
+    walkMode.setAttribute("aria-pressed", String(!runMode));
+    runModeButton.setAttribute("aria-pressed", String(runMode));
     setActions(openMenu, showPlayActions, disabled);
     heroActions.disabled = !context.worldView;
+    combatAction.disabled = !!combatUnavailable;
+    repeatAction.disabled = !repeatName;
     setActions(mapCellActions, inspectingCell, disabled);
     mapActionButtons.hidden = !!mapDirectionAction;
     nameFields.disabled = disabled;
@@ -960,8 +1010,8 @@ function updateControls() {
     }
     nearest.hidden = !aiming || !!openPanel || showKeyboard;
     nearest.disabled = !context.nearest;
-    if (aiming) nearest.setAttribute("aria-label",
-        `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest target`);
+    if (aiming) nearest.setAttribute("aria-label", preferences.fastAim ?
+        `${context.verb === "Use" ? "Use on" : context.verb + " at"} nearest target` : "Select nearest target");
     previousTarget.hidden = nextTarget.hidden = !selecting || context.freeAim || context.targetCount < 2;
     targetMode.hidden = attackTargeting;
     targetTypes.hidden = !attackTargeting;
@@ -987,7 +1037,7 @@ function updateControls() {
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
-    setActions(menuActions, !!menu?.actions.length, disabled);
+    setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
     menuRows.disabled = menuSections.disabled = disabled;
 }
 
@@ -1094,9 +1144,15 @@ function updatePrompt() {
     if (menu?.onMap) text = "";
     if (mode === "aim") {
         if (request === undefined) text = "";
-        else text = activeView === views.terminal ? "Choose a target or direction." :
-            "Tap a monster or location, or choose a direction.";
+        else {
+            const prepared = context.prepared;
+            const action = prepared ? `${prepared.name}${prepared.mana >= 0 ? ` · Mana ${prepared.mana}` : ""}` : context.verb;
+            text = `${action}\n${context.current ? context.targetDescription : preferences.fastAim ?
+                "Tap a monster to attack." : "Select a target, then confirm."}`;
+        }
     }
+    if (mode === "command" && context.mapCell && !context.mapCell.actions)
+        text += " Tap this cell again to walk there.";
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running) text = "Running…";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
@@ -1119,6 +1175,7 @@ function updatePrompt() {
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     journal.hidden = hud.hidden || !inputPrompt.hidden || saveNotice;
+    recallMessages.hidden = hud.hidden || inputPrompt.hidden || !!openPanel || !world?.log.length;
     if (journal.hidden) journal.open = false;
 }
 
@@ -1144,8 +1201,8 @@ function updateView(state = world, region = views.target.crop) {
     resultsList.hidden = mode !== "results-list";
     resultsFile.hidden = mode !== "results-file";
     const showBirthStats = !!context.birthStats;
-    splashScreen.hidden = !showSplash;
-    birthStatsScreen.hidden = !showBirthStats;
+    splashScreen.hidden = !showSplash || !!openPanel;
+    birthStatsScreen.hidden = !showBirthStats || !!openPanel;
     if (showSplash) angbandVersion.textContent = context.version;
     characterScreen.hidden = !showCharacter;
     characterScreen.classList.toggle("birth-review", reviewing);
@@ -1185,6 +1242,9 @@ function updateView(state = world, region = views.target.crop) {
     for (const view of Object.values(views)) view.viewport.hidden =
         view !== activeView || (!!menu && !menu.onMap) || !!openPanel || naming || editing || !!question ||
         showDetails || showCharacter || showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
+    const mapPicking = !!menu?.onMap && !openPanel;
+    main.classList.toggle("map-picking", mapPicking);
+    main.classList.toggle("picker-expanded", mapPicking && pickerExpanded);
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
@@ -1194,7 +1254,7 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("in-game-panel", !!openPanel || showCharacter || mode === "history" ||
         !!menu?.options || mode === "option-number" || showOutcome || showVictory ||
         !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
-    main.classList.toggle("intro", showSplash);
+    main.classList.toggle("intro", showSplash && !openPanel);
     hud.hidden = !showMap || !world;
     mapStatus.hidden = hud.hidden;
     if (hud.hidden) monsterHealth.hidden = true;
@@ -1219,6 +1279,7 @@ function updateView(state = world, region = views.target.crop) {
         centerPending = true;
     }
     renderMenu(menu);
+    if (openPanel) menuScreen.hidden = true;
     updatePrompt();
     draw();
     if (world) renderWorld(world, previousSpeed);
@@ -1274,7 +1335,7 @@ function handleWorkerMessage({ data }) {
             const restoreSaveFocus = deletingSave && data.mode === "save-slots";
             const restorePlayFocus = document.activeElement === stopAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
-            const playFocus = runningFromPad ? movementMode : heroActions;
+            const playFocus = runningFromPad ? (runMode ? runModeButton : walkMode) : heroActions;
             clearPendingInput();
             const changed = data.mode !== mode || data.menu?.onMap !== menu?.onMap ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
@@ -1313,6 +1374,7 @@ function handleWorkerMessage({ data }) {
             }
             if (context.mapCell?.actions) renderMapActions();
             menu = data.menu;
+            if (!menu?.onMap) pickerExpanded = false;
             deletingSave = false;
             if (changed && mode === "text") renderKeyboard();
             launch.hidden = true;
@@ -1356,9 +1418,19 @@ function handleWorkerMessage({ data }) {
                 activeView.viewport.focus({ preventScroll: true });
             if (mode === "command" && restorePlayFocus) playFocus.focus({ preventScroll: true });
             if (!mapCellActions.hidden) mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
+            if (mode === "command" && world && !graphicsRestored) {
+                graphicsRestored = true;
+                if (preferences.tiles !== views.map.frame?.graphicsMode) {
+                    void loadTiles(preferences.tiles).then(() => {
+                        if (mode === "command" && request !== undefined)
+                            sendInput({ type: "set-tiles", code: preferences.tiles });
+                    }).catch(console.error);
+                }
+            }
             break;
         }
         case "saving":
+            clearTimeout(saveNoticeTimer);
             clearPendingInput();
             saving = true;
             updateControls();
@@ -1369,6 +1441,10 @@ function handleWorkerMessage({ data }) {
             break;
         case "saved":
             saving = false;
+            if (data.ok && !data.outcome && data.slot) {
+                preferences.lastSave = data.slot;
+                savePreferences();
+            }
             if (data.outcome) outcomeSaveFailed = !data.ok;
             updateControls();
             saveStatus.textContent = data.outcome ?
@@ -1377,10 +1453,15 @@ function handleWorkerMessage({ data }) {
             saveStatus.classList.toggle("error", !data.ok);
             saveStatus.hidden = false;
             updatePrompt();
+            if (data.ok && !data.outcome) saveNoticeTimer = setTimeout(() => {
+                saveStatus.hidden = true;
+                updatePrompt();
+            }, 2000);
             break;
         case "restarting":
             clearPendingInput();
             runMode = false;
+            graphicsRestored = false;
             closeMessagePause();
             playingGame = false;
             request = mode = world = menu = undefined;
@@ -1509,6 +1590,20 @@ main.addEventListener("click", (event) => {
         chooseMapDirection(mapDirections.findIndex((direction) => direction?.key === key));
         return;
     }
+    if (mode === "aim" && !preferences.fastAim) {
+        if (button === nearest) {
+            sendInput({ type: "aim-nearest" });
+            return;
+        }
+        if (directionPad.contains(button) && button !== directionCenter) {
+            const direction = mapDirections.findIndex((entry) => entry?.key === key);
+            const offset = [[0, 0], [-1, 1], [0, 1], [1, 1], [-1, 0], [0, 0], [1, 0], [-1, -1], [0, -1], [1, -1]][direction];
+            const cell = context.target ?? (activeView === views.map ? world : context.player);
+            const target = cell && offset && { x: cell.x + offset[0], y: cell.y + offset[1] };
+            if (target && containsCell(views.target.crop, target)) sendInput({ type: "aim-cell", ...target });
+            return;
+        }
+    }
     if (runMode && mode === "command" && button !== directionCenter && directionPad.contains(button)) {
         const direction = mapDirections.findIndex((entry) => entry?.key === key);
         sendInput({ type: "run-direction", code: direction });
@@ -1594,6 +1689,13 @@ function renderMapActions() {
         if (key) setKeyHint(button, keyFromCode(key));
         return button;
     });
+    if (here) {
+        buttons.unshift(...visibleListCommands.map(([key, announcement, , label]) => {
+            const button = makeKey(key, label, announcement);
+            setKeyHint(button);
+            return button;
+        }));
+    }
     mapCellActions.classList.toggle("nearby-actions", here);
     mapCellActions.setAttribute("aria-label", here ? "Actions" : "Cell actions");
     mapActionButtons.replaceChildren(...buttons);
@@ -1668,21 +1770,58 @@ function commandKey([key, , alternative], roguelike) {
 
 function renderQuickActions({ roguelike, quickActions }) {
     const { spell, spellHint, launcher, hasAmmo } = quickActions;
-    const spellAction = spell === "look" || spellHint ? undefined : spellCommands[spell];
+    const spellAction = spell === "look" ? undefined : spellCommands[spell];
     const combat = spell === "cast" && spellAction ? spellAction :
-        launcher && hasAmmo ? fireCommand : spellAction ?? throwCommand;
+        launcher ? fireCommand : spellAction ?? throwCommand;
+    combatUnavailable = combat === spellAction ? spellHint : combat === fireCommand && !hasAmmo ? "No ammo" : "";
     combatAction.dataset.key = commandKey(combat, roguelike);
     combatAction.setAttribute("aria-label", combat[1]);
     combatAction.textContent = combat[3];
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
     for (const button of [combatAction, useAction, repeatAction]) setKeyHint(button);
+    if (combatUnavailable) {
+        combatAction.lastElementChild.textContent = combatUnavailable;
+        combatAction.setAttribute("aria-label", `${combat[1]}: ${combatUnavailable}`);
+    }
+    repeatName = quickActions.repeat;
+    repeatAction.textContent = "Repeat";
+    repeatAction.setAttribute("aria-label", repeatName ? `Repeat ${repeatName}` : "No command to repeat");
+    setKeyHint(repeatAction);
+    if (repeatName) repeatAction.lastElementChild.textContent = repeatName;
 }
 
 function renderActionsPanel() {
     actionsScreen.setAttribute("aria-label", panelTitles[openPanel]);
     actionsScreen.scrollTop = 0;
     const currentGraphics = views.map.frame?.graphicsMode ?? 0;
+    if (openPanel === "touch-settings") {
+        actionsScreen.replaceChildren(...[
+            ["compactHud", "Compact status", "Show HP, SP, and conditions. Open Character for all stats."],
+            ["leftHanded", "Direction pad on the left", "Keep movement controls beside your left thumb."],
+            ["largeText", "Larger interface text", "Increase labels and list text without changing map zoom."],
+            ["fastAim", "Fast targeting", "A monster tap or Nearest attacks immediately. Turn off to select and confirm."],
+        ].map(([key, label, detail]) => {
+            const button = makeButton(`${label}. ${detail}`);
+            const text = document.createElement("span");
+            const hint = document.createElement("small");
+            text.textContent = label;
+            hint.textContent = detail;
+            text.append(hint);
+            button.replaceChildren(text);
+            button.setAttribute("aria-pressed", String(preferences[key]));
+            button.onclick = () => {
+                preferences[key] = !preferences[key];
+                savePreferences();
+                applyPreferences();
+                button.setAttribute("aria-pressed", String(preferences[key]));
+                updateControls();
+                recenterView();
+            };
+            return button;
+        }));
+        return;
+    }
     if (openPanel === "tiles") {
         const rows = [...graphicsModes].map(([id, { label }]) => {
             const button = makeInput("set-tiles", id, label);
@@ -1698,12 +1837,12 @@ function renderActionsPanel() {
         commands = gameMenu;
     } else if (openPanel === "commands") {
         commands = [...extraCommands];
-        if (world.quickActions?.canSteal) commands.push(stealCommand);
+        if (world?.quickActions?.canSteal) commands.push(stealCommand);
         commands.push(["Enter", "All Angband commands"]);
     }
     if (!commands) return;
     const rows = commands.map((entry) => {
-        const key = commandKey(entry, world.roguelike);
+        const key = commandKey(entry, world?.roguelike);
         const label = entry[1];
         const button = makeKey(key, label);
         button.prepend(keyBadge(keyNames.get(key) ?? key));
@@ -1720,9 +1859,25 @@ function renderActionsPanel() {
             showPanel();
             toggleKeyboard();
         };
-        rows.unshift(commands, keys, tilesMenu);
+        const settings = makeButton("Touch settings");
+        settings.onclick = () => showPanel("touch-settings", openMenu);
+        rows.unshift(commands, keys, tilesMenu, settings);
     }
-    actionsScreen.replaceChildren(...rows);
+    if (openPanel === "commands") {
+        const grouped = [];
+        for (const [title, keys] of [
+            ["Explore", [".", "R", "l", "[", "]", "<", ">", "/", "~"]],
+            ["Fight", ["m", "f", "v", "h", "*", "s"]],
+            ["Items", ["U", "r", "q", "u", "a", "z", "E", "A", "F", "g", "d"]],
+            ["Interact", ["+", "T", "D", "o", "c"]],
+            ["Other commands", ["G", "b", "n", ":", "Enter"]],
+        ]) {
+            const heading = document.createElement("h3");
+            heading.textContent = title;
+            grouped.push(heading, ...rows.filter((_, index) => keys.includes(commands[index][0])));
+        }
+        actionsScreen.replaceChildren(...grouped);
+    } else actionsScreen.replaceChildren(...rows);
 }
 
 async function chooseTiles(input, button) {
@@ -1739,7 +1894,11 @@ async function chooseTiles(input, button) {
         await loadTiles(input.code);
         if (stillChoosing()) {
             tilesStatus.textContent = "";
-            if (request === selectionRequest && sendInput(input)) showPanel();
+            if (request === selectionRequest && sendInput(input)) {
+                preferences.tiles = input.code;
+                savePreferences();
+                showPanel();
+            }
         }
     } catch (error) {
         console.error(error);
@@ -2055,12 +2214,25 @@ heroActions.addEventListener("click", () => {
 openMenu.addEventListener("click", () => {
     if (mode === "command" && request !== undefined) showPanel("menu", openMenu);
 });
-vitals.addEventListener("click", () => {
+function openCharacter(event) {
     if (mode === "command") {
         if (sendInput({ type: "key", code: keyCode("C") })) characterTrigger = vitals;
     } else if (request !== undefined && context.character) {
-        showPanel("character", vitals);
+        showPanel("character", event.currentTarget);
     }
+}
+vitals.addEventListener("click", openCharacter);
+panelCharacter.addEventListener("click", openCharacter);
+
+expandPicker.addEventListener("click", () => {
+    pickerExpanded = !pickerExpanded;
+    updateView();
+    updateControls();
+});
+recallMessages.addEventListener("click", () => {
+    document.querySelector("#recalled-messages").replaceChildren(...[...messages.children].map((row) => row.cloneNode(true)));
+    messageDialog.showModal();
+    document.querySelector("#recalled-messages").scrollTop = document.querySelector("#recalled-messages").scrollHeight;
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
@@ -2069,10 +2241,11 @@ function interruptAction(button) {
 }
 
 stopAction.addEventListener("click", () => interruptAction(stopAction));
-movementMode.addEventListener("click", () => {
-    if (movementMode.hidden || movementMode.disabled || !messagePause.hidden ||
+movementMode.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button || movementMode.hidden || button.disabled || !messagePause.hidden ||
         (request === undefined && !runningFromPad)) return;
-    runMode = !runMode;
+    runMode = button === runModeButton;
     if (!runMode && runningFromPad) interruptAction(stopAction);
     updateControls();
 });
@@ -2108,7 +2281,7 @@ for (const view of Object.values(views)) {
             if (!openMenu && target) sendMapAction(mapDirectionAction, target);
             return;
         }
-        sendInput({ type, x: cellX, y: cellY, openMenu });
+        sendInput({ type, x: cellX, y: cellY, openMenu, fast: mode === "aim" && preferences.fastAim });
     }
 
     view.viewport.addEventListener("pointerdown", (event) => {
@@ -2166,16 +2339,16 @@ let zoomDistance;
 
 document.addEventListener("touchstart", (event) => {
     if (event.touches.length < 2) return;
-    if (event.cancelable) event.preventDefault();
     const [first, second] = event.touches;
-    zoomDistance = !multiTouch && event.touches.length === 2 && !mapViewport.hidden &&
-        mapViewport.contains(first.target) && mapViewport.contains(second.target) ?
-        touchDistance(first, second) : undefined;
+    if (!multiTouch && (mapViewport.hidden ||
+        !mapViewport.contains(first.target) || !mapViewport.contains(second.target))) return;
+    if (event.cancelable) event.preventDefault();
+    zoomDistance = !multiTouch && event.touches.length === 2 ? touchDistance(first, second) : undefined;
     multiTouch = true;
 }, touchOptions);
 
 document.addEventListener("touchmove", (event) => {
-    if (!multiTouch && event.touches.length < 2) return;
+    if (!multiTouch) return;
     if (event.cancelable) event.preventDefault();
     if (zoomDistance === undefined || event.touches.length !== 2) return;
     const [first, second] = event.touches;
@@ -2210,7 +2383,9 @@ function endTouches(event) {
 document.addEventListener("touchend", endTouches, touchOptions);
 document.addEventListener("touchcancel", endTouches, touchOptions);
 for (const type of ["gesturestart", "gesturechange"]) {
-    document.addEventListener(type, (event) => event.preventDefault());
+    document.addEventListener(type, (event) => {
+        if (!mapViewport.hidden && mapViewport.contains(event.target)) event.preventDefault();
+    });
 }
 
 journal.addEventListener("toggle", () => {
@@ -2241,7 +2416,7 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-    if (deleteSaveDialog.open) return;
+    if (deleteSaveDialog.open || messageDialog.open) return;
     if (!messagePause.hidden) {
         if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
         const code = keyCode(event.key);
@@ -2356,7 +2531,9 @@ async function start() {
     progress.hidden = true;
     status.textContent = "Starting Angband…";
     try {
-        worker = new Worker(new URL("./engine-worker.js", import.meta.url), { type: "module" });
+        const workerURL = new URL("./engine-worker.js", import.meta.url);
+        if (preferences.lastSave) workerURL.searchParams.set("slot", preferences.lastSave);
+        worker = new Worker(workerURL, { type: "module" });
         worker.addEventListener("message", handleWorkerMessage);
         worker.addEventListener("error", (event) => {
             console.error(event.message);

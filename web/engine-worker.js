@@ -2,14 +2,17 @@ import createAngband from "./angband.js";
 import { graphicsModes } from "./tiles.js";
 
 const profileDirectory = "/profile";
+let preferredSaveSlot = new URL(self.location.href).searchParams.get("slot") || "";
 const input = [];
 let waiting;
 let request = 0;
 let backgroundSavePending = false;
 let interruptPending = false;
 let runningRequest;
+let checkpointTimer;
 
 function wakeInput(action) {
+    clearTimeout(checkpointTimer);
     const { wake } = waiting;
     waiting = undefined;
     wake(action);
@@ -27,6 +30,12 @@ self.addEventListener("message", ({ data }) => {
     if (data.type === "background-save") {
         if (waiting?.mode === "command") wakeInput("background-save");
         else if (!waiting || waiting.playing) backgroundSavePending = true;
+        return;
+    }
+    if (data.type === "aim-nearest") {
+        if (waiting?.mode !== "aim" || data.request !== waiting.request) return;
+        input.push(data);
+        wakeInput();
         return;
     }
     if (data.type === "interrupt") {
@@ -61,6 +70,7 @@ self.addEventListener("message", ({ data }) => {
         if (!waiting || data.request !== waiting.request) return;
         if (data.type === "tap" && !["menu", "save-slots"].includes(waiting.mode)) return;
         if (data.type === "aim-cell" && !["aim", "direction", "run-direction"].includes(waiting.mode)) return;
+        if (data.type === "aim-cell") data.code = data.fast === true ? 1 : 0;
         if (data.type === "target-cell" && waiting.mode !== "target") return;
         if (data.type === "map-cell" || data.type === "map-action") {
             if (waiting.mode !== "command" || !waiting.context.worldView) return;
@@ -137,6 +147,11 @@ async function deleteProfileFiles(idbfs, paths) {
 
 async function play(afterRun) {
     let world;
+    let currentTurns = 0;
+    let savedTurns = -1;
+    let attemptedTurns = 0;
+    let checkpointStarted = false;
+    let saveAttempt = Date.now();
     let lastError;
     let finish;
     const exited = new Promise((resolve) => {
@@ -144,6 +159,7 @@ async function play(afterRun) {
     });
     const game = await createAngband({
         skipSplash: !!afterRun,
+        preferredSaveSlot,
         sendFrame(frame) {
             const buffers = [frame.codepoints.buffer, frame.attributes.buffer, frame.palette.buffer];
             if (frame.terrainAttributes) {
@@ -153,6 +169,7 @@ async function play(afterRun) {
         },
         sendWorld(state) {
             world = state;
+            currentTurns = state.turns;
         },
         sendRunPosition(x, y) {
             self.postMessage({ type: "run-position", x, y, request: runningRequest });
@@ -169,13 +186,27 @@ async function play(afterRun) {
             interruptPending = false;
             runningRequest = undefined;
             if (!playing) backgroundSavePending = false;
-            if (mode === "command" && backgroundSavePending) {
+            const checkpoint = !checkpointStarted || (currentTurns !== savedTurns &&
+                (currentTurns - attemptedTurns >= 10 || Date.now() - saveAttempt >= 15_000));
+            if (mode === "command" && (backgroundSavePending || checkpoint)) {
                 backgroundSavePending = false;
+                checkpointStarted = true;
+                attemptedTurns = currentTurns;
+                saveAttempt = Date.now();
                 world = undefined;
                 return "background-save";
             }
             return new Promise((resolve) => {
                 waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve };
+                if (mode === "command" && currentTurns !== savedTurns) {
+                    const pendingRequest = request;
+                    checkpointTimer = setTimeout(() => {
+                        if (waiting?.request !== pendingRequest) return;
+                        attemptedTurns = currentTurns;
+                        saveAttempt = Date.now();
+                        wakeInput("background-save");
+                    }, Math.max(0, 15_000 - (Date.now() - saveAttempt)));
+                }
                 const data = context.resultsFile?.data;
                 self.postMessage({ type: "waiting", request, mode, region, playing, world, context, menu },
                     data ? [data.buffer] : []);
@@ -222,13 +253,18 @@ async function play(afterRun) {
             return 1;
         },
         async persistProfile(saved, outcome) {
+            saveAttempt = Date.now();
             let ok = false;
             if (saved) {
                 self.postMessage({ type: "saving", outcome });
                 ok = await game.syncProfile();
-                if (ok) backgroundSavePending = false;
+                if (ok) {
+                    backgroundSavePending = false;
+                    savedTurns = currentTurns;
+                    if (!outcome) preferredSaveSlot = game.saveSlot;
+                }
             }
-            self.postMessage({ type: "saved", ok, outcome });
+            self.postMessage({ type: "saved", ok, outcome, slot: game.saveSlot });
             return ok;
         },
         async syncProfile() {
@@ -245,6 +281,7 @@ async function play(afterRun) {
             console.error(message);
         },
         onExit(code) {
+            clearTimeout(checkpointTimer);
             finish({ type: "exit", code, message: lastError,
                 afterRun: game.birthCancelled ? "save-slots" : game.afterRun });
         },
