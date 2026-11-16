@@ -1280,9 +1280,11 @@ function updatePrompt() {
 
 function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
-    const text = prompt || messages.lastElementChild?.textContent || "No messages";
+    const drop = !prompt && world?.dropMessage;
+    const text = prompt || drop || messages.lastElementChild?.textContent || "No messages";
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
+    journal.classList.toggle("drop-result", !!drop);
     journal.classList.toggle("empty", !prompt && !messages.childElementCount);
     journal.disabled = !messages.childElementCount || (!prompt && messages.childElementCount === 1 &&
         latestMessage.scrollHeight <= latestMessage.clientHeight);

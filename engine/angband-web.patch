@@ -1062,7 +1062,18 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	if (Term && type == MSG_BELL) {
  		Term_xtra(TERM_XTRA_NOISE, 0);
-@@ -894,7 +919,31 @@
+@@ -505,6 +530,10 @@
+ 	if (!msg || !Term || !character_generated)
+ 		return;
+ 
++#ifdef __EMSCRIPTEN__
++	if (web_capture_drop_message(msg)) return;
++#endif
++
+ 	/* Obtain the size */
+ 	(void)Term_get_size(&w, &h);
+ 
+@@ -894,7 +923,31 @@
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
@@ -1094,7 +1105,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,7 +1041,16 @@
+@@ -992,7 +1045,16 @@
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -1111,7 +1122,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
  			}
-@@ -1171,7 +1229,20 @@
+@@ -1171,7 +1233,20 @@
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -1132,7 +1143,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1275,13 @@
+@@ -1204,7 +1279,13 @@
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -1146,7 +1157,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1297,7 @@
+@@ -1220,6 +1301,7 @@
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -1154,7 +1165,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1318,14 @@
+@@ -1240,7 +1322,14 @@
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -1170,7 +1181,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1369,15 @@
+@@ -1284,7 +1373,15 @@
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -1186,7 +1197,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1545,11 @@
+@@ -1452,7 +1549,11 @@
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1199,7 +1210,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,16 +1622,31 @@
+@@ -1525,16 +1626,31 @@
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1232,7 +1243,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1626,6 +1738,10 @@
+@@ -1626,6 +1742,10 @@
  
  	/* Auto-target if requested */
  	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
@@ -1243,7 +1254,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1758,25 @@
+@@ -1642,8 +1762,25 @@
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1271,7 +1282,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,18 +1794,35 @@
+@@ -1661,18 +1798,35 @@
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1308,7 +1319,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			} else {
  				/* Possible direction */
  				int keypresses_handled = 0;
-@@ -1719,6 +1869,18 @@
+@@ -1719,6 +1873,18 @@
  	/* A "valid" direction was entered */
  	return (true);
  }
@@ -1327,7 +1338,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  /**
   * Initialise the UI hooks to give input asked for by the game
-@@ -1840,6 +2002,21 @@
+@@ -1840,6 +2006,21 @@
  			Term_set_cursor(false);
  		}
  
@@ -1352,7 +1363,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,93 @@
+@@ -23,6 +23,95 @@
  #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
@@ -1372,6 +1383,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
++void web_collect_drop_messages(bool collect);
++bool web_capture_drop_message(const char *message);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
 +void web_set_aim_command(struct command *cmd);
@@ -2040,7 +2053,17 @@ diff --git a/src/obj-pile.c b/src/obj-pile.c
 diff --git a/src/obj-gear.c b/src/obj-gear.c
 --- a/src/obj-gear.c
 +++ b/src/obj-gear.c
-@@ -526,7 +526,7 @@
+@@ -30,6 +30,9 @@
+ #include "obj-util.h"
+ #include "player-calcs.h"
+ #include "player-util.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ 
+ static const struct slot_info {
+ 	int index;
+@@ -526,7 +529,7 @@
  {
  	struct object *usable;
  	struct object *first_remainder = NULL;
@@ -2049,7 +2072,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	char label = gear_to_label(p, obj);
  	bool artifact = (obj->known->artifact != NULL);
  
-@@ -891,7 +891,7 @@
+@@ -891,7 +894,7 @@
  	update_stuff(p);
  
  	if (message) {
@@ -2058,7 +2081,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  		struct object *first;
  		uint16_t total;
  		char label;
-@@ -933,7 +933,7 @@
+@@ -933,7 +936,7 @@
  	struct object *wielded, *old = player->body.slots[slot].obj;
  
  	const char *fmt;
@@ -2067,7 +2090,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	bool dummy = false;
  
  	/* Increase equipment counter if empty slot */
-@@ -1034,7 +1034,7 @@
+@@ -1034,7 +1037,7 @@
  {
  	int slot = equipped_item_slot(player->body, obj);
  	const char *act;
@@ -2076,7 +2099,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  
  	/* Paranoia */
  	if (slot == player->body.count) return;
-@@ -1082,7 +1082,7 @@
+@@ -1082,7 +1085,7 @@
  	bool equipped = false;
  	bool quiver;
  
@@ -2085,7 +2108,28 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	char label;
  
  	/* Error check */
-@@ -1345,7 +1345,7 @@
+@@ -1104,6 +1107,10 @@
+ 	/* Not too many */
+ 	if (amt > obj->number) amt = obj->number;
+ 
++#ifdef __EMSCRIPTEN__
++	web_collect_drop_messages(true);
++#endif
++
+ 	/* Take off equipment, don't combine */
+ 	if (object_is_equipped(player->body, obj)) {
+ 		equipped = true;
+@@ -1168,6 +1175,9 @@
+ 	/* Drop it near the player */
+ 	drop_near(cave, &dropped, 0, player->grid, false, true);
++#ifdef __EMSCRIPTEN__
++	web_collect_drop_messages(false);
++#endif
+ 
+ 	/* Sound for quiver objects */
+ 	if (quiver)
+ 		sound(MSG_QUIVER);
+@@ -1345,7 +1355,7 @@
  void pack_overflow(struct object *obj)
  {
  	int i;

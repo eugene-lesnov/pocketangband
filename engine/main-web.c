@@ -51,6 +51,8 @@ static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
 static bool background_save;
+static bool collecting_drop_messages;
+static char drop_message[4096];
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -93,6 +95,23 @@ const char *web_set_prompt(const char *prompt)
     const char *previous = input_prompt;
     input_prompt = prompt;
     return previous;
+}
+
+void web_collect_drop_messages(bool collect)
+{
+    collecting_drop_messages = collect;
+    if (collect) drop_message[0] = '\0';
+}
+
+bool web_capture_drop_message(const char *message)
+{
+    if (!collecting_drop_messages) {
+        drop_message[0] = '\0';
+        return false;
+    }
+    if (drop_message[0]) my_strcat(drop_message, " ", sizeof(drop_message));
+    my_strcat(drop_message, message, sizeof(drop_message));
+    return true;
 }
 
 bool web_confirm_cast(const char *warning, const char *prompt)
@@ -530,7 +549,7 @@ enum { LOW_LIGHT_FUEL = 50 };
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
         int count, const char *const *lines, const int *repeats, bool roguelike, bool commands,
-        int turns), {
+        int turns, const char *drop_message), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -541,6 +560,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
+        dropMessage: UTF8ToString(drop_message),
         conditions: Module['worldConditions'], stats: Module['worldStats'],
         mapStatus: Module['worldMapStatus'],
         monsterHealth: Module['worldMonsterHealth'],
@@ -708,7 +728,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands), commands, player->total_energy / 100);
+        OPT(player, rogue_like_commands), commands, player->total_energy / 100, drop_message);
 }
 
 static double last_interrupt_poll;
