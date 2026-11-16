@@ -153,8 +153,28 @@ dt { color: var(--muted); }
 
 .view-bar { min-height: 44px; padding-inline: 0.625rem 0.25rem; }
 .view:has(.menu-screen:not([hidden])) .view-bar { min-height: 2rem; }
-#monster-sort { flex: none; margin-block: 0.25rem; padding-inline: 0.625rem; }
-#monster-sort[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: #493821; }
+#monster-sort {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0 0.625rem;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+}
+#monster-sort > .key-hint { margin: 0; color: inherit; }
+#monster-sort::before {
+    content: "";
+    width: 0.4em;
+    height: 0.7em;
+    border: solid currentColor;
+    border-width: 0 0.125em 0.125em 0;
+    transform: translateY(-0.1em) rotate(45deg);
+    visibility: hidden;
+}
+#monster-sort[aria-pressed="true"] { color: var(--accent); }
+#monster-sort[aria-pressed="true"]::before { visibility: visible; }
 .view {
     --map-button-size: 44px;
     --message-row-height: 54px;
