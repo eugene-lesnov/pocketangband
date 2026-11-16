@@ -1,4 +1,4 @@
-import { applyOfflineUpdate, prepareOffline, watchOfflineUpdates } from "./offline.js";
+import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
 import { graphicsModes, loadTiles, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
 
 const main = document.querySelector("main");
@@ -260,7 +260,9 @@ let saving = false;
 let deletingSave = false;
 let deleteTarget;
 let availableUpdate;
+let checkingUpdate = false;
 let applyingUpdate = false;
+let updateProgress = 0;
 let resultURL;
 let outcomeSaveFailed = false;
 let stopped = false;
@@ -1052,17 +1054,43 @@ function updateControls() {
 }
 
 function renderAppUpdate() {
-    updateApp.hidden = playingGame || mode !== "splash" || (!availableUpdate && !applyingUpdate);
-    updateApp.disabled = applyingUpdate || request === undefined || saving || deletingSave || !messagePause.hidden;
+    updateApp.hidden = playingGame || mode !== "splash";
+    updateApp.disabled = checkingUpdate || applyingUpdate || request === undefined ||
+        saving || deletingSave || !messagePause.hidden;
+    if (checkingUpdate) {
+        updateApp.textContent = "Checking…";
+    } else if (applyingUpdate) {
+        updateApp.textContent = updateProgress ? `Downloading… ${updateProgress}%` : "Downloading…";
+    } else {
+        updateApp.textContent = availableUpdate ? `Update to ${availableUpdate.release}` : "Check for updates";
+    }
 }
 
 updateApp.addEventListener("click", async () => {
-    if (updateApp.hidden || updateApp.disabled || !availableUpdate) return;
+    if (updateApp.hidden || updateApp.disabled) return;
+    updateStatus.textContent = "";
+    if (!availableUpdate) {
+        checkingUpdate = true;
+        renderAppUpdate();
+        try {
+            availableUpdate = await checkOfflineUpdate();
+            if (!availableUpdate) updateStatus.textContent = "You’re up to date.";
+        } catch {
+            updateStatus.textContent = "Could not check for updates. Check your connection and try again.";
+        } finally {
+            checkingUpdate = false;
+            renderAppUpdate();
+        }
+        return;
+    }
     applyingUpdate = true;
-    updateStatus.textContent = "Applying update…";
+    updateProgress = 0;
     updateControls();
     try {
-        await applyOfflineUpdate(availableUpdate);
+        await applyOfflineUpdate(availableUpdate, (percent) => {
+            updateProgress = percent;
+            renderAppUpdate();
+        });
         window.location.reload();
     } catch (error) {
         updateStatus.textContent = error.message;
@@ -2610,12 +2638,6 @@ async function start() {
             console.error(event.message);
             stop("Could not start Angband.", true);
         });
-        void watchOfflineUpdates((update) => {
-            if (availableUpdate === update) return;
-            availableUpdate = update;
-            if (!applyingUpdate) updateStatus.textContent = "";
-            renderAppUpdate();
-        }).catch(console.error);
     } catch (error) {
         console.error(error);
         status.textContent = "Could not start Angband.";

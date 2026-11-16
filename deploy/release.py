@@ -15,6 +15,7 @@ HEX = "[0-9a-f]{64}"
 ASSET_NAME = r"[a-z0-9][a-z0-9.-]*"
 PACKAGE_PATH = re.compile(rf"packages/({HEX})/({ASSET_NAME})")
 ASSET_PATH = re.compile(ASSET_NAME)
+WORKER_PATH = re.compile(rf"sw-({HEX})\.js")
 MAX_SITE_SIZE = 900 * 1024 * 1024
 
 
@@ -46,7 +47,7 @@ def write_zip(folder, archive):
                 bundle.writestr(member, path.read_bytes(), compress_type=ZIP_DEFLATED, compresslevel=9)
 
 
-def pack(site, source, output):
+def pack(site, source, output, release_name):
     source_hash = file_hash(source)
     template = (site / "sw.js").read_text(encoding="utf-8")
     licenses = site / "licenses.html"
@@ -69,6 +70,9 @@ def pack(site, source, output):
             shutil.copyfile(path, web / path.name)
             if path.name != "sw.js":
                 shutil.copyfile(path, package / path.name)
+        shutil.copyfile(site / "sw.js", web / f"sw-{version}.js")
+        update = {"version": version, "release": release_name}
+        write_file(web / "update.json", (json.dumps(update) + "\n").encode("utf-8"))
 
         write_zip(web, staging / RELEASE_FILES[0])
         release = web / "release"
@@ -103,6 +107,8 @@ def unpack_release(download, site, current):
     package_assets = {}
     root_assets = {}
     worker = None
+    versioned_worker = None
+    update = None
     with ZipFile(archive) as bundle:
         if len(set(bundle.namelist())) != len(bundle.infolist()):
             raise ValueError(f"Duplicate entries in {archive}.")
@@ -129,6 +135,21 @@ def unpack_release(download, site, current):
             else:
                 if name == "sw.js":
                     worker = data.decode("utf-8")
+                elif WORKER_PATH.fullmatch(name):
+                    if versioned_worker is not None:
+                        raise ValueError(f"Multiple versioned workers in {archive}.")
+                    versioned_worker = name, data
+                    target = site / name
+                    if target.exists():
+                        if target.read_bytes() != data:
+                            raise ValueError(f"Immutable worker file changed: {name}")
+                    else:
+                        write_file(target, data)
+                    continue
+                elif name == "update.json":
+                    update = json.loads(data)
+                    if not isinstance(update, dict):
+                        raise ValueError(f"Invalid update metadata in {archive}.")
                 else:
                     root_assets[name] = asset_record(data)
                 if current:
@@ -141,6 +162,13 @@ def unpack_release(download, site, current):
     inventory = re.match(r'const assets = (\{.*?\});\nconst version = "([0-9a-f]{64})";', worker, re.DOTALL)
     if not inventory or inventory[2] != version or json.loads(inventory[1]) != package_assets or package_assets != root_assets:
         raise ValueError(f"Service worker inventory, bootstrap and game package disagree in {archive}.")
+    if versioned_worker is not None or update is not None:
+        if (
+            versioned_worker != (f"sw-{version}.js", worker.encode("utf-8"))
+            or update is None or update.get("version") != version
+            or not isinstance(update.get("release"), str) or not update["release"]
+        ):
+            raise ValueError(f"Versioned worker and update metadata disagree in {archive}.")
     target = site / "sources" / f"{source_hash}.tar.gz"
     if not target.exists():
         write_file(target, (download / RELEASE_FILES[1]).read_bytes())
@@ -168,13 +196,14 @@ def main():
     builder = commands.add_parser("pack")
     for name in ("site", "source", "output"):
         builder.add_argument(name, type=Path)
+    builder.add_argument("release_name")
     publisher = commands.add_parser("pages")
     publisher.add_argument("output", type=Path)
     publisher.add_argument("selected", type=Path)
     publisher.add_argument("retained", nargs="*", type=Path)
     args = parser.parse_args()
     if args.command == "pack":
-        pack(args.site, args.source, args.output)
+        pack(args.site, args.source, args.output, args.release_name)
     else:
         pages(args.output, args.selected, args.retained)
 

@@ -118,4 +118,4 @@ emcc -O2 -Isrc -DBUILD_ID="$angband_version" \
     "${sources[@]}" src/main.c src/main-web.c -o angband.js
 
 cp angband.js angband.wasm angband.data "$build_dir/site/"
-python3 "$source_dir/deploy/release.py" pack "$build_dir/site" "$build_dir/source.tar.gz" "$output_dir"
+python3 "$source_dir/deploy/release.py" pack "$build_dir/site" "$build_dir/source.tar.gz" "$output_dir" "$pocketband_version"

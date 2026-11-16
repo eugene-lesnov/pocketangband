@@ -3,6 +3,8 @@ const version = "__VERSION__";
 const scope = new URL(self.registration.scope);
 const cachePrefix = `pocketband:${encodeURIComponent(scope.href)}:`;
 const cacheName = cachePrefix + version;
+const legacyWorker = self.location.href === new URL("sw.js", scope).href;
+const installedPackageUrl = new URL("installed-package.json", scope);
 
 async function cacheAsset(cache, path, signal, reportProgress) {
     const key = new URL(path, scope);
@@ -98,7 +100,12 @@ async function downloadPackage() {
 }
 
 self.addEventListener("install", (event) => {
-    event.waitUntil(downloadPackage());
+    event.waitUntil((async () => {
+        if (legacyWorker && self.registration.active && await caches.match(installedPackageUrl)) {
+            throw new Error("Switch to a versioned worker to update PocketBand.");
+        }
+        await downloadPackage();
+    })());
 });
 
 self.addEventListener("message", (event) => {
@@ -116,6 +123,10 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("activate", (event) => {
     event.waitUntil((async () => {
+        if (legacyWorker) {
+            const cache = await caches.open(cacheName);
+            await cache.put(installedPackageUrl, Response.json({ version }));
+        }
         await self.clients.claim();
         const names = await caches.keys();
         await Promise.all(names
@@ -128,6 +139,10 @@ self.addEventListener("fetch", (event) => {
     const { request } = event;
     if (request.method !== "GET" || !request.url.startsWith(scope.href)) return;
     const path = new URL(request.url).pathname.slice(scope.pathname.length) || "index.html";
+    if (path === "installed-package.json") {
+        event.respondWith(Response.json({ version }));
+        return;
+    }
     if (!Object.hasOwn(assets, path)) return;
     event.respondWith(caches.open(cacheName).then((cache) => cacheAsset(cache, path)));
 });

@@ -1,4 +1,68 @@
-const workerUrl = new URL("./sw.js", import.meta.url);
+const scope = new URL("./", import.meta.url);
+const legacyWorker = new URL("sw.js", scope);
+const versionPattern = /^[a-f0-9]{64}$/;
+let legacyPin;
+
+function workerUrl(version) {
+    return new URL(`sw-${version}.js`, scope);
+}
+
+async function readVersion(path, options) {
+    const response = await fetch(new URL(path, scope), options);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const info = await response.json();
+    if (typeof info?.version !== "string" || !versionPattern.test(info.version)) {
+        throw new Error("Invalid package version.");
+    }
+    return info;
+}
+
+async function registerWorker(url) {
+    return navigator.serviceWorker.register(url, { scope: scope.href, updateViaCache: "none" });
+}
+
+async function pinLegacyWorker() {
+    const { version } = await readVersion("installed-package.json");
+    const registration = await navigator.serviceWorker.getRegistration(scope);
+    if (registration?.active?.scriptURL !== legacyWorker.href ||
+        [registration.installing, registration.waiting].some((worker) => worker && worker.scriptURL !== legacyWorker.href)) {
+        return;
+    }
+    await registerWorker(workerUrl(version));
+}
+
+async function installWorker(url, reportProgress, waitForActivation = false) {
+    const serviceWorkers = navigator.serviceWorker;
+    const onMessage = ({ data, source }) => {
+        if (source?.scriptURL === url.href && data?.type === "pocketband-download") {
+            reportProgress(data.percent);
+        }
+    };
+    serviceWorkers.addEventListener("message", onMessage);
+    try {
+        const registration = await registerWorker(url);
+        const worker = [registration.installing, registration.waiting, registration.active]
+            .find((candidate) => candidate?.scriptURL === url.href);
+        if (!worker) throw new Error("The game download did not start.");
+        await new Promise((resolve, reject) => {
+            function checkState() {
+                const { state } = worker;
+                if (state === "activated" || (!waitForActivation && state === "installed")) {
+                    worker.removeEventListener("statechange", checkState);
+                    resolve();
+                } else if (state === "redundant") {
+                    worker.removeEventListener("statechange", checkState);
+                    reject(new Error("Could not download the game package."));
+                }
+            }
+            worker.addEventListener("statechange", checkState);
+            checkState();
+        });
+        return worker;
+    } finally {
+        serviceWorkers.removeEventListener("message", onMessage);
+    }
+}
 
 export async function prepareOffline(reportProgress) {
     const serviceWorkers = navigator.serviceWorker;
@@ -6,84 +70,44 @@ export async function prepareOffline(reportProgress) {
         throw new Error("Offline play requires a browser with service workers and an HTTPS or localhost address.");
     }
     const controller = serviceWorkers.controller;
-    if (controller?.scriptURL === workerUrl.href && controller.state === "activated") return true;
-
-    const onMessage = ({ data, source }) => {
-        if (source?.scriptURL === workerUrl.href && data?.type === "pocketband-download") {
-            reportProgress(data.percent);
+    if (controller?.state === "activated") {
+        if (controller.scriptURL === legacyWorker.href) {
+            legacyPin = pinLegacyWorker().catch(console.error);
         }
-    };
-    serviceWorkers.addEventListener("message", onMessage);
+        return true;
+    }
     try {
-        let registration;
-        try {
-            registration = await serviceWorkers.register(workerUrl, { updateViaCache: "none" });
-        } catch (error) {
-            console.error(error);
-            throw new Error("Could not start the game download. Check your connection and try again.");
-        }
-        const worker = controller?.scriptURL === workerUrl.href ? controller :
-            registration.installing ?? registration.waiting ?? registration.active;
-        if (!worker) throw new Error("The game download did not start. Check your connection and try again.");
-        await new Promise((resolve, reject) => {
-            function checkState() {
-                if (worker.state === "activated") {
-                    worker.removeEventListener("statechange", checkState);
-                    resolve();
-                } else if (worker.state === "redundant") {
-                    worker.removeEventListener("statechange", checkState);
-                    reject(new Error("Could not download the game. Check your connection and try again."));
-                }
-            }
-            worker.addEventListener("statechange", checkState);
-            checkState();
-        });
+        const { version } = await readVersion("update.json", { cache: "no-store" });
+        await installWorker(workerUrl(version), reportProgress, true);
         return false;
-    } finally {
-        serviceWorkers.removeEventListener("message", onMessage);
+    } catch (error) {
+        console.error(error);
+        throw new Error("Could not download the game. Check your connection and try again.");
     }
 }
 
-export async function watchOfflineUpdates(reportUpdate) {
-    const serviceWorkers = navigator.serviceWorker;
-    const registration = await serviceWorkers.getRegistration(workerUrl);
-    if (!registration) return;
-
-    const observed = new WeakSet();
-    let checking = false;
-
-    function refresh() {
-        const { installing, waiting } = registration;
-        for (const worker of [installing, waiting]) {
-            if (!worker || observed.has(worker)) continue;
-            observed.add(worker);
-            worker.addEventListener("statechange", refresh);
-        }
-        reportUpdate(waiting?.state === "installed" ? waiting : undefined);
-    }
-
-    async function check() {
-        if (checking || document.hidden) return;
-        checking = true;
-        try {
-            await registration.update();
-        } catch {
-            return;
-        } finally {
-            checking = false;
-            refresh();
-        }
-    }
-
-    registration.addEventListener("updatefound", refresh);
-    serviceWorkers.addEventListener("controllerchange", refresh);
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("online", check);
-    refresh();
-    void check();
+export async function checkOfflineUpdate() {
+    const [current, latest] = await Promise.all([
+        readVersion("installed-package.json"),
+        readVersion("update.json", { cache: "no-store" }),
+    ]);
+    if (typeof latest.release !== "string" || !latest.release) throw new Error("Invalid release name.");
+    return latest.version === current.version ? undefined : latest;
 }
 
-export function applyOfflineUpdate(worker) {
+export async function applyOfflineUpdate(update, reportProgress) {
+    await legacyPin;
+    let worker;
+    try {
+        worker = await installWorker(workerUrl(update.version), reportProgress);
+    } catch (error) {
+        console.error(error);
+        throw new Error("Could not download the update. Check your connection and try again.");
+    }
+    if (navigator.serviceWorker.controller !== worker) await activateWorker(worker);
+}
+
+function activateWorker(worker) {
     return new Promise((resolve, reject) => {
         const serviceWorkers = navigator.serviceWorker;
         const channel = new MessageChannel();
