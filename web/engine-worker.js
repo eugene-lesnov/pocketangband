@@ -57,7 +57,10 @@ self.addEventListener("message", ({ data }) => {
         if (waiting?.mode !== "command" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 1 || data.code > 9 || data.code === 5) return;
     } else if (data.type === "submit-name") {
-        if (waiting?.mode !== "name" || data.request !== waiting.request || typeof data.value !== "string") return;
+        if (!["name", "birth-stats", "birth-roll"].includes(waiting?.mode) ||
+            data.request !== waiting.request || typeof data.value !== "string") return;
+    } else if (data.type === "random-name") {
+        if (!["birth-stats", "birth-roll"].includes(waiting?.mode) || data.request !== waiting.request) return;
     } else if (data.type === "set-tiles") {
         if (waiting?.mode !== "command" || data.request !== waiting.request || !graphicsModes.has(data.code)) return;
     } else if (["tap", "aim-cell", "target-cell", "map-cell", "map-action"].includes(data.type)) {

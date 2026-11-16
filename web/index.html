@@ -109,6 +109,17 @@
                 <p id="birth-bonuses"></p>
             </section>
             <section id="birth-stats" class="menu-screen" aria-labelledby="view-title" hidden>
+                <form id="birth-name-form">
+                    <fieldset id="birth-name-fields" disabled>
+                        <label for="birth-name-value">Character name</label>
+                        <div class="birth-name-row">
+                            <input id="birth-name-value" type="text" aria-describedby="birth-name-prompt"
+                                autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="done">
+                            <button type="button" data-input="random-name" data-value="0">Random name</button>
+                        </div>
+                        <p id="birth-name-prompt">Leave blank to generate a random name.</p>
+                    </fieldset>
+                </form>
                 <div class="birth-stats-header">
                     <div>
                         <p id="birth-identity"></p>
@@ -117,6 +128,10 @@
                     <button id="reset-stats" type="button" data-key="r">Reset</button>
                 </div>
                 <fieldset id="birth-stat-rows" aria-label="Stats" disabled></fieldset>
+                <fieldset id="birth-roll-actions" class="key-row" aria-label="Dice roll" disabled hidden>
+                    <button id="previous-roll" type="button" data-key="p">Previous roll</button>
+                    <button type="button" data-key="r">Reroll</button>
+                </fieldset>
                 <p id="birth-roll-history" hidden></p>
             </section>
             <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
@@ -206,10 +221,6 @@
                     <button id="expand-picker" type="button" aria-expanded="false">Expand</button>
                 </div>
             </section>
-            <fieldset id="birth-roll-actions" class="key-row" aria-label="Dice roll" disabled hidden>
-                <button id="previous-roll" type="button" data-key="p">Previous roll</button>
-                <button type="button" data-key="r">Reroll</button>
-            </fieldset>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
             <p id="delete-save-status" class="status" role="status" hidden></p>
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>

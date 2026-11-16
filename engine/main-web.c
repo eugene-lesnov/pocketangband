@@ -405,6 +405,11 @@ EM_JS(void, web_set_birth_roll, (bool previous, int hp, int mana, const char *hi
     };
 });
 
+EM_JS(void, web_set_birth_name, (const char *name, size_t size), {
+    Module['inputContext'].birthStats.name = UTF8ToString(name);
+    Module['inputContext'].birthStats.nameMaxBytes = size - 1;
+});
+
 EM_JS(void, web_add_birth_stat, (const char *label, int base, const char *value, int cost,
         bool can_decrease, bool can_increase), {
     Module['inputContext'].birthStats.rows.push({ label: UTF8ToString(label), base,
@@ -1104,6 +1109,10 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "run-direction": return run_direction;
         case "submit-name":
             Module['submittedName'] = event.value;
+            HEAP32[code >>> 2] = 0;
+            return name_event;
+        case "random-name":
+            HEAP32[code >>> 2] = 1;
             return name_event;
         case "tap": return tap;
         case "menu-row": return row;

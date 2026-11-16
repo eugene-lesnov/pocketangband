@@ -132,6 +132,11 @@ const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
 const birthStatsScreen = document.querySelector("#birth-stats");
+const birthNameForm = document.querySelector("#birth-name-form");
+const birthNameFields = document.querySelector("#birth-name-fields");
+const birthNameValue = document.querySelector("#birth-name-value");
+let birthNameSource;
+let randomBirthNamePending = false;
 const birthIdentity = document.querySelector("#birth-identity");
 const birthPoints = document.querySelector("#birth-points");
 const birthStatRows = document.querySelector("#birth-stat-rows");
@@ -1017,7 +1022,7 @@ function updateControls() {
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     setKeyHint(cancelKey);
     cancelKey.hidden = details || character || overview || victory;
-    birthStatRows.disabled = resetStats.disabled = disabled;
+    birthStatRows.disabled = resetStats.disabled = birthNameFields.disabled = disabled;
     setActions(birthRollActions, rolling, disabled);
     previousRoll.disabled = !context.birthStats?.roll?.previous;
     setActions(targetActions, showTargetControls, disabled);
@@ -1257,6 +1262,8 @@ function updateView(state = world, region = views.target.crop) {
     resultsList.hidden = mode !== "results-list";
     resultsFile.hidden = mode !== "results-file";
     const showBirthStats = !!context.birthStats;
+    main.classList.toggle("birth-creating", showBirthStats);
+    updateBirthViewport();
     splashScreen.hidden = !showSplash || !!openPanel;
     birthStatsScreen.hidden = !showBirthStats || !!openPanel;
     if (showSplash) angbandVersion.textContent = context.version;
@@ -1448,6 +1455,9 @@ function handleWorkerMessage({ data }) {
             playingGame = data.playing;
             request = data.request;
             context = data.context;
+            if (mode === "save-slots" || data.menu?.birth?.title === "Choose race") {
+                birthNameSource = undefined;
+            }
             mapDirectionAction = undefined;
             if (mode === "name") {
                 nameValue.value = context.value;
@@ -1605,6 +1615,16 @@ function clearPendingInput() {
 
 function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || applyingUpdate || !messagePause.hidden) return false;
+    if (context.birthStats) {
+        if (input.type === "key" && input.code === keyCode("Enter")) {
+            return submitName(birthNameValue, context.birthStats.nameMaxBytes);
+        }
+        if (input.type === "key" && input.code === keyCode("*")) input = { type: "random-name" };
+        if (input.type === "random-name") randomBirthNamePending = true;
+        if (input.type === "submit-name" || (input.type === "key" && input.code === keyCode("Escape"))) {
+            birthNameValue.blur();
+        }
+    }
     setMapListsOpen(false);
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
@@ -1641,19 +1661,38 @@ function sendInput(input) {
 }
 
 nameValue.addEventListener("input", () => nameValue.setCustomValidity(""));
+birthNameValue.addEventListener("input", () => birthNameValue.setCustomValidity(""));
+birthNameForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (context.birthStats) submitName(birthNameValue, context.birthStats.nameMaxBytes);
+});
 nameScreen.addEventListener("submit", (event) => {
     event.preventDefault();
     if (mode !== "name" || request === undefined) return;
-    const value = nameValue.value;
-    const error = /[\p{Cc}\p{Cs}]/u.test(value) ? "The name contains unsupported characters." :
-        new TextEncoder().encode(value).length > context.nameMaxBytes ? "The name is too long." : "";
-    if (error) {
-        nameValue.setCustomValidity(error);
-        nameValue.reportValidity();
-        return;
-    }
-    sendInput({ type: "submit-name", value });
+    submitName(nameValue, context.nameMaxBytes);
 });
+
+function submitName(field, maxBytes) {
+    const value = field.value;
+    const error = /[\p{Cc}\p{Cs}]/u.test(value) ? "The name contains unsupported characters." :
+        new TextEncoder().encode(value).length > maxBytes ? "The name is too long." : "";
+    if (error) {
+        field.setCustomValidity(error);
+        field.reportValidity();
+        return false;
+    }
+    return sendInput({ type: "submit-name", value });
+}
+
+function updateBirthViewport() {
+    if (context.birthStats && window.visualViewport) {
+        main.style.setProperty("--birth-viewport-height", `${window.visualViewport.height}px`);
+    } else {
+        main.style.removeProperty("--birth-viewport-height");
+    }
+}
+
+window.visualViewport?.addEventListener("resize", updateBirthViewport);
 
 let buttonPress;
 const inputButton = "button[data-key], button[data-input]";
@@ -2035,6 +2074,12 @@ function renderBirthPreview() {
 
 function renderBirthStats(stats, changed) {
     const { roll } = stats;
+    if (birthNameSource !== stats.name || randomBirthNamePending) {
+        birthNameValue.value = stats.name;
+        birthNameValue.setCustomValidity("");
+        birthNameSource = stats.name;
+        randomBirthNamePending = false;
+    }
     const focused = document.activeElement;
     const focusedRow = !changed && birthStatRows.contains(focused) ? focused.closest("button") : null;
     birthStatsScreen.classList.toggle("rolled-stats", !!roll);
@@ -2575,6 +2620,13 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
+    if (context.birthStats && event.target === birthNameValue) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            birthNameValue.blur();
+        }
+        return;
+    }
     if (mode === "name") {
         if (event.key === "Escape" || (event.key === "*" && !event.ctrlKey && !event.metaKey)) {
             event.preventDefault();
