@@ -282,9 +282,11 @@
         </div>
     </main>
     <dialog id="message-dialog" aria-labelledby="message-dialog-title">
-        <h2 id="message-dialog-title">Message recall</h2>
-        <ol id="messages" tabindex="0" aria-label="Angband messages"></ol>
-        <form method="dialog"><button autofocus>Close</button></form>
+        <section class="view">
+            <header class="view-bar"><h2 id="message-dialog-title">Message recall</h2></header>
+            <ol id="messages" class="menu-screen" tabindex="0" aria-label="Angband messages" autofocus></ol>
+        </section>
+        <form method="dialog"><button>Close</button></form>
     </dialog>
     <dialog id="delete-save-dialog" aria-labelledby="delete-save-title" aria-describedby="delete-save-label delete-save-warning">
         <form method="dialog">

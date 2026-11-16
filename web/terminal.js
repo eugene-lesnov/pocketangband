@@ -296,6 +296,7 @@ function applyPreferences() {
     main.classList.toggle("compact-hud", preferences.compactHud);
     main.classList.toggle("left-handed", preferences.leftHanded);
     main.classList.toggle("large-text", preferences.largeText);
+    messageDialog.classList.toggle("large-text", preferences.largeText);
 }
 applyPreferences();
 
@@ -588,6 +589,7 @@ function renderWorld(state, previousSpeed) {
         return item;
     }));
     messages.scrollTop = messages.scrollHeight;
+    updateMessageFade();
     updateJournal();
 }
 
@@ -1879,6 +1881,7 @@ for (const button of directionButtons) {
 }
 for (const [button, key] of [[closeMapCellActions, "Escape"], [stopAction, "Escape"],
     [monsterSort, "x"],
+    [messageDialog.querySelector("button"), "Escape"],
     [continueMessage, "Enter"], [document.querySelector("#confirm-name"), "Enter"]]) setKeyHint(button, key);
 
 function commandKey([key, , alternative], roguelike) {
@@ -2345,9 +2348,26 @@ expandPicker.addEventListener("click", () => {
     updateView();
     updateControls();
 });
+function updateMessageFade() {
+    if (!messageDialog.open || !messages.childElementCount) return;
+    const area = messages.getBoundingClientRect();
+    const items = [...messages.children];
+    const positions = items.map((item) => item.getBoundingClientRect().bottom);
+    const top = Math.max(area.top + messages.clientTop, positions[0]);
+    const bottom = Math.min(area.top + messages.clientTop + messages.clientHeight, positions.at(-1));
+    items.forEach((item, index) => {
+        const progress = bottom > top ? Math.max(0, Math.min(1, (positions[index] - top) / (bottom - top))) : 1;
+        item.style.opacity = String(0.6 + 0.4 * progress);
+    });
+}
+
+messages.addEventListener("scroll", updateMessageFade, { passive: true });
+new ResizeObserver(updateMessageFade).observe(messages);
 journal.addEventListener("click", () => {
     messageDialog.showModal();
+    messages.focus({ preventScroll: true });
     messages.scrollTop = messages.scrollHeight;
+    updateMessageFade();
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
