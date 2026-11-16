@@ -1564,7 +1564,7 @@ function sendInput(input) {
     request = undefined;
     renderAppUpdate();
     if (mode === "aim") draw();
-    if (running) updateControls();
+    if (running || !mapCellActions.hidden) updateControls();
     updatePrompt();
     return true;
 }
