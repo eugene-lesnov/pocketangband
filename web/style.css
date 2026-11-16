@@ -794,6 +794,7 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
     font-size: 0.8125rem;
 }
 .character-effects li { padding: 0.125rem 0.375rem; border-radius: 0.25rem; background: #332a1d; }
+.character-effects li.alert { color: #ffb3a0; }
 .character-detail { border: 1px solid var(--border); border-radius: 0.375rem; }
 .character-detail summary {
     min-height: 44px;

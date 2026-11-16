@@ -645,6 +645,8 @@ static void publish_world(bool commands)
     publish_map_status();
     publish_stats(commands);
     publish_monster_health();
+    if (player->word_recall) add_world_condition("Recall", 55);
+    if (player->deep_descent) add_world_condition("Descent", 55);
     for (int effect = 0; effect < TMD_MAX; ++effect) {
         if (!player->timed[effect]) continue;
         struct timed_grade *grade = timed_effects[effect].grade;
@@ -677,8 +679,6 @@ static void publish_world(bool commands)
         }
         add_world_condition(grade->name, priority);
     }
-    if (player->word_recall) add_world_condition("Recall", 55);
-    if (player->deep_descent) add_world_condition("Descent", 55);
     object_desc(light_name, sizeof(light_name), light, ODESC_BASE | ODESC_COMBAT, player);
 
     my_strcpy(speed, "Normal", sizeof(speed));

@@ -547,7 +547,8 @@ function renderWorld(state, previousSpeed) {
         label === state.foodGrade && priority > 0));
     const alerts = conditions.filter(({ priority }) => priority > 0)
         .sort((left, right) => right.priority - left.priority);
-    const labels = (alerts.length ? alerts : conditions).slice(0, 2).map(({ label }) => label);
+    const selected = (alerts.length ? alerts : conditions).slice(0, 2);
+    const labels = conditions.filter((effect) => selected.includes(effect)).map(({ label }) => label);
     const hiddenCount = conditions.length - labels.length;
     activeConditions.textContent = labels.join(" · ");
     activeConditions.classList.toggle("alert", !!alerts.length);
@@ -693,24 +694,18 @@ function renderConditions(container) {
         { label: "Light source", value: state.light },
     ];
     container.replaceChildren(characterRows(rows));
-    const effects = state.conditions
-        .filter(({ label }) => label !== state.foodGrade)
-        .sort((left, right) => right.priority - left.priority);
-    for (const [label, group] of [["Alerts", effects.filter(({ priority }) => priority > 0)],
-        ["Other active effects", effects.filter(({ priority }) => priority === 0)]]) {
-        if (!group.length) continue;
-        const heading = document.createElement("h3");
-        heading.textContent = label;
-        const list = document.createElement("ul");
-        list.className = "character-effects";
-        list.setAttribute("aria-label", label);
-        for (const { label } of group) {
-            const item = document.createElement("li");
-            item.textContent = label;
-            list.append(item);
-        }
-        container.append(heading, list);
+    const effects = state.conditions.filter(({ label }) => label !== state.foodGrade);
+    if (!effects.length) return;
+    const list = document.createElement("ul");
+    list.className = "character-effects";
+    list.setAttribute("aria-label", "Active effects");
+    for (const { label, priority } of effects) {
+        const item = document.createElement("li");
+        item.textContent = label;
+        item.classList.toggle("alert", priority > 0);
+        list.append(item);
     }
+    container.append(list);
 }
 
 function renderBirthAttributes(rows) {
