@@ -2267,7 +2267,8 @@ function renderMenu(state) {
     const endings = [];
     const choices = [];
     for (const row of state.rows) {
-        const button = makeInput("menu-row", row.index, row.name);
+        const label = mode === "save-slots" ? saveSlotLabel(row) : row.name;
+        const button = makeInput("menu-row", row.index, label);
         button.disabled = !row.enabled;
         if (row.checked !== undefined) {
             button.setAttribute("aria-pressed", String(row.checked));
@@ -2278,7 +2279,7 @@ function renderMenu(state) {
             button.setAttribute("aria-current", "true");
         }
         const description = document.createElement("span");
-        description.textContent = row.name;
+        description.textContent = label;
         if (row.detail && !state.birth?.preview) {
             const detail = document.createElement("small");
             detail.textContent = row.detail;
@@ -2297,12 +2298,12 @@ function renderMenu(state) {
             if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
         }
         button.setAttribute("aria-label",
-            [row.name, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
+            [label, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
                 .filter(Boolean).join(", "));
         if (mode === "save-slots" && row.index > 0 && row.enabled) {
             const controls = document.createElement("div");
             controls.className = "save-slot-row";
-            const remove = makeInput("delete-save", row.index, `Delete save: ${saveSlotLabel(row)}`);
+            const remove = makeInput("delete-save", row.index, `Delete save: ${label}`);
             remove.className = "delete-save";
             remove.setAttribute("aria-haspopup", "dialog");
             remove.replaceChildren(deleteSaveIcon.content.cloneNode(true));
