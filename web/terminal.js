@@ -208,6 +208,16 @@ const extraCommands = [
 ];
 const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles", character: "Character",
     "touch-settings": "Touch settings" };
+const screenTitles = new Map([
+    ["aim", "Aim"], ["run-direction", "Run"], ["direction", "Direction"],
+    ["overview", "Full dungeon map"], ["details", "Details"], ["history", "Character history"],
+    ["birth-stats", "Point-based"], ["birth-roll", "Standard roller"],
+    ["name", "Character name"], ["text", "Text entry"],
+]);
+const modesWithoutKeyboard = new Set([
+    "splash", "save-slots", "birth-stats", "birth-roll", "birth-review", "history",
+    "run-direction", "quantity", "option-number", "rest", "confirm", "overview", "details", "victory", "retire",
+]);
 const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
 const mapDirections = [
@@ -797,6 +807,26 @@ function isTextEntry(state) {
     return state === "name" || state === "text";
 }
 
+function isPickingOnMap() {
+    return !!menu?.onMap && !openPanel;
+}
+
+function isTargeting() {
+    return mode === "aim" || mode === "target";
+}
+
+function isDirectionPrompt() {
+    return mode === "direction" || mode === "run-direction";
+}
+
+function isOutcomeScreen() {
+    return mode === "menu" && !!context.outcome;
+}
+
+function isResultsScreen() {
+    return mode === "results-list" || mode === "results-file";
+}
+
 function closeInputPanel(closeKeyboard = true) {
     if (!mapLists.hidden) {
         setMapListsOpen(false);
@@ -838,86 +868,86 @@ function showPanel(panel, trigger) {
 
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped || applyingUpdate;
+    const pickingOnMap = isPickingOnMap();
+    const outcome = isOutcomeScreen();
+    const resultChild = isResultsScreen() || menu?.title === "Create spoilers";
+    const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !pickingOnMap && !openPanel &&
+        !menu?.birth && !outcome && !resultChild;
+    const showKeyboard = keyboardOpen && canOpenKeyboard;
+    const stopVisible = running || !stopAction.hidden;
+    const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;
+
     renderAppUpdate();
-    const pickingOnMap = Boolean(menu?.onMap) && !openPanel;
+    updateMenuControls(disabled, pickingOnMap);
+    const showPad = updateDirectionPad(disabled, pickingOnMap, stopVisible);
+    updateMapControls(disabled, showKeyboard, stopVisible);
+    const editingHistory = updateBirthControls(disabled);
+    updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, stopVisible,
+        showPad, showTargetControls, editingHistory });
+    updateTargetControls(disabled, showTargetControls, showKeyboard);
+    updatePromptControls(disabled, stopVisible);
+    updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVisible);
+}
+
+function updateMenuControls(disabled, pickingOnMap) {
     mapPicker.hidden = !pickingOnMap;
     expandPicker.textContent = pickerExpanded ? "Show map" : "Expand";
     expandPicker.setAttribute("aria-expanded", String(pickerExpanded));
     expandPicker.disabled = disabled;
-    const command = mode === "command";
-    const runDirection = mode === "run-direction";
-    const selecting = mode === "target";
-    const aiming = mode === "aim";
-    const directing = mode === "direction";
-    const editing = isTextEntry(mode);
-    const counting = mode === "quantity";
-    const optionNumber = mode === "option-number";
-    const splash = mode === "splash";
-    const saveSlots = mode === "save-slots";
-    const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
-    const existingSave = saveSlots && !!selectedRow && selectedRow.index > 0;
-    const resting = mode === "rest";
-    const confirming = mode === "confirm";
-    const history = mode === "history";
-    const rolling = mode === "birth-roll";
-    const reviewing = mode === "birth-review";
-    const stats = mode === "birth-stats" || rolling;
-    const editingHistory = stats && !birthHistoryEditor.hidden;
-    const birthChoiceMenu = !!menu?.birth;
-    const overview = mode === "overview";
-    const details = mode === "details";
-    monsterSort.hidden = !details || context.sortByExp === undefined || !!openPanel;
+
+    monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel;
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
-    const character = mode === "character";
-    const outcome = mode === "menu" && !!context.outcome;
-    const victory = mode === "victory";
-    const resultChild = mode === "results-list" || mode === "results-file" || menu?.title === "Create spoilers";
-    const retiring = mode === "retire";
-    const targeting = aiming || selecting;
-    const attackTargeting = selecting && context.attack;
-    const targetUnavailable = aiming ? !context.current : !context.canSelect;
-    const canOpenKeyboard = !editing && !pickingOnMap && !runDirection && !counting && !optionNumber && !splash && !saveSlots &&
-        !resting && !confirming && !history && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
-        !outcome && !victory && !resultChild && !retiring && !reviewing;
-    const showKeyboard = keyboardOpen && canOpenKeyboard;
-    const playing = command && !openPanel && !showKeyboard;
-    const stopVisible = running || !stopAction.hidden;
-    stopAction.hidden = !stopVisible;
-    const inspectingCell = playing && !stopVisible && !!context.mapCell?.actions;
-    const showTargetControls = selecting && !showKeyboard && !openPanel && !stopVisible;
-    vitals.disabled = disabled || !(command || context.character);
+
     panelCharacter.hidden = !playingGame || !menu || !!context.outcome || !!openPanel || pickingOnMap;
     panelCharacter.disabled = disabled || !context.character;
+    terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
+    setActions(actionsScreen, !!openPanel && openPanel !== "character",
+        disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
+    setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
+    menuRows.disabled = menuSections.disabled = disabled;
+}
+
+function updateDirectionPad(disabled, pickingOnMap, stopVisible) {
+    const command = mode === "command";
+    const selectable = isTargeting() || isDirectionPrompt();
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
-    views.target.viewport.classList.toggle("selectable", targeting || directing || runDirection);
-    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
-    const usingPad = !openPanel && (command || directing || runDirection || targeting || (isMenu() && !menu));
+    views.target.viewport.classList.toggle("selectable", selectable);
+    const usingPad = !openPanel && (command || selectable || (isMenu() && !menu));
     const showPad = !pickingOnMap && (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
-    directionPad.classList.toggle("run-direction", runDirection);
+    directionPad.classList.toggle("run-direction", mode === "run-direction");
     directionPad.classList.toggle("running-mode", command && runMode);
     directionPad.setAttribute("aria-label", command && runMode ? "Direction pad: Run" :
-        aiming && context.selecting ? "Adjust target selection" : "Direction pad");
-    const here = (directing && context.center) || mapDirectionAction?.targets.some(({ direction }) => direction === 5);
+        mode === "aim" && context.selecting ? "Adjust target selection" : "Direction pad");
+    const targets = mapDirectionAction?.targets;
+    const here = (mode === "direction" && context.center) || targets?.some(({ direction }) => direction === 5);
     for (const button of directionButtons) {
-        if (button !== directionCenter) button.disabled = !!mapDirectionAction &&
-            !mapDirectionAction.targets.some(({ direction }) => mapDirections[direction].key === button.dataset.key);
+        if (button !== directionCenter) button.disabled = !!targets &&
+            !targets.some(({ direction }) => mapDirections[direction].key === button.dataset.key);
     }
     directionCenter.disabled = (!command || !!mapDirectionAction) && !here;
     centerDot.hidden = !!here;
     centerCaption.hidden = !here;
     directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
-    const showPlayActions = playing && !stopVisible;
+    return showPad;
+}
+
+function updateMapControls(disabled, showKeyboard, stopVisible) {
+    const command = mode === "command";
+    const showPlayActions = command && !openPanel && !showKeyboard && !stopVisible;
+    const inspectingCell = showPlayActions && !!context.mapCell?.actions;
+    vitals.disabled = disabled || !(command || context.character);
+    stopAction.hidden = !stopVisible;
     setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
     playKeys.classList.toggle("stopping", stopVisible);
     movementMode.hidden = !(showPlayActions || runningFromPad);
     walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
-    setActions(openMenu, playing && !stopVisible, disabled);
-    setActions(openMapLists, playing && !stopVisible && context.worldView, disabled || !!mapDirectionAction);
+    setActions(openMenu, showPlayActions, disabled);
+    setActions(openMapLists, showPlayActions && context.worldView, disabled || !!mapDirectionAction);
     if (openMapLists.hidden || openMapLists.disabled) setMapListsOpen(false);
     mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
@@ -928,43 +958,84 @@ function updateControls() {
     mapActionButtons.hidden = !!mapDirectionAction || !mapActionButtons.childElementCount;
     mapActionDirection.hidden = !mapDirectionAction;
     mapActionDirection.textContent = mapDirectionAction ? `${mapDirectionAction.label} · Choose a direction.` : "";
-    nameFields.disabled = textFields.disabled = disabled;
-    setActions(terminalKeys, mode !== undefined && !editing && !playing && !stopVisible && !outcome &&
-        !(command && showKeyboard), disabled || editingHistory);
+}
+
+function targetActionLabel() {
+    if (mode === "target" && !context.attack) return "Select target";
+    if (context.verb === "Use") return "Use Item On";
+    if (context.verb === "Throw") return "Throw To";
+    return `${context.verb} On`;
+}
+
+function getConfirmAction(selectedRow, closesScreen) {
+    switch (mode) {
+        case "birth-review": return ["Enter", "Start game"];
+        case "retire": return ["@", "Retire character and quit"];
+        case "confirm": return ["y", "Yes"];
+        case "history": return ["y", "Keep history"];
+        case "birth-stats":
+        case "birth-roll": return ["Enter", "Accept"];
+        case "target": return ["t", targetActionLabel()];
+        case "aim": return ["5", targetActionLabel()];
+        case "quantity":
+        case "option-number":
+        case "rest": return ["Enter", "Done"];
+        case "save-slots": return ["Enter", selectedRow?.index > 0 ? "Continue" : "New game"];
+        case "menu": return ["Enter", "Select"];
+        default: return closesScreen ? ["Escape", "Close"] : ["Enter", "Continue"];
+    }
+}
+
+function getCancelLabel(pickingOnMap) {
+    if (mode === "confirm") return context.castWarning ? "Cancel" : "No";
+    if (openPanel) return "Back";
+    if (pickingOnMap || isTargeting() || isDirectionPrompt() ||
+        ["quantity", "option-number", "rest", "retire"].includes(mode)) return "Cancel";
+    return mode === "command" ? "Esc" : "Back";
+}
+
+function updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, stopVisible,
+    showPad, showTargetControls, editingHistory }) {
+    const showFooter = mode !== undefined && !isTextEntry(mode) && !stopVisible && !outcome &&
+        (mode !== "command" || !!openPanel);
+    setActions(terminalKeys, showFooter, disabled || editingHistory);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
-    terminalKeys.classList.toggle("single-row-controls", (playingGame || saveSlots) && !showPad);
-    terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
-    terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
+    terminalKeys.classList.toggle("single-row-controls", (playingGame || mode === "save-slots") && !showPad);
+    terminalKeys.classList.toggle("results-controls", mode === "victory" || resultChild || mode === "retire");
+
+    const aiming = mode === "aim";
+    const closesScreen = ["details", "character", "overview"].includes(mode);
+    const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
+    const [key, label] = getConfirmAction(selectedRow, closesScreen);
+    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
+    terminalKeys.classList.toggle("aim-controls", aiming);
+    confirmKey.dataset.key = key;
+    confirmKey.textContent = label;
+    setKeyHint(confirmKey);
+    const noAimTarget = aiming && !context.current;
+    confirmKey.hidden = !!openPanel || !!menu?.options || !!menu?.birth || resultChild || isDirectionPrompt() ||
+        pickingOnMap || directMenu || showTargetControls || noAimTarget;
+    confirmKey.disabled = mode === "direction" || noAimTarget || (mode === "target" && !context.canSelect) ||
+        (!!menu && !selectedRow);
+
+    cancelKey.dataset.key = mode === "confirm" ? "n" : "Escape";
+    cancelKey.textContent = getCancelLabel(pickingOnMap);
+    cancelKey.setAttribute("aria-label", cancelKey.textContent);
+    setKeyHint(cancelKey);
+    cancelKey.hidden = closesScreen || mode === "victory";
+}
+
+function updateBirthControls(disabled) {
+    const rolling = mode === "birth-roll";
+    const stats = mode === "birth-stats" || rolling;
+    const history = mode === "history";
+    const reviewing = mode === "birth-review";
+    const editingHistory = stats && !birthHistoryEditor.hidden;
+    terminalKeys.classList.toggle("birth-choice-controls", !!menu?.birth);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
     terminalKeys.classList.toggle("birth-confirmation-controls", history || reviewing);
     editHistory.hidden = !history;
     birthStartOver.hidden = !reviewing;
-    terminalKeys.classList.toggle("results-controls", victory || resultChild || retiring);
-    terminalKeys.classList.toggle("aim-controls", aiming);
-    confirmKey.dataset.key = retiring ? "@" : confirming || history ? "y" : selecting ? "t" :
-        aiming ? "5" : details || character || overview ? "Escape" : "Enter";
-    cancelKey.dataset.key = confirming ? "n" : "Escape";
-    const useTarget = context.verb === "Use" ? "Use Item On" :
-        context.verb === "Throw" ? "Throw To" : `${context.verb} On`;
-    const targetLabel = selecting && !context.attack ? "Select target" : useTarget;
-    confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
-        confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
-        targeting ? targetLabel :
-        counting || optionNumber || resting ? "Done" :
-        saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
-        overview || details || character ? "Close" : "Continue";
-    setKeyHint(confirmKey);
-    confirmKey.hidden = !!openPanel || !!menu?.options || birthChoiceMenu || resultChild || directing || runDirection ||
-        pickingOnMap || directMenu ||
-        showTargetControls || (aiming && targetUnavailable);
-    confirmKey.disabled = directing || (targeting && targetUnavailable) ||
-        (!!menu && !selectedRow);
-    cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") : openPanel ? "Back" :
-        targeting || directing || runDirection || pickingOnMap || counting || optionNumber || resting || retiring ?
-            "Cancel" : command ? "Esc" : "Back";
-    cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    setKeyHint(cancelKey);
-    cancelKey.hidden = details || character || overview || victory;
     birthStatRows.disabled = resetStats.disabled = birthNameFields.disabled = disabled || editingHistory;
     setActions(birthRollActions, rolling, disabled || editingHistory);
     birthHistoryEdit.disabled = disabled || editingHistory;
@@ -972,12 +1043,18 @@ function updateControls() {
     birthHistoryPreview.hidden = editingHistory;
     birthHistoryEdit.setAttribute("aria-expanded", String(editingHistory));
     previousRoll.disabled = !context.birthStats?.roll?.previous;
+    return editingHistory;
+}
+
+function updateTargetControls(disabled, showTargetControls, showKeyboard) {
+    const aiming = mode === "aim";
+    const selecting = mode === "target";
+    const attackTargeting = selecting && context.attack;
     setActions(targetActions, showTargetControls, disabled);
     if (selecting) {
-        confirmTarget.textContent = targetLabel;
-        confirmTarget.dataset.key = confirmKey.dataset.key;
+        confirmTarget.textContent = targetActionLabel();
         setKeyHint(confirmTarget);
-        confirmTarget.disabled = targetUnavailable;
+        confirmTarget.disabled = !context.canSelect;
     }
     nearest.hidden = !aiming || !!openPanel || showKeyboard;
     nearest.disabled = !context.nearest;
@@ -998,18 +1075,22 @@ function updateControls() {
     }
     targetInspect.hidden = !selecting || !showTargetControls;
     targetInspect.disabled = !context.canInspect;
-    setActions(quantity, counting, disabled);
-    setActions(optionDigits, optionNumber, disabled);
-    setActions(rest, resting && !stopVisible, disabled);
+}
+
+function updatePromptControls(disabled, stopVisible) {
+    nameFields.disabled = textFields.disabled = disabled;
+    setActions(quantity, mode === "quantity", disabled);
+    setActions(optionDigits, mode === "option-number", disabled);
+    setActions(rest, mode === "rest" && !stopVisible, disabled);
+}
+
+function updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVisible) {
     setActions(keyboard, showKeyboard && !stopVisible, disabled);
-    setActions(keyboardUtilities, command && showKeyboard && !stopVisible, disabled);
-    keyboardToggle.hidden = !canOpenKeyboard || (aiming && !showKeyboard && (context.worldView || views.target.crop));
+    setActions(keyboardUtilities, mode === "command" && showKeyboard && !stopVisible, disabled);
+    keyboardToggle.hidden = !canOpenKeyboard ||
+        (mode === "aim" && !showKeyboard && (context.worldView || views.target.crop));
     keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
     keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
-    setActions(actionsScreen, !!openPanel && openPanel !== "character",
-        disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
-    setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
-    menuRows.disabled = menuSections.disabled = disabled;
 }
 
 function renderAppUpdate() {
@@ -1192,64 +1273,117 @@ function updateView(state = world, region = views.target.crop) {
     const previousSpeed = world?.speed;
     world = state;
     views.target.crop = region;
-    const aiming = mode === "target" || mode === "aim" || mode === "direction" || mode === "run-direction";
     activeView = world && (context.worldView || menu?.onMap) ? views.map :
-        aiming && region ? views.target : views.terminal;
-    const naming = mode === "name";
-    const enteringText = mode === "text";
-    const editing = !isTextEntry(mode) && context.value !== undefined && !openPanel;
-    const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
-    const showDetails = context.detail !== undefined;
+        (isTargeting() || isDirectionPrompt()) && region ? views.target : views.terminal;
+
+    const { fullScreen, inGamePanel, intro, title } = updateScreenContents();
+    const showViewport = !fullScreen && !openPanel && (!menu || menu.onMap);
+    for (const view of Object.values(views)) view.viewport.hidden = view !== activeView || !showViewport;
+
+    const mapPicking = isPickingOnMap();
+    main.classList.toggle("map-picking", mapPicking);
+    main.classList.toggle("picker-expanded", mapPicking && pickerExpanded);
+    if (previous !== activeView && activeView === views.terminal) {
+        activeView.viewport.scrollTo(0, 0);
+    }
+    const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
+    main.classList.toggle("in-play", playingGame);
+    main.classList.toggle("in-world", showMap);
+    main.classList.toggle("in-game-panel", inGamePanel);
+    main.classList.toggle("intro", intro);
+    hud.hidden = !showMap || !world;
+    mapStatus.hidden = hud.hidden;
+    if (hud.hidden) monsterHealth.hidden = true;
+    viewTitle.textContent = title;
+    zoom.hidden = activeView.viewport.hidden;
+    if (previous !== activeView) {
+        if (activeView === views.target) {
+            activeView.zoom = views.map.zoom;
+        }
+        centerPending = true;
+    }
+    renderMenu(menu);
+    if (openPanel) menuScreen.hidden = true;
+    updatePrompt();
+    draw();
+    if (world) renderWorld(world, previousSpeed);
+}
+
+function updateScreenContents() {
+    const splash = mode === "splash";
+    const birthStats = !!context.birthStats;
     const reviewing = mode === "birth-review";
-    const showCharacter = (mode === "character" || reviewing || openPanel === "character") && !!context.character;
-    const showSplash = mode === "splash";
-    const showVictory = mode === "victory";
-    const showOutcome = mode === "menu" && !!context.outcome;
-    victoryScreen.hidden = !showVictory;
-    outcomeSummary.hidden = !showOutcome;
+    const character = (mode === "character" || reviewing || openPanel === "character") && !!context.character;
+    const victory = mode === "victory";
+    const outcome = isOutcomeScreen();
+    const results = isResultsScreen();
+    const intro = splash && !openPanel;
+
+    splashScreen.hidden = !intro;
+    if (splash) angbandVersion.textContent = context.version;
+    characterScreen.hidden = !character;
+    characterScreen.classList.toggle("birth-review", reviewing);
+    victoryScreen.hidden = !victory;
+    outcomeSummary.hidden = !outcome;
     resultsList.hidden = mode !== "results-list";
     resultsFile.hidden = mode !== "results-file";
-    const showBirthStats = !!context.birthStats;
-    main.classList.toggle("text-viewport", showBirthStats || isTextEntry(mode));
+
+    updateDetailsScreen();
+    const textEntry = isTextEntry(mode);
+    const editing = !textEntry && context.value !== undefined && !openPanel;
+    const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
+    main.classList.toggle("text-viewport", birthStats || textEntry);
     updateTextViewport();
-    splashScreen.hidden = !showSplash || !!openPanel;
-    birthStatsScreen.hidden = !showBirthStats || !!openPanel;
-    if (showSplash) angbandVersion.textContent = context.version;
-    characterScreen.hidden = !showCharacter;
-    characterScreen.classList.toggle("birth-review", reviewing);
-    detailsScreen.hidden = !showDetails;
-    const detailContent = context.list ?? context.detail;
-    if (showDetails && renderedDetails !== detailContent) {
-        renderedDetails = detailContent;
-        detailsScreen.classList.toggle("visible-list", !!context.list);
-        if (context.list) {
-            detailsScreen.replaceChildren(...context.list.map(({ text, location, symbol }) => {
-                const row = document.createElement(location === undefined ? "p" : "div");
-                row.className = location === undefined ? "visible-list-heading" : "visible-list-row";
-                if (location === undefined) {
-                    row.textContent = text;
-                } else {
-                    const glyph = document.createElement("span");
-                    glyph.className = "visible-list-symbol";
-                    glyph.setAttribute("aria-hidden", "true");
-                    glyph.textContent = symbol;
-                    const name = document.createElement("span");
-                    name.className = "visible-list-name";
-                    name.textContent = text;
-                    const distance = document.createElement("span");
-                    distance.className = "visible-list-location";
-                    distance.textContent = location;
-                    row.append(glyph, name, distance);
-                }
-                return row;
-            }));
-        } else {
-            detailsScreen.textContent = context.detail;
-        }
-        detailsScreen.scrollTop = 0;
+    birthStatsScreen.hidden = !birthStats || !!openPanel;
+    nameScreen.hidden = mode !== "name";
+    textScreen.hidden = mode !== "text";
+    updateEditScreen(editing, question);
+
+    const fullScreen = textEntry || editing || !!question || !detailsScreen.hidden || character || splash ||
+        birthStats || victory || results;
+    const inGamePanel = !!openPanel || character || mode === "history" || !!menu?.options ||
+        mode === "option-number" || outcome || victory || results || !!menu?.title || mode === "retire";
+    return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome, editing, question }) };
+}
+
+function updateDetailsScreen() {
+    const { detail, list } = context;
+    const content = list ?? detail;
+    detailsScreen.hidden = detail === undefined;
+    if (detailsScreen.hidden || renderedDetails === content) return;
+
+    renderedDetails = content;
+    detailsScreen.classList.toggle("visible-list", !!list);
+    if (list) {
+        detailsScreen.replaceChildren(...list.map(({ text, location, symbol }) => {
+            if (location === undefined) {
+                const heading = document.createElement("p");
+                heading.className = "visible-list-heading";
+                heading.textContent = text;
+                return heading;
+            }
+            const row = document.createElement("div");
+            row.className = "visible-list-row";
+            const glyph = document.createElement("span");
+            glyph.className = "visible-list-symbol";
+            glyph.setAttribute("aria-hidden", "true");
+            glyph.textContent = symbol;
+            const name = document.createElement("span");
+            name.className = "visible-list-name";
+            name.textContent = text;
+            const distance = document.createElement("span");
+            distance.className = "visible-list-location";
+            distance.textContent = location;
+            row.append(glyph, name, distance);
+            return row;
+        }));
+    } else {
+        detailsScreen.textContent = detail;
     }
-    nameScreen.hidden = !naming;
-    textScreen.hidden = !enteringText;
+    detailsScreen.scrollTop = 0;
+}
+
+function updateEditScreen(editing, question) {
     editScreen.hidden = !editing && !question;
     editValue.classList.toggle("confirmation", !editing && Boolean(question));
     if (editing) {
@@ -1277,50 +1411,34 @@ function updateView(state = world, region = views.target.crop) {
             editValue.append(price);
         }
     }
-    for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || naming || enteringText || editing || !!question ||
-        showDetails || showCharacter || showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
-    const mapPicking = !!menu?.onMap && !openPanel;
-    main.classList.toggle("map-picking", mapPicking);
-    main.classList.toggle("picker-expanded", mapPicking && pickerExpanded);
-    if (previous !== activeView && activeView === views.terminal) {
-        activeView.viewport.scrollTo(0, 0);
-    }
-    const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
-    main.classList.toggle("in-play", playingGame);
-    main.classList.toggle("in-world", showMap);
-    main.classList.toggle("in-game-panel", !!openPanel || showCharacter || mode === "history" ||
-        !!menu?.options || mode === "option-number" || showOutcome || showVictory ||
-        !resultsList.hidden || !resultsFile.hidden || !!menu?.title || mode === "retire");
-    main.classList.toggle("intro", showSplash && !openPanel);
-    hud.hidden = !showMap || !world;
-    mapStatus.hidden = hud.hidden;
-    if (hud.hidden) monsterHealth.hidden = true;
-    const title = showVictory ? "Victory" : showOutcome ? outcomeTitles[context.outcome.kind] :
-        context.resultsList?.title ?? context.resultsFile?.title ??
-        (showSplash ? "Angband" : reviewing ? "Review character" : showCharacter ? "Character" :
-        mode === "aim" ? "Aim" : mode === "run-direction" ? "Run" : mode === "direction" ? "Direction" :
-        mode === "overview" ? "Full dungeon map" : mode === "details" ? "Details" :
-        mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
-        mode === "birth-roll" ? "Standard roller" :
-        question ? "Confirm" : naming ? "Character name" : enteringText ? "Text entry" :
-        editing ? mode === "quantity" ? "Quantity" : mode === "rest" ? "Rest" : "Edit option" : activeView.title);
+}
+
+function getViewTitle({ character, outcome, editing, question }) {
+    const panelTitle = panelTitles[openPanel];
+    if (panelTitle !== undefined) return panelTitle;
+    if (mode === "save-slots") return "Save slots";
+
     const activeSection = menu?.sections?.find((section) => section.active);
-    viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
-        menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label ??
-        (menu && !showOutcome ? "Choices" : mode === "details" ? context.prompt || title : title));
-    zoom.hidden = activeView.viewport.hidden;
-    if (previous !== activeView) {
-        if (activeView === views.target) {
-            activeView.zoom = views.map.zoom;
-        }
-        centerPending = true;
-    }
-    renderMenu(menu);
-    if (openPanel) menuScreen.hidden = true;
-    updatePrompt();
-    draw();
-    if (world) renderWorld(world, previousSpeed);
+    const menuTitle = menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label;
+    if (menuTitle !== undefined && menuTitle !== null) return menuTitle;
+    if (menu && !outcome) return "Choices";
+    if (mode === "details" && context.prompt) return context.prompt;
+    if (mode === "victory") return "Victory";
+    if (outcome) return outcomeTitles[context.outcome.kind];
+
+    const resultTitle = context.resultsList?.title ?? context.resultsFile?.title;
+    if (resultTitle !== undefined && resultTitle !== null) return resultTitle;
+    if (mode === "splash") return "Angband";
+    if (mode === "birth-review") return "Review character";
+    if (character) return "Character";
+
+    const title = screenTitles.get(mode);
+    if (title !== undefined) return title;
+    if (question) return "Confirm";
+    if (!editing) return activeView.title;
+    if (mode === "quantity") return "Quantity";
+    if (mode === "rest") return "Rest";
+    return "Edit option";
 }
 
 function stop(message, failed) {
