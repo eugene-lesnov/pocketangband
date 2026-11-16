@@ -3,7 +3,6 @@ export const graphicsModes = new Map([
     [1, { label: "Original Tiles", file: "original-tiles.png", size: 8 }],
     [2, { label: "Adam Bolt's tiles", file: "adam-bolt.png", size: 16 }],
     [3, { label: "David Gervais' tiles", file: "gervais.png", size: 32 }],
-    [4, { label: "Nomad's tiles", file: "nomad.png", size: 16, aspect: 0.5 }],
 ]);
 
 export async function loadTiles(id) {
@@ -49,7 +48,7 @@ function drawTile(context, { atlas, size }, tile, x, y) {
 }
 
 export function renderTileMap(canvas, tiles, frame, grid, colors) {
-    const { size, aspect = 1 } = tiles;
+    const { size } = tiles;
     const { x, y, columns, rows } = grid;
     const width = columns * size;
     const height = rows * size;
@@ -59,7 +58,6 @@ export function renderTileMap(canvas, tiles, frame, grid, colors) {
     }
     canvas.style.setProperty("--columns", columns);
     canvas.style.setProperty("--rows", rows);
-    canvas.style.setProperty("--tile-width", `${aspect}em`);
 
     const context = canvas.getContext("2d");
     const cursorWidth = size / 16;
