@@ -30,6 +30,7 @@
 #include "trap.h"
 #include "ui-command.h"
 #include "ui-display.h"
+#include "ui-menu.h"
 #include "ui-game.h"
 #include "ui-input.h"
 #include "ui-keymap.h"
@@ -317,10 +318,15 @@ EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int
     });
 });
 
-EM_JS(void, web_set_menu, (const struct menu *menu, int cursor, const char *prompt), {
+EM_JS(void, set_menu, (const struct menu *menu, int cursor, const char *prompt, bool no_keyboard), {
     Module['inputMenu'] = { id: menu, cursor, prompt: prompt ? UTF8ToString(prompt) : "",
-        rows: [], actions: [] };
+        rows: [], actions: [], noKeyboard: !!no_keyboard };
 });
+
+void web_set_menu(const struct menu *menu, int cursor, const char *prompt)
+{
+    set_menu(menu, cursor, prompt, menu->web_no_keyboard);
+}
 
 EM_JS(void, web_set_menu_title, (const char *title), {
     Module['inputMenu'].title = UTF8ToString(title);

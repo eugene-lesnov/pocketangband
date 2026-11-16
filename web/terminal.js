@@ -892,7 +892,7 @@ function updateControls() {
     const outcome = isOutcomeScreen();
     const resultChild = isResultsScreen() || menu?.title === "Create spoilers";
     const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !pickingOnMap && !openPanel &&
-        !menu?.birth && !outcome && !resultChild;
+        !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;

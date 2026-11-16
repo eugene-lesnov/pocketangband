@@ -2296,12 +2296,13 @@ diff --git a/src/ui-command.c b/src/ui-command.c
 diff --git a/src/ui-context.c b/src/ui-context.c
 --- a/src/ui-context.c
 +++ b/src/ui-context.c
-@@ -795,7 +795,13 @@
+@@ -795,7 +795,14 @@
  	region_erase_bordered(&r);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
 +#ifdef __EMSCRIPTEN__
 +	const char *previous_prompt = web_set_prompt(header);
++	m->web_no_keyboard = true;
 +#endif
  	selected = menu_dynamic_select(m);
 +#ifdef __EMSCRIPTEN__
@@ -2310,7 +2311,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1153,6 +1159,34 @@
+@@ -1153,6 +1160,34 @@
  	}
  }
  
@@ -2345,7 +2346,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  /**
   * Display a list of commands.
   */
-@@ -1177,6 +1211,10 @@
+@@ -1177,6 +1212,10 @@
  	area.row -= list->menu_level;
  	assert(area.row > 1);
  	menu_layout(&menu, &area);
@@ -2356,7 +2357,7 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  
  	/* Set up the screen */
  	screen_save();
-@@ -1278,6 +1316,9 @@
+@@ -1278,6 +1317,9 @@
  
  	if (!command_menu)
  		command_menu = menu_new(MN_SKIN_SCROLL, &command_menu_iter);
@@ -2386,7 +2387,7 @@ diff --git a/src/ui-map.c b/src/ui-map.c
 diff --git a/src/ui-menu.h b/src/ui-menu.h
 --- a/src/ui-menu.h
 +++ b/src/ui-menu.h
-@@ -274,6 +274,11 @@ struct menu
+@@ -274,6 +274,12 @@ struct menu
  	int top;                /* Position in list for partial display */
  	region active;          /* Subregion actually active for selection */
  	int cursor_x_offset;    /* Adjustment to the default position of the cursor on a line. */
@@ -2394,6 +2395,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 +	void (*web_render)(struct menu *menu);
 +	bool web_select_once;
 +	bool web_on_map;
++	bool web_no_keyboard;
 +#endif
  };
  
@@ -2471,17 +2473,18 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1222,9 @@
+@@ -1159,6 +1222,10 @@
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
 +#ifdef __EMSCRIPTEN__
 +	m->web_render = web_render_items;
++	m->web_no_keyboard = true;
 +#endif
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1288,14 @@
+@@ -1222,6 +1289,14 @@
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -2496,7 +2499,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
-@@ -1457,6 +1531,14 @@
+@@ -1457,6 +1532,14 @@
  	throwing_num = scan_items(throwing_list, throwing_max, player,
  		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
  
