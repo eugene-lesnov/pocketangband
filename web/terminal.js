@@ -48,7 +48,6 @@ const characterProgress = document.querySelector("#character-progress");
 const characterProgressLabel = document.querySelector("#character-progress-label");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
-const previousMessage = document.querySelector("#previous-message");
 const latestMessage = document.querySelector("#latest-message");
 const messagePause = document.querySelector("#message-pause");
 const pausedMessage = document.querySelector("#paused-message");
@@ -89,7 +88,6 @@ const targetLocation = document.querySelector("#target-location");
 const confirmTarget = document.querySelector("#confirm-target");
 const targetInspect = document.querySelector("#target-inspect");
 const inputPrompt = document.querySelector("#input-prompt");
-const recallMessages = document.querySelector("#recall-messages");
 const messageDialog = document.querySelector("#message-dialog");
 const nameScreen = document.querySelector("#name-screen");
 const nameFields = document.querySelector("#name-fields");
@@ -570,22 +568,19 @@ function renderWorld(state, previousSpeed) {
         hiddenCount > 0 && `${hiddenCount} hidden ${hiddenCount === 1 ? "condition" : "conditions"}`]
         .filter(Boolean).join(", "));
 
-    latestMessage.classList.toggle("stat-loss", !!state.statLoss);
     const lines = state.log.flatMap(({ text, count }) => {
         const line = text.trim();
         return !line || /^=+$/.test(line) ? [] : [count > 1 ? `${line} (×${count})` : line];
     });
     if (lines.length === messages.childElementCount &&
         lines.every((line, index) => messages.children[index].textContent === line)) return;
-    previousMessage.textContent = lines.at(-2) ?? "";
-    latestMessage.textContent = lines.at(-1) ?? "";
-    if (!lines.length) journal.open = false;
     messages.replaceChildren(...lines.map((line) => {
         const item = document.createElement("li");
         item.textContent = line;
         return item;
     }));
     messages.scrollTop = messages.scrollHeight;
+    updateJournal();
 }
 
 function characterRows(rows) {
@@ -869,7 +864,6 @@ function showPanel(panel, trigger) {
     openPanel = panel;
     panelTrigger = trigger;
     if (panel) {
-        journal.open = false;
         if (panel === "character") renderCharacter();
         else renderActionsPanel();
     }
@@ -1106,7 +1100,7 @@ function terminalLine(row) {
 
 function showMessagePause(data) {
     if (messagePause.hidden) messagePauseTrigger = document.activeElement;
-    journal.open = false;
+    if (messageDialog.open) messageDialog.close();
     if (menu?.store && data.menu?.id === menu.id) {
         const store = data.menu.store;
         if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
@@ -1154,7 +1148,7 @@ function updatePrompt() {
     if (mode === "command" && context.mapCell && !context.mapCell.actions)
         text += " Tap this cell again to walk there.";
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
-    if (running) text = "Running…";
+    if (running || (mode === "run-direction" && request === undefined)) text = "";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
     if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
     if (mode === "rest" && !stopAction.hidden) text = "Resting…";
@@ -1169,14 +1163,24 @@ function updatePrompt() {
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
     else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
-    inputPrompt.classList.toggle("map-description", !!context.mapCell || (mode === "aim" && context.worldView) ||
-        mode === "direction" || mode === "run-direction" || running);
-    inputPrompt.hidden = mode === "name" || !text || !!openPanel;
+    if (mode === "name" || openPanel) text = "";
+    inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
-    journal.hidden = hud.hidden || !inputPrompt.hidden || saveNotice;
-    recallMessages.hidden = hud.hidden || inputPrompt.hidden || !!openPanel || !world?.log.length;
-    if (journal.hidden) journal.open = false;
+    journal.hidden = hud.hidden || saveNotice;
+    if (journal.hidden && messageDialog.open) messageDialog.close();
+    updateJournal();
+}
+
+function updateJournal() {
+    const prompt = !hud.hidden && inputPrompt.textContent;
+    const text = prompt || messages.lastElementChild?.textContent || "No messages";
+    if (latestMessage.textContent !== text) latestMessage.textContent = text;
+    journal.classList.toggle("prompt", !!prompt);
+    journal.classList.toggle("empty", !prompt && !messages.childElementCount);
+    latestMessage.classList.toggle("stat-loss", !prompt && !!world?.statLoss);
+    journal.disabled = !messages.childElementCount || (!prompt && messages.childElementCount === 1 &&
+        latestMessage.scrollHeight <= latestMessage.clientHeight);
 }
 
 function updateView(state = world, region = views.target.crop) {
@@ -1521,7 +1525,6 @@ function clearPendingInput() {
 function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || applyingUpdate || !messagePause.hidden) return false;
     if (!saveStatus.classList.contains("error")) saveStatus.hidden = true;
-    journal.open = false;
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
     runningFromPad = input.type === "run-direction";
@@ -2196,7 +2199,6 @@ function toggleKeyboard() {
             keyboardLayer = 0;
             shifted = false;
         }
-        journal.open = false;
         renderKeyboard();
     }
     updateControls();
@@ -2234,10 +2236,9 @@ expandPicker.addEventListener("click", () => {
     updateView();
     updateControls();
 });
-recallMessages.addEventListener("click", () => {
-    document.querySelector("#recalled-messages").replaceChildren(...[...messages.children].map((row) => row.cloneNode(true)));
+journal.addEventListener("click", () => {
     messageDialog.showModal();
-    document.querySelector("#recalled-messages").scrollTop = document.querySelector("#recalled-messages").scrollHeight;
+    messages.scrollTop = messages.scrollHeight;
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
@@ -2393,10 +2394,7 @@ for (const type of ["gesturestart", "gesturechange"]) {
     });
 }
 
-journal.addEventListener("toggle", () => {
-    if (!journal.open) return;
-    messages.scrollTop = messages.scrollHeight;
-});
+new ResizeObserver(updateJournal).observe(latestMessage);
 
 const viewResize = new ResizeObserver((entries) => {
     if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;
@@ -2444,17 +2442,10 @@ document.addEventListener("keydown", (event) => {
         event.preventDefault();
         return;
     }
-    if (event.key === "Escape" && journal.open) {
-        journal.open = false;
-        journal.querySelector("summary").focus();
-        event.preventDefault();
-        return;
-    }
     if (event.key === "Escape" && closeInputPanel()) {
         event.preventDefault();
         return;
     }
-    if (journal.open && journal.contains(event.target)) return;
     if (openPanel) return;
     if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase();

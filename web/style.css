@@ -52,7 +52,7 @@ h1 { color: var(--accent); font-size: 1.25rem; }
 h2 { font-size: 0.875rem; overflow-wrap: anywhere; }
 a { color: var(--muted); font-size: 0.75rem; }
 
-.view, #journal, #empty-journal, .status {
+.view, #journal, .status {
     min-width: 0;
     border: 1px solid var(--border);
     border-radius: 0.5rem;
@@ -389,11 +389,6 @@ dt { color: var(--muted); }
 }
 .in-world #save-status { grid-area: journal; }
 .in-world #save-status:not(.error) { min-height: var(--message-row-height); margin: 0.25rem; }
-.in-world #input-prompt.map-description {
-    grid-area: journal;
-    height: var(--message-row-height);
-    margin: 0.25rem;
-}
 .in-world #save-status.error,
 .in-world #input-prompt:not([hidden]) ~ #save-status {
     position: absolute;
@@ -408,75 +403,35 @@ dt { color: var(--muted); }
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
 .highlighted-cell { box-shadow: inset 0 0 0 1em #ffdb764d; }
 
-:is(#journal, #empty-journal, #message-pause) { margin: 0.25rem; }
-:is(#journal, #empty-journal) {
-    grid-area: journal;
-}
+:is(#journal, #message-pause) { margin: 0.25rem; }
 #journal {
-    position: relative;
-}
-:is(#journal summary, #empty-journal) {
+    grid-area: journal;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 1rem;
+    gap: 0.5rem;
     align-items: center;
-    padding: 0.25rem 0.5rem;
+    height: var(--message-row-height);
+    padding: 0.375rem 0.5rem;
+    text-align: start;
     font: 0.875rem/1.25 system-ui, sans-serif;
 }
-#empty-journal {
-    display: none;
-    height: var(--message-row-height);
-    color: var(--muted);
-}
-#journal:has(#latest-message:empty) { display: none; }
-:where(#journal:not([hidden]):has(#latest-message:empty)) + #empty-journal { display: flex; }
-#journal summary {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.5rem;
-    height: calc(var(--message-row-height) - 2px);
-    cursor: pointer;
-}
-#journal summary::-webkit-details-marker { display: none; }
-#journal:not([open]) #messages { display: none; }
-#journal[open] summary {
-    position: relative;
-    z-index: 2;
-    width: 44px;
-    margin-inline-start: auto;
-    grid-template-columns: 1fr;
-    justify-items: end;
-    align-items: end;
-}
-#journal[open] :is(#recent-messages, #journal-label) { display: none; }
-#journal:has(#latest-message:not(:empty)) #journal-label { display: none; }
-#recent-messages span {
-    display: block;
-    min-height: 1lh;
+#journal:disabled { opacity: 1; }
+#journal:disabled #journal-indicator { visibility: hidden; }
+#journal.empty, #journal-indicator { color: var(--muted); }
+#journal.prompt { color: var(--accent); }
+#latest-message {
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+    padding-block: 1px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-#previous-message, #journal-indicator { color: var(--muted); }
-#journal-indicator::after { content: " ▴"; }
-#journal[open] #journal-indicator::after { content: " ▾"; }
-#messages {
-    position: absolute;
-    z-index: 1;
-    inset-inline: -1px;
-    inset-block-end: -1px;
-    overflow: auto;
-    overscroll-behavior: contain;
-    min-height: var(--message-row-height);
-    max-height: min(12rem, 30dvh);
-    margin: 0;
-    padding: 0.5rem;
-    padding-inline-end: 44px;
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    background: var(--panel);
-    list-style: none;
     overflow-wrap: anywhere;
-    font: 0.8125rem/1.4 system-ui, sans-serif;
+    white-space: pre-line;
 }
-#messages li + li { margin-top: 0.15rem; }
+#journal.prompt #latest-message { display: block; overflow: auto; overscroll-behavior: contain; }
 
 #message-pause {
     position: absolute;
@@ -498,7 +453,7 @@ dt { color: var(--muted); }
     grid-area: journal;
     position: static;
 }
-.view:has(#message-pause:not([hidden])) :is(#journal, #empty-journal) { display: none; }
+.view:has(#message-pause:not([hidden])) #journal { display: none; }
 #paused-message {
     max-height: 100%;
     overflow: auto;
@@ -940,15 +895,10 @@ main.compact-hud { --hud-height: 56px; }
 #actions-screen[aria-label="Touch settings"] button::after { content: "Off"; color: var(--muted); }
 #actions-screen[aria-label="Touch settings"] button[aria-pressed="true"]::after { content: "On"; color: var(--accent); }
 #actions-screen[aria-label="Touch settings"] small { margin-top: 0.375rem; line-height: 1.4; }
-.in-world #input-prompt:not([hidden]):has(~ #recall-messages:not([hidden])) { padding-inline-end: 3.5rem; }
-#recall-messages { grid-area: journal; z-index: 1; justify-self: end; align-self: center; width: 44px; margin-right: 0.5rem; }
-#recent-messages #previous-message { min-height: 0; font-size: 0.75rem; }
-#recent-messages #latest-message { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; }
-#journal:not([open]) #previous-message { display: none; }
 #message-dialog { width: min(32rem, calc(100% - 1rem)); max-height: calc(100dvh - 2rem); padding: 0.75rem; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 0.5rem; }
 #message-dialog::backdrop { background: rgb(0 0 0 / 65%); }
-#recalled-messages { max-height: 65dvh; overflow: auto; padding: 0; list-style: none; }
-#recalled-messages li { margin-block: 0.5rem; font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; }
+#messages { max-height: 65dvh; overflow: auto; overscroll-behavior: contain; padding: 0; list-style: none; }
+#messages li { margin-block: 0.5rem; font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; }
 #message-dialog button { width: 100%; }
 .large-text button { font-size: 0.9375rem; }
 .large-text .menu-rows button { font-size: 1rem; }

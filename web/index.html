@@ -158,18 +158,11 @@
                 <a id="download-result" download target="_blank" rel="noopener" hidden>Download file</a>
             </section>
             <p id="input-prompt" role="status" hidden></p>
-            <button id="recall-messages" type="button" aria-label="Message recall" hidden>Log</button>
-            <details id="journal" hidden>
-                <summary aria-labelledby="journal-label recent-messages">
-                    <span id="recent-messages">
-                        <span id="previous-message"></span>
-                        <span id="latest-message"></span>
-                    </span>
-                    <span id="journal-indicator"><span id="journal-label">Message recall</span></span>
-                </summary>
-                <ol id="messages" tabindex="0" aria-label="Angband messages"></ol>
-            </details>
-            <p id="empty-journal">No messages</p>
+            <button id="journal" type="button" aria-label="Message recall" aria-describedby="latest-message"
+                aria-haspopup="dialog" aria-controls="message-dialog" hidden>
+                <span id="latest-message"></span>
+                <span id="journal-indicator" aria-hidden="true">▴</span>
+            </button>
             <p id="save-status" class="status" role="status" hidden></p>
             <div id="message-pause" hidden>
                 <p id="paused-message" role="status"></p>
@@ -217,7 +210,7 @@
             <fieldset id="keyboard" class="key-panel" aria-label="Angband on-screen keyboard" disabled hidden></fieldset>
             <div class="game-controls-row">
                 <div class="game-controls-buttons">
-                    <fieldset id="map-cell-actions" aria-label="Cell actions" aria-describedby="input-prompt" disabled hidden>
+                    <fieldset id="map-cell-actions" aria-label="Cell actions" aria-describedby="latest-message" disabled hidden>
                         <div id="map-action-buttons"></div>
                         <button id="close-map-cell-actions" type="button">Back</button>
                     </fieldset>
@@ -279,7 +272,7 @@
     </main>
     <dialog id="message-dialog" aria-labelledby="message-dialog-title">
         <h2 id="message-dialog-title">Message recall</h2>
-        <ol id="recalled-messages"></ol>
+        <ol id="messages" tabindex="0" aria-label="Angband messages"></ol>
         <form method="dialog"><button autofocus>Close</button></form>
     </dialog>
     <dialog id="delete-save-dialog" aria-labelledby="delete-save-title" aria-describedby="delete-save-label delete-save-warning">
