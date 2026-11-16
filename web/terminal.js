@@ -2471,12 +2471,20 @@ const zoomStepRatio = 1.18;
 const touchOptions = { capture: true, passive: false };
 let multiTouch = false;
 let zoomDistance;
+let zoomViewport;
+
+function mapGestureViewport() {
+    return mode === "overview" ? views.terminal.viewport : mapViewport;
+}
 
 document.addEventListener("touchstart", (event) => {
     if (event.touches.length < 2) return;
     const [first, second] = event.touches;
-    if (!multiTouch && (mapViewport.hidden ||
-        !mapViewport.contains(first.target) || !mapViewport.contains(second.target))) return;
+    if (!multiTouch) {
+        const viewport = mapGestureViewport();
+        if (viewport.hidden || !viewport.contains(first.target) || !viewport.contains(second.target)) return;
+        zoomViewport = viewport;
+    }
     if (event.cancelable) event.preventDefault();
     zoomDistance = !multiTouch && event.touches.length === 2 ? touchDistance(first, second) : undefined;
     multiTouch = true;
@@ -2487,8 +2495,9 @@ document.addEventListener("touchmove", (event) => {
     if (event.cancelable) event.preventDefault();
     if (zoomDistance === undefined || event.touches.length !== 2) return;
     const [first, second] = event.touches;
-    if (mapViewport.hidden || ![first, second].every(({ clientX, clientY }) =>
-        mapViewport.contains(document.elementFromPoint(clientX, clientY)))) {
+    if (zoomViewport !== mapGestureViewport() || zoomViewport.hidden ||
+        ![first, second].every(({ clientX, clientY }) =>
+            zoomViewport.contains(document.elementFromPoint(clientX, clientY)))) {
         zoomDistance = undefined;
         return;
     }
@@ -2497,6 +2506,11 @@ document.addEventListener("touchmove", (event) => {
     if (zoomDistance > 0) {
         const steps = Math.trunc(Math.log(distance / zoomDistance) / Math.log(zoomStepRatio));
         if (steps === 0) return;
+        if (mode === "overview") {
+            zoomDistance = steps > 0 && sendInput({ type: "key", code: keyCode("Escape") }) ?
+                undefined : distance;
+            return;
+        }
         const beyondMinimum = zoomIndex(views.map) + steps < 0;
         changeZoom(steps);
         if (beyondMinimum && mode === "command" && !keyboardOpen &&
@@ -2512,6 +2526,7 @@ function endTouches(event) {
     if (!multiTouch) return;
     if (event.cancelable) event.preventDefault();
     zoomDistance = undefined;
+    zoomViewport = undefined;
     multiTouch = event.touches.length > 0;
 }
 
@@ -2519,7 +2534,8 @@ document.addEventListener("touchend", endTouches, touchOptions);
 document.addEventListener("touchcancel", endTouches, touchOptions);
 for (const type of ["gesturestart", "gesturechange"]) {
     document.addEventListener(type, (event) => {
-        if (!mapViewport.hidden && mapViewport.contains(event.target)) event.preventDefault();
+        const viewport = mapGestureViewport();
+        if (!viewport.hidden && viewport.contains(event.target)) event.preventDefault();
     });
 }
 
