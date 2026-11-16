@@ -536,10 +536,40 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
         conditions: Module['worldConditions'], stats: Module['worldStats'],
+        mapStatus: Module['worldMapStatus'],
         monsterHealth: Module['worldMonsterHealth'],
         quickActions: commands ? Module['worldQuickActions'] : undefined,
     });
 });
+
+EM_JS(void, set_world_map_status, (int light, const char *terrain, const char *danger,
+        const char *treasure, const uint8_t *danger_color, const uint8_t *treasure_color), {
+    const color = (ptr) => `rgb(${HEAPU8[ptr + 1]} ${HEAPU8[ptr + 2]} ${HEAPU8[ptr + 3]})`;
+    Module['worldMapStatus'] = {
+        light, terrain: UTF8ToString(terrain),
+        feeling: danger ? {
+            danger: UTF8ToString(danger), treasure: UTF8ToString(treasure),
+            dangerColor: color(danger_color), treasureColor: color(treasure_color),
+        } : null,
+    };
+});
+
+static void publish_map_status(void)
+{
+    struct loc grid = player->grid;
+    const struct trap *trap = square_trap(cave, grid);
+    char terrain[80];
+    struct level_feeling_display feeling;
+    bool show_feeling = get_level_feeling(&feeling);
+
+    my_strcpy(terrain, (trap && !square_isinvis(cave, grid)) ?
+        trap->kind->name : square_feat(cave, grid)->name, sizeof(terrain));
+    my_strcap(terrain);
+    set_world_map_status(square_light(cave, grid), terrain,
+        show_feeling ? feeling.danger : NULL, show_feeling ? feeling.treasure : NULL,
+        show_feeling ? angband_color_table[feeling.danger_attr] : NULL,
+        show_feeling ? angband_color_table[feeling.treasure_attr] : NULL);
+}
 
 EM_JS(void, start_world_status, (void), {
     Module['worldConditions'] = [];
@@ -612,6 +642,7 @@ static void publish_world(bool commands)
     const char *food_grade = "";
 
     start_world_status();
+    publish_map_status();
     publish_stats(commands);
     publish_monster_health();
     for (int effect = 0; effect < TMD_MAX; ++effect) {

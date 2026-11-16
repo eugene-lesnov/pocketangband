@@ -1908,6 +1908,96 @@ diff --git a/src/ui-target.c b/src/ui-target.c
 diff --git a/src/ui-display.c b/src/ui-display.c
 --- a/src/ui-display.c
 +++ b/src/ui-display.c
+@@ -1047,23 +1047,16 @@
+ 	COLOUR_BLUE, /* "This seems a quiet, peaceful place" */
+ };
+ 
+-/**
+- * Prints level feelings at status if they are enabled.
+- */
+-static size_t prt_level_feeling(int row, int col)
++bool get_level_feeling(struct level_feeling_display *feeling)
+ {
+ 	uint16_t obj_feeling;
+ 	uint16_t mon_feeling;
+-	char obj_feeling_str[6];
+-	char mon_feeling_str[6];
+-	int new_col;
+-	uint8_t obj_feeling_color_print;
+ 
+ 	/* Don't show feelings for cold-hearted characters */
+-	if (!OPT(player, birth_feelings)) return 0;
++	if (!OPT(player, birth_feelings)) return false;
+ 
+ 	/* No useful feeling in town */
+-	if (!player->depth) return 0;
++	if (!player->depth) return false;
+ 
+ 	/* Get feelings */
+ 	obj_feeling = cave->feeling / 10;
+@@ -1085,16 +1078,16 @@
+ 	 * to get a feeling. If not display as ?
+ 	 */
+ 	if (cave->feeling_squares < z_info->feeling_need) {
+-		my_strcpy(obj_feeling_str, "?", sizeof(obj_feeling_str));
+-		obj_feeling_color_print = COLOUR_WHITE;
++		my_strcpy(feeling->treasure, "?", sizeof(feeling->treasure));
++		feeling->treasure_attr = COLOUR_WHITE;
+ 	} else {
+-		obj_feeling_color_print = obj_feeling_color[obj_feeling];
++		feeling->treasure_attr = obj_feeling_color[obj_feeling];
+ 		if (obj_feeling == 0)
+-			my_strcpy(obj_feeling_str, "*", sizeof(obj_feeling_str));
++			my_strcpy(feeling->treasure, "*", sizeof(feeling->treasure));
+ 		else if (obj_feeling == 1)
+-			my_strcpy(obj_feeling_str, "$", sizeof(obj_feeling_str));
++			my_strcpy(feeling->treasure, "$", sizeof(feeling->treasure));
+ 		else
+-			strnfmt(obj_feeling_str, 5, "%d", (unsigned int) (11-obj_feeling));
++			strnfmt(feeling->treasure, sizeof(feeling->treasure), "%d", (unsigned int) (11 - obj_feeling));
+ 	}
+ 
+ 	/* 
+@@ -1106,19 +1099,33 @@
+ 	 * We also reverse this so that what we show is a danger feeling.
+ 	 */
+ 	if (mon_feeling == 0)
+-		my_strcpy( mon_feeling_str, "?", sizeof(mon_feeling_str) );
++		my_strcpy(feeling->danger, "?", sizeof(feeling->danger));
+ 	else
+-		strnfmt(mon_feeling_str, 5, "%d", (unsigned int) ( 10-mon_feeling ));
++		strnfmt(feeling->danger, sizeof(feeling->danger), "%d", (unsigned int) (10 - mon_feeling));
++
++	feeling->danger_attr = mon_feeling_color[mon_feeling];
++	return true;
++}
++
++/**
++ * Prints level feelings at status if they are enabled.
++ */
++static size_t prt_level_feeling(int row, int col)
++{
++	struct level_feeling_display feeling;
++	int new_col;
++
++	if (!get_level_feeling(&feeling)) return 0;
+ 
+ 	/* Display it */
+ 	c_put_str(COLOUR_WHITE, "LF:", row, col);
+ 	new_col = col + 3;
+-	c_put_str(mon_feeling_color[mon_feeling], mon_feeling_str, row, new_col);
+-	new_col += strlen( mon_feeling_str );
++	c_put_str(feeling.danger_attr, feeling.danger, row, new_col);
++	new_col += strlen(feeling.danger);
+ 	c_put_str(COLOUR_WHITE, "-", row, new_col);
+ 	++new_col;
+-	c_put_str(obj_feeling_color_print, obj_feeling_str,	row, new_col);
+-	new_col += strlen( obj_feeling_str ) + 1;
++	c_put_str(feeling.treasure_attr, feeling.treasure, row, new_col);
++	new_col += strlen(feeling.treasure) + 1;
+ 
+ 	return new_col - col;
+ }
 @@ -2607,7 +2607,7 @@
  	if (floor_num == 1) {
  		/* Get the object */
@@ -1917,6 +2007,24 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  		if (!can_pickup)
  			p = "have no room for";
+diff --git a/src/ui-display.h b/src/ui-display.h
+--- a/src/ui-display.h
++++ b/src/ui-display.h
+@@ -27,6 +27,14 @@
+ extern const char *stat_names_reduced[STAT_MAX];
+ extern const char *window_flag_desc[32];
+ 
++struct level_feeling_display {
++	char danger[6];
++	char treasure[6];
++	uint8_t danger_attr;
++	uint8_t treasure_attr;
++};
++
++bool get_level_feeling(struct level_feeling_display *feeling);
+ uint8_t monster_health_attr(void);
+ void cnv_stat(int val, char *out_val, size_t out_len);
+ void allow_animations(void);
 diff --git a/src/obj-pile.c b/src/obj-pile.c
 --- a/src/obj-pile.c
 +++ b/src/obj-pile.c

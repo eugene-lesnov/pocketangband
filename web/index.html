@@ -82,7 +82,10 @@
                     <canvas id="target-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
                 </div>
             </div>
-            <p id="map-status" hidden><span id="depth"></span><span id="speed" hidden></span></p>
+            <div id="map-status" hidden>
+                <p><span id="depth"></span><span id="level-feeling" role="img" hidden>LF:<span id="feeling-danger"></span>-<span id="feeling-treasure"></span></span><span id="speed" hidden></span></p>
+                <p><span id="grid-light"></span><span id="grid-terrain"></span></p>
+            </div>
             <div id="monster-health" role="img" hidden>
                 <span id="monster-name"></span>
                 <span id="monster-health-bar" aria-hidden="true"></span>
@@ -234,6 +237,7 @@
                 </span>
                 <span id="hud-stats"></span>
                 <span id="condition-summary">
+                    <span id="nourishment"></span>
                     <span id="active-conditions"></span>
                     <span id="hidden-condition-count" hidden></span>
                     <span id="character-indicator" aria-hidden="true">›</span>

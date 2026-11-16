@@ -24,6 +24,11 @@ const hud = document.querySelector("#hud");
 const vitals = document.querySelector("#vitals");
 const mapStatus = document.querySelector("#map-status");
 const depth = document.querySelector("#depth");
+const levelFeeling = document.querySelector("#level-feeling");
+const feelingDanger = document.querySelector("#feeling-danger");
+const feelingTreasure = document.querySelector("#feeling-treasure");
+const gridLight = document.querySelector("#grid-light");
+const gridTerrain = document.querySelector("#grid-terrain");
 const hp = document.querySelector("#hp");
 const hpValue = document.querySelector("#hp-value");
 const sp = document.querySelector("#sp");
@@ -36,6 +41,7 @@ const monsterSegments = Array.from({ length: 10 }, () => document.createElement(
 monsterBar.append(...monsterSegments);
 const hudStats = document.querySelector("#hud-stats");
 const activeConditions = document.querySelector("#active-conditions");
+const nourishment = document.querySelector("#nourishment");
 const hiddenConditionCount = document.querySelector("#hidden-condition-count");
 const characterScreen = document.querySelector("#character-screen");
 const characterName = document.querySelector("#character-name");
@@ -485,6 +491,20 @@ function renderResource(element, value, current, maximum) {
 
 function renderMapStatus(state, previousSpeed) {
     depth.textContent = state.depth ? `Depth: ${state.depth * 50}′` : "Town";
+    const { feeling, light, terrain } = state.mapStatus;
+    levelFeeling.hidden = !feeling;
+    if (feeling) {
+        feelingDanger.textContent = feeling.danger;
+        feelingDanger.style.color = feeling.dangerColor;
+        feelingTreasure.textContent = feeling.treasure;
+        feelingTreasure.style.color = feeling.treasureColor;
+        const danger = feeling.danger === "?" ? "unknown" : feeling.danger;
+        const treasure = feeling.treasure === "?" ? "unknown" : feeling.treasure;
+        levelFeeling.setAttribute("aria-label", `Level feeling: danger ${danger}, treasure ${treasure}`);
+    }
+    gridLight.textContent = `Light ${light}`;
+    gridLight.classList.toggle("dark", light <= 0);
+    gridTerrain.textContent = terrain;
     const normal = state.speed === "Normal";
     speed.textContent = state.speed;
     speed.classList.toggle("fast", state.speed.startsWith("Fast "));
@@ -520,18 +540,23 @@ function renderWorld(state, previousSpeed) {
         stat.classList.toggle("reduced", reduced);
         stat.classList.toggle("lowered", !!lowered);
     }
-    const alerts = state.conditions.filter(({ priority }) => priority > 0)
+    const food = [state.foodGrade, `${state.food}%`].filter(Boolean).join(" ");
+    const conditions = state.conditions.filter(({ label }) => label !== state.foodGrade);
+    nourishment.textContent = food;
+    nourishment.classList.toggle("alert", state.conditions.some(({ label, priority }) =>
+        label === state.foodGrade && priority > 0));
+    const alerts = conditions.filter(({ priority }) => priority > 0)
         .sort((left, right) => right.priority - left.priority);
-    const labels = (alerts.length ? alerts : state.conditions).slice(0, 2).map(({ label }) => label);
-    const hiddenCount = state.conditions.length - labels.length;
-    activeConditions.textContent = labels.join(" · ") || "Conditions";
+    const labels = (alerts.length ? alerts : conditions).slice(0, 2).map(({ label }) => label);
+    const hiddenCount = conditions.length - labels.length;
+    activeConditions.textContent = labels.join(" · ");
     activeConditions.classList.toggle("alert", !!alerts.length);
     hiddenConditionCount.hidden = !hiddenCount;
     hiddenConditionCount.textContent = `+${hiddenCount}`;
     vitals.setAttribute("aria-label", ["Open Character", `HP ${hpValue.textContent}`,
         state.magic && `SP ${spValue.textContent}`,
         `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
-        ...state.stats.map(({ label, value, reduced }) => `${label} ${value}${reduced ? " (reduced)" : ""}`), ...labels,
+        ...state.stats.map(({ label, value, reduced }) => `${label} ${value}${reduced ? " (reduced)" : ""}`), food, ...labels,
         hiddenCount > 0 && `${hiddenCount} hidden ${hiddenCount === 1 ? "condition" : "conditions"}`]
         .filter(Boolean).join(", "));
 
