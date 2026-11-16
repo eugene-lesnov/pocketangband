@@ -1434,12 +1434,17 @@ function handleWorkerMessage({ data }) {
             clearPendingInput();
             saving = true;
             updateControls();
-            saveStatus.textContent = data.outcome ? "Saving outcome…" : "Saving game…";
-            saveStatus.classList.remove("error");
-            saveStatus.hidden = false;
+            if (!data.automatic) {
+                saveStatus.textContent = data.outcome ? "Saving outcome…" : "Saving game…";
+                saveStatus.classList.remove("error");
+                saveStatus.hidden = false;
+            } else if (!saveStatus.classList.contains("error")) {
+                saveStatus.hidden = true;
+            }
             updatePrompt();
             break;
         case "saved":
+            clearTimeout(saveNoticeTimer);
             saving = false;
             if (data.ok && !data.outcome && data.slot) {
                 preferences.lastSave = data.slot;
@@ -1451,9 +1456,9 @@ function handleWorkerMessage({ data }) {
                 (data.ok ? "Outcome saved." : "Outcome not saved. An earlier save may still be playable.") :
                 (data.ok ? "Game saved." : "Could not save the game.");
             saveStatus.classList.toggle("error", !data.ok);
-            saveStatus.hidden = false;
+            saveStatus.hidden = data.automatic && data.ok;
             updatePrompt();
-            if (data.ok && !data.outcome) saveNoticeTimer = setTimeout(() => {
+            if (data.ok && !data.outcome && !data.automatic) saveNoticeTimer = setTimeout(() => {
                 saveStatus.hidden = true;
                 updatePrompt();
             }, 2000);

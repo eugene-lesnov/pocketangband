@@ -49,6 +49,7 @@ static const char *input_prompt;
 static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
+static bool background_save;
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -1148,14 +1149,16 @@ EM_JS(void, flush_input, (void), {
     Module['flushInput']();
 });
 
-EM_ASYNC_JS(int, persist_profile, (int saved, int outcome, const char *path), {
+EM_ASYNC_JS(int, persist_profile, (int saved, int outcome, int automatic, const char *path), {
     Module['saveSlot'] = UTF8ToString(path).split("/").pop();
-    return (await Module['persistProfile'](!!saved, !!outcome)) ? 1 : 0;
+    return (await Module['persistProfile'](!!saved, !!outcome, !!automatic)) ? 1 : 0;
 });
 
 bool web_persist_profile(bool saved)
 {
-    return persist_profile(saved, player && player->is_dead, savefile);
+    bool automatic = player && !player->is_dead && (background_save || player->upkeep->autosave);
+    background_save = false;
+    return persist_profile(saved, player && player->is_dead, automatic, savefile);
 }
 
 EM_ASYNC_JS(bool, web_sync_profile, (void), {
@@ -1217,9 +1220,11 @@ static ui_event_type wait_for_input(void)
     }
     const char *verb = direction_command == CMD_FIRE ? "Fire" :
         direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
-    return wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
+    int event = wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view, EVT_WEB_SAVE);
+    if (event == EVT_WEB_SAVE) background_save = true;
+    return event;
 }
 
 static errr queue_input(void)

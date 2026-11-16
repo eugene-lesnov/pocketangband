@@ -252,11 +252,11 @@ async function play(afterRun) {
             self.postMessage({ type: "save-deleted", slot: path.split("/").pop() });
             return 1;
         },
-        async persistProfile(saved, outcome) {
+        async persistProfile(saved, outcome, automatic) {
             saveAttempt = Date.now();
             let ok = false;
             if (saved) {
-                self.postMessage({ type: "saving", outcome });
+                self.postMessage({ type: "saving", outcome, automatic });
                 ok = await game.syncProfile();
                 if (ok) {
                     backgroundSavePending = false;
@@ -264,7 +264,7 @@ async function play(afterRun) {
                     if (!outcome) preferredSaveSlot = game.saveSlot;
                 }
             }
-            self.postMessage({ type: "saved", ok, outcome, slot: game.saveSlot });
+            self.postMessage({ type: "saved", ok, outcome, automatic, slot: game.saveSlot });
             return ok;
         },
         async syncProfile() {
