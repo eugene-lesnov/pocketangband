@@ -74,7 +74,10 @@ const runModeButton = document.querySelector("#run-mode");
 const panelCharacter = document.querySelector("#panel-character");
 const mapCellActions = document.querySelector("#map-cell-actions");
 const mapActionButtons = document.querySelector("#map-action-buttons");
+const mapActionDirection = document.querySelector("#map-action-direction");
+const mapActionFooter = document.querySelector("#map-action-footer");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
+const mapLists = document.querySelector("#map-lists");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
 const nearest = document.querySelector("#nearest");
@@ -943,19 +946,24 @@ function updateControls() {
     centerDot.hidden = !!here;
     centerCaption.hidden = !here;
     directionCenter.setAttribute("aria-label", here ? "Choose your cell" : command ? "Stand still" : "Center");
-    const showPlayActions = playing && !stopVisible && !inspectingCell;
+    const showPlayActions = playing && !stopVisible;
     setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
     playKeys.classList.toggle("stopping", stopVisible);
     movementMode.hidden = !(showPlayActions || runningFromPad);
     walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
-    setActions(openMenu, showPlayActions, disabled);
+    setActions(openMenu, playing && !stopVisible, disabled);
+    setActions(mapLists, playing && !stopVisible && context.worldView, disabled || !!mapDirectionAction);
     heroActions.disabled = !context.worldView;
+    heroActions.setAttribute("aria-expanded", String(inspectingCell));
     combatAction.disabled = !!combatUnavailable;
     repeatAction.disabled = !repeatName;
     setActions(mapCellActions, inspectingCell, disabled);
-    mapActionButtons.hidden = !!mapDirectionAction;
+    mapCellActions.classList.toggle("choosing-direction", !!mapDirectionAction);
+    mapActionButtons.hidden = !!mapDirectionAction || !mapActionButtons.childElementCount;
+    mapActionDirection.hidden = !mapDirectionAction;
+    mapActionDirection.textContent = mapDirectionAction ? `${mapDirectionAction.label} · Choose a direction.` : "";
     nameFields.disabled = disabled;
     setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled);
@@ -1421,7 +1429,10 @@ function handleWorkerMessage({ data }) {
             if (changed && (mode === "direction" || mode === "run-direction"))
                 activeView.viewport.focus({ preventScroll: true });
             if (mode === "command" && restorePlayFocus) playFocus.focus({ preventScroll: true });
-            if (!mapCellActions.hidden) mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
+            if (!mapCellActions.hidden) {
+                mapActionButtons.scrollTop = 0;
+                mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
+            }
             if (mode === "command" && world && !graphicsRestored) {
                 graphicsRestored = true;
                 if (preferences.tiles !== views.map.frame?.graphicsMode) {
@@ -1690,24 +1701,19 @@ function makeInput(type, code, label) {
 
 function renderMapActions() {
     const { actions, here } = context.mapCell;
-    const buttons = [...actions].sort((a, b) => a.code - b.code).map(({ code, label, key, targets }) => {
+    const buttons = [];
+    const footer = [closeMapCellActions];
+    for (const { code, label, key, targets } of [...actions].sort((a, b) => a.code - b.code)) {
         const direction = targets?.length === 1 ? mapDirections[targets[0].direction] : undefined;
         const button = makeInput("map-action", code, direction?.arrow ? `${label} ${direction.arrow}` : label);
         if (direction) button.setAttribute("aria-label", `${label}, ${direction.name}`);
         if (key) setKeyHint(button, keyFromCode(key));
-        return button;
-    });
-    if (here) {
-        buttons.unshift(...visibleListCommands.map(([key, announcement, , label]) => {
-            const button = makeKey(key, label, announcement);
-            setKeyHint(button);
-            return button;
-        }));
+        if (here && key === keyCode(restCommand[0])) footer.push(button);
+        else buttons.push(button);
     }
-    mapCellActions.classList.toggle("nearby-actions", here);
     mapCellActions.setAttribute("aria-label", here ? "Actions" : "Cell actions");
     mapActionButtons.replaceChildren(...buttons);
-    mapActionButtons.scrollTop = 0;
+    mapActionFooter.replaceChildren(...footer);
     if (here && actions.some((action) => action.targets)) centerPending = true;
 }
 
@@ -1733,6 +1739,19 @@ function dismissMapActions() {
 }
 
 closeMapCellActions.addEventListener("click", dismissMapActions);
+
+main.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || mapCellActions.hidden || mapCellActions.contains(event.target) ||
+        heroActions.contains(event.target)) return;
+    const onMap = views.map.viewport.contains(event.target);
+    if (mapDirectionAction && (onMap || directionPad.contains(event.target))) return;
+    mapDirectionAction = undefined;
+    dismissMapActions();
+    if (onMap) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+}, { capture: true });
 
 function keyBadge(label) {
     const badge = document.createElement("kbd");
@@ -1760,6 +1779,12 @@ function setKeyHint(button, key = button.dataset.key) {
     }
     button.setAttribute("aria-description", `Shortcut: ${label}`);
 }
+
+mapLists.replaceChildren(...visibleListCommands.map(([key, announcement, , label]) => {
+    const button = makeKey(key, label, announcement);
+    setKeyHint(button);
+    return button;
+}));
 
 for (const button of document.querySelectorAll(
     "#play-keys [data-key], #target-actions [data-key], #terminal-keys [data-key], " +
@@ -2214,6 +2239,11 @@ function toggleKeyboard() {
 keyboardToggle.addEventListener("click", toggleKeyboard);
 
 heroActions.addEventListener("click", () => {
+    if (!mapCellActions.hidden) {
+        mapDirectionAction = undefined;
+        dismissMapActions();
+        return;
+    }
     if (mode === "command" && context.worldView && world) {
         sendInput({ type: "map-cell", x: world.x, y: world.y, openMenu: true });
     }

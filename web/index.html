@@ -67,6 +67,7 @@
                     <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
                 </div>
             </div>
+            <fieldset id="map-lists" aria-label="Visible lists" disabled hidden></fieldset>
             <button id="open-menu" type="button" aria-label="Menu" aria-controls="actions-screen" disabled hidden>☰</button>
             <div id="target-screen" class="screen" role="region" aria-label="Targeting map" tabindex="0" hidden>
                 <div class="map-grid">
@@ -212,7 +213,10 @@
                 <div class="game-controls-buttons">
                     <fieldset id="map-cell-actions" aria-label="Cell actions" aria-describedby="latest-message" disabled hidden>
                         <div id="map-action-buttons"></div>
-                        <button id="close-map-cell-actions" type="button">Back</button>
+                        <p id="map-action-direction" role="status" hidden></p>
+                        <div id="map-action-footer">
+                            <button id="close-map-cell-actions" type="button">Back</button>
+                        </div>
                     </fieldset>
                     <fieldset id="target-actions" class="key-row" aria-label="Targeting" disabled hidden>
                         <button id="target-mode" type="button" data-key="*">Target monster or location</button>
@@ -225,7 +229,7 @@
                         <button id="confirm-target" type="button" data-key="t">Select target</button>
                     </fieldset>
                     <fieldset id="play-keys" aria-label="Game controls" disabled hidden>
-                        <button id="hero-actions" type="button" aria-controls="map-cell-actions">Actions</button>
+                        <button id="hero-actions" type="button" aria-controls="map-cell-actions" aria-expanded="false">Actions</button>
                         <button type="button" data-key="i" aria-label="Display inventory listing">Pack</button>
                         <button id="use-action" type="button" data-key="U" aria-label="Use an item">Use</button>
                         <button id="combat-action" type="button" data-key="v" aria-label="Throw an item">Throw</button>

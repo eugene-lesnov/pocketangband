@@ -745,7 +745,7 @@ bool web_aim_at_cell(int x, int y, struct loc *location)
 enum web_map_action {
     MAP_EAT, MAP_REFILL, MAP_EQUIP_LIGHT, MAP_PICKUP, MAP_GO_UP, MAP_GO_DOWN,
     MAP_OPEN, MAP_CLOSE, MAP_DISARM, MAP_TUNNEL, MAP_OPEN_CHEST, MAP_DISARM_CHEST,
-    MAP_STUDY, MAP_REST, MAP_RUN, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE, MAP_CAST,
+    MAP_STUDY, MAP_REST, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE, MAP_CAST,
     MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_ACTION_COUNT
 };
 
@@ -755,7 +755,7 @@ static const char *const map_action_labels[MAP_ACTION_COUNT] = {
     [MAP_GO_DOWN] = "Go down staircase",
     [MAP_OPEN] = "Open", [MAP_CLOSE] = "Close", [MAP_DISARM] = "Disarm", [MAP_TUNNEL] = "Tunnel",
     [MAP_OPEN_CHEST] = "Open Chest", [MAP_DISARM_CHEST] = "Disarm Chest", [MAP_STUDY] = "Study",
-    [MAP_REST] = "Rest", [MAP_RUN] = "Run", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
+    [MAP_REST] = "Rest", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
     [MAP_ATTACK] = "Attack",
     [MAP_FIRE] = "Fire", [MAP_CAST] = "Cast", [MAP_THROW] = "Throw",
     [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect",
@@ -764,7 +764,7 @@ static const char *const map_action_labels[MAP_ACTION_COUNT] = {
 static const cmd_code map_action_commands[MAP_ACTION_COUNT] = {
     [MAP_EAT] = CMD_EAT, [MAP_REFILL] = CMD_REFILL, [MAP_EQUIP_LIGHT] = CMD_WIELD,
     [MAP_PICKUP] = CMD_PICKUP, [MAP_GO_UP] = CMD_GO_UP, [MAP_GO_DOWN] = CMD_GO_DOWN,
-    [MAP_RUN] = CMD_RUN, [MAP_OPEN] = CMD_OPEN,
+    [MAP_OPEN] = CMD_OPEN,
     [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_TUNNEL] = CMD_TUNNEL,
     [MAP_OPEN_CHEST] = CMD_OPEN, [MAP_DISARM_CHEST] = CMD_DISARM, [MAP_STUDY] = CMD_STUDY,
     [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
@@ -797,7 +797,7 @@ static unsigned player_map_actions(struct loc grid, int object_count)
     const int pack_and_floor = USE_INVEN | USE_FLOOR;
     const int supplies = pack_and_floor | USE_QUIVER;
     int food_locations = player_is_shapechanged(player) ? USE_FLOOR : pack_and_floor;
-    unsigned actions = (1U << MAP_REST) | (1U << MAP_RUN);
+    unsigned actions = 1U << MAP_REST;
 
     if (player->timed[TMD_FOOD] <= PY_FOOD_HUNGRY && has_action_item(tval_is_edible, food_locations))
         actions |= 1U << MAP_EAT;
