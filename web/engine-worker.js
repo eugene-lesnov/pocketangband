@@ -62,6 +62,8 @@ self.addEventListener("message", ({ data }) => {
     } else if (data.type === "submit-history") {
         if (!["birth-stats", "birth-roll"].includes(waiting?.mode) ||
             data.request !== waiting.request || typeof data.value !== "string") return;
+    } else if (data.type === "submit-text") {
+        if (waiting?.mode !== "text" || data.request !== waiting.request || typeof data.value !== "string") return;
     } else if (data.type === "random-name") {
         if (!["birth-stats", "birth-roll"].includes(waiting?.mode) || data.request !== waiting.request) return;
     } else if (data.type === "set-tiles") {

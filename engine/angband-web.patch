@@ -540,7 +540,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,24 @@
+@@ -36,7 +36,25 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -562,11 +562,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_NAME = 0x800000,
 +	EVT_WEB_RUN_DIRECTION = 0x1000000,
 +	EVT_WEB_HISTORY = 0x2000000,
++	EVT_WEB_TEXT = 0x4000000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +213,14 @@
+@@ -196,6 +214,14 @@
  	uint8_t mods;
  };
  
@@ -581,7 +582,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +246,9 @@
+@@ -221,6 +247,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -877,24 +878,32 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1385,7 +1541,16 @@ static int edit_text(char *buffer, int b
+@@ -1385,7 +1541,24 @@ static int edit_text(char *buffer, int b
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
 +		const char *previous_prompt = web_set_prompt("Edit character history");
-+		web_set_edit_value(buffer, cursor, false);
++		web_set_text_value(buffer, buflen, true, 0, 0);
 +#endif
  		ke = inkey();
 +#ifdef __EMSCRIPTEN__
 +		web_set_prompt(previous_prompt);
 +		web_set_input_mode(previous);
++		if (ke.type == EVT_WEB_TEXT) {
++			bool accepted = web_read_text(buffer, buflen);
++			mem_free(line_starts);
++			mem_free(line_lengths);
++			textblock_free(tb);
++			if (accepted) return 0;
++			continue;
++		}
 +#endif
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1698,16 @@ static enum birth_stage get_history_comm
+@@ -1533,7 +1706,16 @@ static enum birth_stage get_history_comm
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
@@ -911,7 +920,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
-@@ -1566,16 +1740,20 @@ static enum birth_stage get_history_command(void)
+@@ -1566,16 +1748,20 @@ static enum birth_stage get_history_command(void)
   * ------------------------------------------------------------------------ */
  static enum birth_stage get_confirm_command(void)
  {
@@ -936,7 +945,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	
  	/* Start over */
  	if (ke.code == 'S' || ke.code == 's') {
-@@ -1633,6 +1811,9 @@
+@@ -1633,6 +1819,9 @@
  			case BIRTH_RESET:
  			{
  				cmdq_push(CMD_BIRTH_RESET);
@@ -946,7 +955,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				roller = BIRTH_RESET;
  				
-@@ -1676,8 +1857,13 @@ int textui_do_birth(void)
+@@ -1676,8 +1865,13 @@ int textui_do_birth(void)
  
  				next = menu_question(current_stage, menu, command);
  
@@ -961,7 +970,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				/* Make sure the character gets reset before quickstarting */
  				if (next == BIRTH_QUICKSTART) 
-@@ -1739,8 +1925,13 @@
+@@ -1739,8 +1933,13 @@
  					display_player(0);
  
  				next = get_history_command();
@@ -976,7 +985,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				break;
  			}
-@@ -1753,6 +1944,11 @@ int textui_do_birth(void)
+@@ -1753,6 +1952,11 @@ int textui_do_birth(void)
  				next = get_confirm_command();
 -				if (next == BIRTH_BACK)
 +				if (next == BIRTH_BACK) {
@@ -992,7 +1001,21 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 diff --git a/src/ui-input.c b/src/ui-input.c
 --- a/src/ui-input.c
 +++ b/src/ui-input.c
-@@ -364,7 +364,11 @@
+@@ -329,8 +329,12 @@ struct keypress inkey(void)
+ 	ui_event ke = EVENT_EMPTY;
+ 
+ 	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD &&
+-		   ke.type != EVT_MOUSE && ke.type != EVT_BUTTON)
++		   ke.type != EVT_MOUSE && ke.type != EVT_BUTTON) {
+ 		ke = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		if (ke.type == EVT_WEB_TEXT) return ke.key;
++#endif
++	}
+ 
+ 	/* Make the event a keypress */
+ 	if (ke.type == EVT_ESCAPE) {
+@@ -364,7 +368,11 @@
  
  	/* Only accept a keypress */
  	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD	&&
@@ -1005,7 +1028,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		ke = inkey_ex();
  	if (ke.type == EVT_ESCAPE) {
  		ke.type = EVT_KBRD;
-@@ -389,8 +393,22 @@
+@@ -389,8 +397,22 @@
  	/* Pause for response */
  	Term_putstr(x, 0, -1, a, "-more-");
  
@@ -1029,7 +1052,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the line */
  	Term_erase(0, 0, 255);
-@@ -496,6 +514,9 @@
+@@ -496,6 +518,9 @@
  
  	type = data->message.type;
  	msg = data->message.msg;
@@ -1039,20 +1062,27 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	if (Term && type == MSG_BELL) {
  		Term_xtra(TERM_XTRA_NOISE, 0);
-@@ -894,7 +915,24 @@
+@@ -894,7 +919,31 @@
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_TEXT);
 +		if (previous == WEB_INPUT_QUANTITY || previous == WEB_INPUT_REST ||
-+			previous == WEB_INPUT_OPTION_NUMBER)
++			previous == WEB_INPUT_OPTION_NUMBER) {
 +			web_set_input_mode(previous);
-+		web_set_edit_value(buf, k, firsttime);
++			web_set_edit_value(buf, k, firsttime);
++		} else {
++			web_set_text_value(buf, len, false, x, y);
++		}
 +#endif
  		ch = inkey();
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
++		if (ch.type == EVT_WEB_TEXT) {
++			if (web_read_text(buf, len)) return true;
++			continue;
++		}
 +		bool preset = previous == WEB_INPUT_REST ?
 +			(ch.code == '!' || ch.code == '&' || ch.code == '*') :
 +			(previous == WEB_INPUT_QUANTITY && ch.code == '*');
@@ -1064,7 +1094,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,7 +1030,16 @@
+@@ -992,7 +1041,16 @@
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -1081,7 +1111,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
  			}
-@@ -1171,7 +1218,20 @@
+@@ -1171,7 +1229,20 @@
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -1102,7 +1132,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1264,13 @@
+@@ -1204,7 +1275,13 @@
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -1116,7 +1146,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1286,7 @@
+@@ -1220,6 +1297,7 @@
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -1124,7 +1154,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1307,14 @@
+@@ -1240,7 +1318,14 @@
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -1140,7 +1170,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1358,15 @@
+@@ -1284,7 +1369,15 @@
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -1156,7 +1186,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1534,11 @@
+@@ -1452,7 +1545,11 @@
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1169,7 +1199,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,16 +1611,31 @@
+@@ -1525,16 +1622,31 @@
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1202,7 +1232,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1626,6 +1727,10 @@
+@@ -1626,6 +1738,10 @@
  
  	/* Auto-target if requested */
  	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
@@ -1213,7 +1243,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1747,25 @@
+@@ -1642,8 +1758,25 @@
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1241,7 +1271,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,18 +1783,35 @@
+@@ -1661,18 +1794,35 @@
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1278,7 +1308,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			} else {
  				/* Possible direction */
  				int keypresses_handled = 0;
-@@ -1719,6 +1858,18 @@
+@@ -1719,6 +1869,18 @@
  	/* A "valid" direction was entered */
  	return (true);
  }
@@ -1297,7 +1327,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  /**
   * Initialise the UI hooks to give input asked for by the game
-@@ -1840,6 +1991,21 @@
+@@ -1840,6 +2002,21 @@
  			Term_set_cursor(false);
  		}
  
@@ -1322,7 +1352,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,92 @@
+@@ -23,6 +23,93 @@
  #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
@@ -1351,6 +1381,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +bool web_aim_at_cell(int x, int y, struct loc *location);
 +void web_move_aim(int direction, struct loc *location);
 +void web_set_edit_value(const char *value, int cursor, bool initial);
++void web_set_text_value(const char *value, size_t size, bool multiline, int x, int y);
 +void web_set_name_value(const char *value, size_t size);
 +bool web_read_text(char *buf, size_t size);
 +void web_set_direction_center(bool available);

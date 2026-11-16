@@ -147,6 +147,11 @@ EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
 });
 
+EM_JS(void, web_set_text_value, (const char *value, size_t size, bool multiline, int x, int y), {
+    Module['inputContext'] = { value: UTF8ToString(value), textMaxBytes: size - 1,
+        multiline: !!multiline, promptCell: x > 0 ? { x, y } : undefined };
+});
+
 EM_JS(void, web_set_name_value, (const char *value, size_t size), {
     Module['inputContext'] = { value: UTF8ToString(value), nameMaxBytes: size - 1 };
 });
@@ -1098,7 +1103,7 @@ void web_poll_interrupt(void)
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
-        int delete_event, int run_direction), {
+        int text_event, int delete_event, int run_direction), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -1118,6 +1123,9 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
         case "submit-history":
             Module['submittedText'] = event.value;
             return history_event;
+        case "submit-text":
+            Module['submittedText'] = event.value;
+            return text_event;
         case "random-name":
             HEAP32[code >>> 2] = 1;
             return name_event;
@@ -1257,7 +1265,7 @@ static errr queue_input(void)
     ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
-        EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION);
+        EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION);
 
     switch (type) {
         case EVT_NONE: return 1;

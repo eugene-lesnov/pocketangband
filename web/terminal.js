@@ -98,6 +98,11 @@ const nameScreen = document.querySelector("#name-screen");
 const nameFields = document.querySelector("#name-fields");
 const nameValue = document.querySelector("#name-value");
 const namePrompt = document.querySelector("#name-prompt");
+const textScreen = document.querySelector("#text-screen");
+const textFields = document.querySelector("#text-fields");
+const textValue = document.querySelector("#text-value");
+const textHistoryValue = document.querySelector("#text-history-value");
+const textPrompt = document.querySelector("#text-prompt");
 const editScreen = document.querySelector("#edit-screen");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
@@ -878,7 +883,7 @@ function closeInputPanel(closeKeyboard = true) {
         trigger?.focus({ preventScroll: true });
         return true;
     }
-    if (!closeKeyboard || !keyboardOpen || isTextEntry(mode)) return false;
+    if (!closeKeyboard || !keyboardOpen) return false;
     toggleKeyboard();
     return true;
 }
@@ -909,7 +914,6 @@ function updateControls() {
     const selecting = mode === "target";
     const aiming = mode === "aim";
     const directing = mode === "direction";
-    const naming = mode === "name";
     const editing = isTextEntry(mode);
     const counting = mode === "quantity";
     const optionNumber = mode === "option-number";
@@ -938,7 +942,7 @@ function updateControls() {
     const targeting = aiming || selecting;
     const attackTargeting = selecting && context.attack;
     const targetUnavailable = aiming ? !context.current : !context.canSelect;
-    const canOpenKeyboard = !naming && !pickingOnMap && !runDirection && !counting && !optionNumber && !splash &&
+    const canOpenKeyboard = !editing && !pickingOnMap && !runDirection && !counting && !optionNumber && !splash && !saveSlots &&
         !resting && !confirming && !history && !overview && !details && !openPanel && !birthChoiceMenu && !stats &&
         !outcome && !victory && !resultChild && !retiring && !reviewing;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
@@ -989,11 +993,11 @@ function updateControls() {
     mapActionButtons.hidden = !!mapDirectionAction || !mapActionButtons.childElementCount;
     mapActionDirection.hidden = !mapDirectionAction;
     mapActionDirection.textContent = mapDirectionAction ? `${mapDirectionAction.label} · Choose a direction.` : "";
-    nameFields.disabled = disabled;
-    setActions(terminalKeys, mode !== undefined && !naming && !playing && !stopVisible && !outcome &&
+    nameFields.disabled = textFields.disabled = disabled;
+    setActions(terminalKeys, mode !== undefined && !editing && !playing && !stopVisible && !outcome &&
         !(command && showKeyboard), disabled || editingHistory);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
-    terminalKeys.classList.toggle("single-row-controls", playingGame && !showPad);
+    terminalKeys.classList.toggle("single-row-controls", (playingGame || saveSlots) && !showPad);
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     terminalKeys.classList.toggle("birth-choice-controls", birthChoiceMenu);
     terminalKeys.classList.toggle("birth-stat-controls", stats);
@@ -1011,7 +1015,7 @@ function updateControls() {
     confirmKey.textContent = reviewing ? "Start game" : retiring ? "Retire character and quit" :
         confirming ? "Yes" : history ? "Keep history" : stats ? "Accept" :
         targeting ? targetLabel :
-        editing || counting || optionNumber || resting ? "Done" :
+        counting || optionNumber || resting ? "Done" :
         saveSlots ? (existingSave ? "Continue" : "New game") : isMenu() ? "Select" :
         overview || details || character ? "Close" : "Continue";
     setKeyHint(confirmKey);
@@ -1021,7 +1025,7 @@ function updateControls() {
     confirmKey.disabled = directing || (targeting && targetUnavailable) ||
         (!!menu && !selectedRow);
     cancelKey.textContent = confirming ? (context.castWarning ? "Cancel" : "No") : openPanel ? "Back" :
-        targeting || directing || runDirection || pickingOnMap || editing || counting || optionNumber || resting || retiring ?
+        targeting || directing || runDirection || pickingOnMap || counting || optionNumber || resting || retiring ?
             "Cancel" : command ? "Esc" : "Back";
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     setKeyHint(cancelKey);
@@ -1156,10 +1160,10 @@ function setActions(group, visible, disabled) {
     group.disabled = disabled || !visible;
 }
 
-function terminalLine(row) {
+function terminalLine(row, end) {
     const frame = views.terminal.frame;
     return frame ? String.fromCodePoint(...frame.codepoints.subarray(
-        row * frame.width, (row + 1) * frame.width)).trim() : "";
+        row * frame.width, row * frame.width + (end ?? frame.width))).trim() : "";
 }
 
 function showMessagePause(data) {
@@ -1224,12 +1228,12 @@ function updatePrompt() {
             const label = context.freeAim ? "Free selection" : "Interesting places";
             text = text ? `${label}\n${text}` : label;
         }
-    } else if (!text && (isTextEntry(mode) || mode === "quantity")) {
+    } else if (!text && mode === "quantity") {
         text = terminalLine(0);
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
     else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
-    if (mode === "name" || openPanel) text = "";
+    if (isTextEntry(mode) || openPanel) text = "";
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -1257,7 +1261,8 @@ function updateView(state = world, region = views.target.crop) {
     activeView = world && (context.worldView || menu?.onMap) ? views.map :
         aiming && region ? views.target : views.terminal;
     const naming = mode === "name";
-    const editing = !naming && context.value !== undefined && !openPanel;
+    const enteringText = mode === "text";
+    const editing = !isTextEntry(mode) && context.value !== undefined && !openPanel;
     const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
     const showDetails = context.detail !== undefined;
     const reviewing = mode === "birth-review";
@@ -1270,8 +1275,8 @@ function updateView(state = world, region = views.target.crop) {
     resultsList.hidden = mode !== "results-list";
     resultsFile.hidden = mode !== "results-file";
     const showBirthStats = !!context.birthStats;
-    main.classList.toggle("birth-creating", showBirthStats);
-    updateBirthViewport();
+    main.classList.toggle("text-viewport", showBirthStats || isTextEntry(mode));
+    updateTextViewport();
     splashScreen.hidden = !showSplash || !!openPanel;
     birthStatsScreen.hidden = !showBirthStats || !!openPanel;
     if (showSplash) angbandVersion.textContent = context.version;
@@ -1309,6 +1314,7 @@ function updateView(state = world, region = views.target.crop) {
         detailsScreen.scrollTop = 0;
     }
     nameScreen.hidden = !naming;
+    textScreen.hidden = !enteringText;
     editScreen.hidden = !editing && !question;
     editValue.classList.toggle("confirmation", !editing && Boolean(question));
     if (editing) {
@@ -1337,7 +1343,7 @@ function updateView(state = world, region = views.target.crop) {
         }
     }
     for (const view of Object.values(views)) view.viewport.hidden =
-        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || naming || editing || !!question ||
+        view !== activeView || (!!menu && !menu.onMap) || !!openPanel || naming || enteringText || editing || !!question ||
         showDetails || showCharacter || showSplash || showBirthStats || showVictory || !resultsList.hidden || !resultsFile.hidden;
     const mapPicking = !!menu?.onMap && !openPanel;
     main.classList.toggle("map-picking", mapPicking);
@@ -1362,8 +1368,8 @@ function updateView(state = world, region = views.target.crop) {
         mode === "overview" ? "Full dungeon map" : mode === "details" ? "Details" :
         mode === "history" ? "Character history" : mode === "birth-stats" ? "Point-based" :
         mode === "birth-roll" ? "Standard roller" :
-        question ? "Confirm" : naming ? "Character name" : editing ? mode === "quantity" ? "Quantity" :
-            mode === "rest" ? "Rest" : mode === "option-number" ? "Edit option" : "Text entry" : activeView.title);
+        question ? "Confirm" : naming ? "Character name" : enteringText ? "Text entry" :
+        editing ? mode === "quantity" ? "Quantity" : mode === "rest" ? "Rest" : "Edit option" : activeView.title);
     const activeSection = menu?.sections?.find((section) => section.active);
     viewTitle.textContent = panelTitles[openPanel] ?? (mode === "save-slots" ? "Save slots" :
         menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label ??
@@ -1449,11 +1455,6 @@ function handleWorkerMessage({ data }) {
                 }
                 keyboardOpen = false;
                 openPanel = panelTrigger = undefined;
-                if (data.mode === "text") {
-                    keyboardLayer = 0;
-                    shifted = false;
-                    keyboardOpen = true;
-                }
             }
             if (changed) {
                 views.terminal.fit = data.mode === "overview";
@@ -1471,12 +1472,13 @@ function handleWorkerMessage({ data }) {
                 nameValue.value = context.value;
                 nameValue.setCustomValidity("");
                 namePrompt.textContent = context.prompt;
+            } else if (mode === "text") {
+                renderTextEntry();
             }
             if (context.mapCell?.actions) renderMapActions();
             menu = data.menu;
             if (!menu?.onMap) pickerExpanded = false;
             deletingSave = false;
-            if (changed && mode === "text") renderKeyboard();
             launch.hidden = true;
             main.classList.remove("starting");
             updateView(mode === "command" ? data.world ?? null : data.world ?? world, data.region ?? null);
@@ -1491,9 +1493,10 @@ function handleWorkerMessage({ data }) {
             }
             updateControls();
             if (restoreSaveFocus) focusSelectedSave();
-            if (changed && mode === "name" && matchMedia("(pointer: fine)").matches) {
-                nameValue.focus({ preventScroll: true });
-                nameValue.select();
+            if (isTextEntry(mode) && matchMedia("(pointer: fine)").matches) {
+                const field = mode === "name" ? nameValue : activeTextField();
+                field.focus({ preventScroll: true });
+                if (!context.multiline) field.select();
             }
             if (pauseTrigger && document.activeElement === document.body) {
                 pauseTrigger.focus({ preventScroll: true });
@@ -1661,6 +1664,7 @@ function sendInput(input) {
         }
     }
     request = undefined;
+    if (mode === "text") textFields.disabled = true;
     renderAppUpdate();
     if (mode === "aim") draw();
     if (running || !mapCellActions.hidden) updateControls();
@@ -1691,6 +1695,40 @@ function submitName(field, maxBytes) {
     }
     return sendInput({ type: "submit-name", value });
 }
+
+function activeTextField() {
+    return context.multiline ? textHistoryValue : textValue;
+}
+
+function renderTextEntry() {
+    const { multiline, promptCell, prompt, value } = context;
+    const field = activeTextField();
+    textValue.hidden = multiline;
+    textHistoryValue.hidden = !multiline;
+    textPrompt.htmlFor = field.id;
+    textPrompt.textContent = prompt?.trim() || (promptCell && terminalLine(promptCell.y, promptCell.x)) || "Text entry";
+    field.value = value;
+    field.setCustomValidity("");
+}
+
+for (const field of [textValue, textHistoryValue]) {
+    field.addEventListener("input", () => field.setCustomValidity(""));
+}
+textScreen.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (mode !== "text" || request === undefined) return;
+    const field = activeTextField();
+    const value = field.value;
+    const unsupported = context.multiline ? /(?!\n)[\p{Cc}\p{Cs}]/u : /[\p{Cc}\p{Cs}]/u;
+    const error = unsupported.test(value) ? "The text contains unsupported characters." :
+        new TextEncoder().encode(value).length > context.textMaxBytes ? "The text is too long." : "";
+    if (error) {
+        field.setCustomValidity(error);
+        field.reportValidity();
+        return;
+    }
+    sendInput({ type: "submit-text", value });
+});
 
 function editBirthHistory(open) {
     if (open) {
@@ -1723,15 +1761,15 @@ document.querySelector("#birth-history-done").addEventListener("click", () => {
     sendInput({ type: "submit-history", value });
 });
 
-function updateBirthViewport() {
-    if (context.birthStats && window.visualViewport) {
-        main.style.setProperty("--birth-viewport-height", `${window.visualViewport.height}px`);
+function updateTextViewport() {
+    if (main.classList.contains("text-viewport") && window.visualViewport) {
+        main.style.setProperty("--text-viewport-height", `${window.visualViewport.height}px`);
     } else {
-        main.style.removeProperty("--birth-viewport-height");
+        main.style.removeProperty("--text-viewport-height");
     }
 }
 
-window.visualViewport?.addEventListener("resize", updateBirthViewport);
+window.visualViewport?.addEventListener("resize", updateTextViewport);
 
 let buttonPress;
 const inputButton = "button[data-key], button[data-input]";
@@ -1951,7 +1989,7 @@ mapLists.replaceChildren(...visibleListCommands.map(([key, announcement, , label
 
 for (const button of document.querySelectorAll(
     "#play-keys [data-key], #target-actions [data-key], #terminal-keys [data-key], " +
-    "#birth-roll-actions [data-key], #name-fields [data-key], #reset-stats"
+    "#birth-roll-actions [data-key], #name-fields [data-key], #text-fields [data-key], #reset-stats"
 )) setKeyHint(button);
 for (const button of directionButtons) {
     const direction = mapDirections.findIndex((entry) => entry?.key === button.dataset.key);
@@ -2315,8 +2353,6 @@ function renderKeyboard() {
     ];
     const rows = layers[keyboardLayer].map((line) =>
         [...line].map((key) => makeKey(keyboardLayer === 0 && shifted ? key.toUpperCase() : key)));
-    if (mode === "text") rows.unshift([makeKey("ArrowLeft", "←", "Move text cursor left"),
-        makeKey("ArrowRight", "→", "Move text cursor right")]);
     if (mode === "terminal") rows.unshift([
         makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
         makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
@@ -2339,8 +2375,7 @@ function renderKeyboard() {
     rows.at(-1).push(makeKey("Backspace", "⌫", "Delete character"));
     const space = makeKey(" ", "Space");
     space.className = "space-key";
-    const utility = [switchLayer, space];
-    if (!isTextEntry(mode)) utility.push(makeKey("Tab", "Tab"));
+    const utility = [switchLayer, space, makeKey("Tab", "Tab")];
     if (mode === "command") {
         const commands = makeButton("Cmds", "Commands");
         commands.setAttribute("aria-controls", "actions-screen");
@@ -2385,10 +2420,8 @@ for (const button of [...quantity.querySelectorAll('[data-key="*"]'), ...rest.fi
 function toggleKeyboard() {
     keyboardOpen = !keyboardOpen;
     if (keyboardOpen) {
-        if (!isTextEntry(mode)) {
-            keyboardLayer = 0;
-            shifted = false;
-        }
+        keyboardLayer = 0;
+        shifted = false;
         renderKeyboard();
     }
     updateControls();
@@ -2672,8 +2705,8 @@ document.addEventListener("keydown", (event) => {
         }
         return;
     }
-    if (mode === "name") {
-        if (event.key === "Escape" || (event.key === "*" && !event.ctrlKey && !event.metaKey)) {
+    if (isTextEntry(mode)) {
+        if (event.key === "Escape" || (mode === "name" && event.key === "*" && !event.ctrlKey && !event.metaKey)) {
             event.preventDefault();
             if (!event.repeat) sendInput({ type: "key", code: keyCode(event.key) });
         }
@@ -2743,7 +2776,7 @@ document.addEventListener("keydown", (event) => {
     if (code) {
         event.preventDefault();
         if (!event.repeat || (mode === "command" && event.key.startsWith("Arrow")) ||
-            ((isTextEntry(mode) || mode === "option-number") && event.key === "Backspace")) {
+            (mode === "option-number" && event.key === "Backspace")) {
             sendInput({ type: "key", code });
         }
     }

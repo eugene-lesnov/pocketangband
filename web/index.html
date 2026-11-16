@@ -186,6 +186,18 @@
                     </div>
                 </fieldset>
             </form>
+            <form id="text-screen" class="menu-screen" aria-labelledby="view-title" hidden>
+                <fieldset id="text-fields" disabled>
+                    <label id="text-prompt" for="text-value"></label>
+                    <input id="text-value" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
+                        spellcheck="false" enterkeyhint="done">
+                    <textarea id="text-history-value" rows="4" autocapitalize="sentences" hidden></textarea>
+                    <div class="key-row">
+                        <button type="button" data-key="Escape">Cancel</button>
+                        <button id="confirm-text" type="submit">Done</button>
+                    </div>
+                </fieldset>
+            </form>
             <div id="edit-screen" class="menu-screen" hidden>
                 <p id="edit-value" aria-label="Current value"></p>
             </div>

@@ -645,7 +645,7 @@ button > .key-hint {
 #target-types [aria-pressed="true"] { color: #171612; background: var(--accent); }
 #target-types [aria-pressed="true"] .key-hint { color: inherit; }
 #terminal-keys { grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr); }
-:is(#confirm-key, #confirm-target, #confirm-name) { border-color: #9c7749; }
+:is(#confirm-key, #confirm-target, #confirm-name, #confirm-text) { border-color: #9c7749; }
 .keyboard-icon { vertical-align: middle; }
 #keyboard-toggle { color: var(--accent); }
 #keyboard-toggle[aria-expanded="true"] { color: #171612; background: var(--accent); }
@@ -819,10 +819,10 @@ main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#can
 }
 main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !important; }
 .view:has(#name-screen:not([hidden])) { flex: none; }
-#name-screen, #edit-screen { padding: 0.75rem 0.625rem; }
-#name-fields { display: grid; gap: 0.5rem; }
+#name-screen, #text-screen, #edit-screen { padding: 0.75rem 0.625rem; }
+#name-fields, #text-fields { display: grid; gap: 0.5rem; }
 #name-fields .key-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#name-prompt { color: var(--accent); font-size: 0.875rem; }
+#name-prompt, #text-prompt { color: var(--accent); font-size: 0.875rem; overflow-wrap: anywhere; }
 #details-screen {
     padding: 0.75rem 0.625rem;
     font: 0.875rem/1.45 system-ui, sans-serif;
@@ -842,7 +842,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .visible-list-symbol { font-family: var(--mono); }
 .visible-list-name { white-space: pre-wrap; }
 .visible-list-location { color: var(--muted); font: 0.75rem var(--mono); white-space: nowrap; }
-#edit-value, #name-value, #birth-name-value, #birth-history-value {
+#edit-value, #name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value {
     min-height: 2.75rem;
     padding: 0.65rem;
     border: 1px solid var(--border);
@@ -852,7 +852,9 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
-#name-value, #birth-name-value, #birth-history-value { width: 100%; min-width: 0; color: inherit; }
+#name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value {
+    width: 100%; min-width: 0; color: inherit;
+}
 #edit-value .caret { border-inline-start: 2px solid var(--accent); }
 #edit-value .selection { color: #171612; background: var(--accent); }
 #edit-value small { display: block; margin-top: 0.5rem; color: var(--accent); }
@@ -923,8 +925,8 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .birth-name-row button { flex: none; padding-inline: 0.625rem; }
 #birth-name-prompt { color: var(--muted); font-size: 0.8125rem; }
 #birth-roll-actions { margin: 0.625rem 0.5rem 0; }
-main.birth-creating:not(.starting) {
-    height: var(--birth-viewport-height, 100dvh);
+main.text-viewport:not(.starting) {
+    height: var(--text-viewport-height, 100dvh);
     min-height: 0;
 }
 #birth-identity { color: var(--muted); font-size: 0.8125rem; }
