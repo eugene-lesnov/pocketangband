@@ -174,13 +174,41 @@ EM_JS(void, web_set_target_options, (bool free_aim, int count, bool can_select,
         canSelect: !!can_select, canInspect: !!can_inspect, attack: !!attack };
 });
 
+EM_JS(void, web_set_monster_sort, (bool by_exp), {
+    Module['inputContext'] = { ...Module['inputContext'], sortByExp: !!by_exp };
+});
+
+static const void *list_block;
+
+EM_JS(void, start_list, (void), {
+    Module['inputContext'] = { list: [] };
+});
+
+void web_set_list_block(const void *block)
+{
+    list_block = block;
+    if (block) start_list();
+}
+
+bool web_is_list_block(const void *block)
+{
+    return block && block == list_block;
+}
+
+EM_JS(void, web_add_list_row, (const char *text, const char *location, wchar_t symbol), {
+    Module['inputContext'].list.push({ text: UTF8ToString(text).trim(),
+        location: location ? UTF8ToString(location).trim() : undefined,
+        symbol: symbol ? String.fromCodePoint(symbol) : "" });
+});
+
 EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
     let detail = "";
     for (let i = 0; i < length; i += 4096) {
         detail += String.fromCodePoint(...HEAPU32.subarray((text >>> 2) + i,
             (text >>> 2) + Math.min(length, i + 4096)));
     }
-    Module['inputContext'] = { detail };
+    Module['inputContext'] = { detail, list: Module['inputContext']?.list,
+        sortByExp: Module['inputContext']?.sortByExp };
 });
 
 EM_JS(void, web_set_option_notice, (const char *message), {

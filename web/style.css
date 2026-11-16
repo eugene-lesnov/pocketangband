@@ -153,6 +153,8 @@ dt { color: var(--muted); }
 
 .view-bar { min-height: 44px; padding-inline: 0.625rem 0.25rem; }
 .view:has(.menu-screen:not([hidden])) .view-bar { min-height: 2rem; }
+#monster-sort { flex: none; margin-block: 0.25rem; padding-inline: 0.625rem; }
+#monster-sort[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: #493821; }
 .view {
     --map-button-size: 44px;
     --message-row-height: 54px;
@@ -807,6 +809,19 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+#details-screen.visible-list { white-space: normal; }
+.visible-list-heading { margin-block: 0.5rem 0.25rem; }
+.visible-list-heading:first-child { margin-top: 0; }
+.visible-list-row {
+    display: grid;
+    grid-template-columns: 1ch minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding-block: 0.25rem;
+}
+.visible-list-symbol { font-family: var(--mono); }
+.visible-list-name { white-space: pre-wrap; }
+.visible-list-location { color: var(--muted); font: 0.75rem var(--mono); white-space: nowrap; }
 #edit-value, #name-value {
     min-height: 2.75rem;
     padding: 0.65rem;

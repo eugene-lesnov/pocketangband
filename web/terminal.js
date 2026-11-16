@@ -15,6 +15,7 @@ const confirmDeleteSave = document.querySelector("#confirm-delete-save");
 const deleteSaveIcon = document.querySelector("#delete-save-icon");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
 const viewTitle = document.querySelector("#view-title");
+const monsterSort = document.querySelector("#monster-sort");
 const zoom = document.querySelector("#zoom");
 const zoomOut = document.querySelector("#zoom-out");
 const zoomIn = document.querySelector("#zoom-in");
@@ -274,6 +275,7 @@ let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
 let pickerExpanded = false;
+let renderedDetails;
 let repeatName = "";
 let graphicsRestored = false;
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
@@ -914,6 +916,9 @@ function updateControls() {
     const birthChoiceMenu = !!menu?.birth;
     const overview = mode === "overview";
     const details = mode === "details";
+    monsterSort.hidden = !details || context.sortByExp === undefined || !!openPanel;
+    monsterSort.disabled = disabled;
+    monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
     const character = mode === "character";
     const outcome = mode === "menu" && !!context.outcome;
     const victory = mode === "victory";
@@ -1256,8 +1261,34 @@ function updateView(state = world, region = views.target.crop) {
     characterScreen.hidden = !showCharacter;
     characterScreen.classList.toggle("birth-review", reviewing);
     detailsScreen.hidden = !showDetails;
-    if (showDetails && detailsScreen.textContent !== context.detail) {
-        detailsScreen.textContent = context.detail;
+    const detailContent = context.list ?? context.detail;
+    if (showDetails && renderedDetails !== detailContent) {
+        renderedDetails = detailContent;
+        detailsScreen.classList.toggle("visible-list", !!context.list);
+        if (context.list) {
+            detailsScreen.replaceChildren(...context.list.map(({ text, location, symbol }) => {
+                const row = document.createElement(location === undefined ? "p" : "div");
+                row.className = location === undefined ? "visible-list-heading" : "visible-list-row";
+                if (location === undefined) {
+                    row.textContent = text;
+                } else {
+                    const glyph = document.createElement("span");
+                    glyph.className = "visible-list-symbol";
+                    glyph.setAttribute("aria-hidden", "true");
+                    glyph.textContent = symbol;
+                    const name = document.createElement("span");
+                    name.className = "visible-list-name";
+                    name.textContent = text;
+                    const distance = document.createElement("span");
+                    distance.className = "visible-list-location";
+                    distance.textContent = location;
+                    row.append(glyph, name, distance);
+                }
+                return row;
+            }));
+        } else {
+            detailsScreen.textContent = context.detail;
+        }
         detailsScreen.scrollTop = 0;
     }
     nameScreen.hidden = !naming;
@@ -1847,6 +1878,7 @@ for (const button of directionButtons) {
     setKeyHint(button, String(direction));
 }
 for (const [button, key] of [[closeMapCellActions, "Escape"], [stopAction, "Escape"],
+    [monsterSort, "x"],
     [continueMessage, "Enter"], [document.querySelector("#confirm-name"), "Enter"]]) setKeyHint(button, key);
 
 function commandKey([key, , alternative], roguelike) {
@@ -2572,7 +2604,8 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (mode === "details" && context.detail !== undefined &&
-        !["Escape", "Enter", "[", "]"].includes(event.key)) return;
+        !["Escape", "Enter", "[", "]"].includes(event.key) &&
+        !(context.sortByExp !== undefined && event.key === "x")) return;
     const code = keyCode(event.key);
     if (code) {
         event.preventDefault();

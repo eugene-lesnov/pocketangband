@@ -1239,7 +1239,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,86 @@
+@@ -23,6 +23,90 @@
  #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
@@ -1279,6 +1279,10 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_run_direction(int direction);
 +bool web_can_equip_light(const struct object *obj);
 +bool web_get_map_aim_dir(int *dir, struct loc grid);
++void web_set_monster_sort(bool by_exp);
++void web_set_list_block(const void *block);
++bool web_is_list_block(const void *block);
++void web_add_list_row(const char *text, const char *location, wchar_t symbol);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
 +void web_show_splash(bool startup);
@@ -1785,6 +1789,87 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  			/* Restrict cursor to inbounds */
  			x = MAX(0, MIN(x, cave->width - 1));
+diff --git a/src/ui-display.c b/src/ui-display.c
+--- a/src/ui-display.c
++++ b/src/ui-display.c
+@@ -2607,7 +2607,7 @@
+ 	if (floor_num == 1) {
+ 		/* Get the object */
+ 		struct object *obj = floor_list[0];
+-		char o_name[80];
++		char o_name[1024];
+ 
+ 		if (!can_pickup)
+ 			p = "have no room for";
+diff --git a/src/obj-pile.c b/src/obj-pile.c
+--- a/src/obj-pile.c
++++ b/src/obj-pile.c
+@@ -832,7 +832,7 @@
+ 	int num, bool message, bool *none_left)
+ {
+ 	struct object *usable;
+-	char name[80];
++	char name[1024];
+ 
+ 	/* Bounds check */
+ 	num = MIN(num, obj->number);
+diff --git a/src/obj-gear.c b/src/obj-gear.c
+--- a/src/obj-gear.c
++++ b/src/obj-gear.c
+@@ -526,7 +526,7 @@
+ {
+ 	struct object *usable;
+ 	struct object *first_remainder = NULL;
+-	char name[80];
++	char name[1024];
+ 	char label = gear_to_label(p, obj);
+ 	bool artifact = (obj->known->artifact != NULL);
+ 
+@@ -891,7 +891,7 @@
+ 	update_stuff(p);
+ 
+ 	if (message) {
+-		char o_name[80];
++		char o_name[1024];
+ 		struct object *first;
+ 		uint16_t total;
+ 		char label;
+@@ -933,7 +933,7 @@
+ 	struct object *wielded, *old = player->body.slots[slot].obj;
+ 
+ 	const char *fmt;
+-	char o_name[80];
++	char o_name[1024];
+ 	bool dummy = false;
+ 
+ 	/* Increase equipment counter if empty slot */
+@@ -1034,7 +1034,7 @@
+ {
+ 	int slot = equipped_item_slot(player->body, obj);
+ 	const char *act;
+-	char o_name[80];
++	char o_name[1024];
+ 
+ 	/* Paranoia */
+ 	if (slot == player->body.count) return;
+@@ -1082,7 +1082,7 @@
+ 	bool equipped = false;
+ 	bool quiver;
+ 
+-	char name[80];
++	char name[1024];
+ 	char label;
+ 
+ 	/* Error check */
+@@ -1345,7 +1345,7 @@
+ void pack_overflow(struct object *obj)
+ {
+ 	int i;
+-	char o_name[80];
++	char o_name[1024];
+ 
+ 	if (!pack_is_overfull()) return;
+ 
 diff --git a/src/cmd-obj.c b/src/cmd-obj.c
 --- a/src/cmd-obj.c
 +++ b/src/cmd-obj.c
@@ -1798,7 +1883,25 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  /**
   * ------------------------------------------------------------------------
-@@ -277,12 +280,22 @@ void do_cmd_wield(struct command *cmd)
+@@ -182,7 +185,7 @@
+ 	const char *str;
+ 
+ 	char prompt[1024];
+-	char o_name[80];
++	char o_name[1024];
+ 
+ 	if (!player_get_resume_normal_shape(player, cmd)) {
+ 		return;
+@@ -265,7 +268,7 @@
+ void do_cmd_wield(struct command *cmd)
+ {
+ 	struct object *equip_obj;
+-	char o_name[80];
++	char o_name[1024];
+ 	const char *act;
+ 
+ 	unsigned n;
+@@ -277,11 +280,21 @@
  		return;
  	}
  
@@ -1822,8 +1925,16 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			/* Choice */ USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK)
  		return;
  
- 	/* Get the slot the object wants to go in, and the item currently there */
-@@ -1089,7 +1102,7 @@ void do_cmd_refill(struct command *cmd)
+@@ -682,7 +695,7 @@
+ 			 * Describe what's left of single use items or newly
+ 			 * identified items of all kinds.
+ 			 */
+-			char name[80];
++			char name[1024];
+ 
+ 			object_desc(name, sizeof(name), work_obj,
+ 				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM |
+@@ -1089,7 +1102,7 @@
  
  	/* Get an item */
  	if (cmd_get_item(cmd, "item", &obj,
@@ -1832,7 +1943,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			"You have nothing you can refuel with.",
  			obj_can_refill,
  			USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK) return;
-@@ -1140,15 +1153,25 @@ void do_cmd_cast(struct command *cmd)
+@@ -1140,15 +1153,25 @@
  	if (spell->smana > player->csp) {
  		const char *verb = spell->realm->verb;
  		const char *noun = spell->realm->spell_noun;
@@ -2176,6 +2287,162 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	/* Require at least one legal choice */
  	if (allow_inven || allow_equip || allow_quiver || allow_floor) {
  		/* Use throwing menu if at all possible */
+diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
+--- a/src/ui-mon-list.c
++++ b/src/ui-mon-list.c
+@@ -22,6 +22,7 @@
+ #include "mon-lore.h"
+ #include "mon-util.h"
+ #include "player-timed.h"
++#include "ui-input.h"
+ #include "ui-mon-list.h"
+ #include "ui-output.h"
+ #include "ui-prefs.h"
+@@ -76,6 +77,9 @@
+ 
+ 		if (tb != NULL)
+ 			textblock_append(tb, "%s", line_buffer);
++#ifdef __EMSCRIPTEN__
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++#endif
+ 
+ 		/* Force a minimum width so that the prompt doesn't get cut off. */
+ 		if (max_width_result != NULL)
+@@ -94,6 +98,9 @@
+ 
+ 	if (tb != NULL)
+ 		textblock_append(tb, "%s", line_buffer);
++#ifdef __EMSCRIPTEN__
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++#endif
+ 
+ 	for (index = 0; index < total && line_count < lines_to_display; index++) {
+ 		char asleep[20] = { '\0' };
+@@ -137,6 +144,13 @@
+ 		get_mon_name(line_buffer, sizeof(line_buffer),
+ 					 list->entries[index].race,
+ 					 list->entries[index].count[section]);
++#ifdef __EMSCRIPTEN__
++		if (web_is_list_block(tb)) {
++			char full_name[sizeof(line_buffer) + sizeof(asleep)];
++			strnfmt(full_name, sizeof(full_name), "%s%s", line_buffer, asleep);
++			web_add_list_row(full_name, location, list->entries[index].race->d_char);
++		}
++#endif
+ 		utf8_clipto(line_buffer, name_width);
+ 		my_strcat(line_buffer, asleep, sizeof(line_buffer));
+ 
+@@ -220,6 +234,9 @@
+ 
+ 		if (tb != NULL)
+ 			textblock_append_c(tb, COLOUR_ORANGE, "%s", message);
++#ifdef __EMSCRIPTEN__
++		if (web_is_list_block(tb)) web_add_list_row(message, NULL, 0);
++#endif
+ 
+ 		return true;
+ 	}
+@@ -432,8 +449,14 @@
+ 		 * safe_width so that the format function will pad the lines properly so
+ 		 * that the location string is aligned to the right edge of the list.
+ 		 */
++#ifdef __EMSCRIPTEN__
++		web_set_list_block(tb);
++#endif
+ 		monster_list_format_textblock(list, tb, (int) max_height, safe_width, NULL,
+ 									  NULL);
++#ifdef __EMSCRIPTEN__
++		web_set_list_block(NULL);
++#endif
+ 		region_erase_bordered(&r);
+ 
+ 		char buf[300];
+@@ -445,7 +468,12 @@
+ 			my_strcpy(buf, "Press 'x' to turn ON 'sort by exp'", sizeof(buf));
+ 		}
+ 
++#ifdef __EMSCRIPTEN__
++		web_set_monster_sort(sort_exp);
++		ch = textui_textblock_show(tb, r, "Monster list");
++#else
+ 		ch = textui_textblock_show(tb, r, buf);
++#endif
+ 
+ 		// Toggle sort
+ 		sort_exp = !sort_exp;
+diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
+--- a/src/ui-obj-list.c
++++ b/src/ui-obj-list.c
+@@ -18,6 +18,9 @@
+  */
+ 
+ #include "angband.h"
++#include "cave.h"
++#include "obj-desc.h"
++#include "ui-input.h"
+ #include "init.h"
+ #include "obj-list.h"
+ #include "obj-util.h"
+@@ -79,6 +82,9 @@
+ 
+ 		if (tb != NULL)
+ 			textblock_append(tb, "%s", line_buffer);
++#ifdef __EMSCRIPTEN__
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++#endif
+ 
+ 		/* Force a minimum width so that the prompt doesn't get cut off. */
+ 		if (max_width_result != NULL)
+@@ -95,6 +101,9 @@
+ 
+ 	if (tb != NULL)
+ 		textblock_append(tb, "%s", line_buffer);
++#ifdef __EMSCRIPTEN__
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++#endif
+ 
+ 	for (entry_index = 0; entry_index < total && line_count < lines_to_display;
+ 		 entry_index++) {
+@@ -121,6 +130,18 @@
+ 		/* Add the object count and clip the object name to fit. */
+ 		object_list_format_name(&list->entries[entry_index], line_buffer,
+ 								sizeof(line_buffer));
++#ifdef __EMSCRIPTEN__
++		if (web_is_list_block(tb)) {
++			const object_list_entry_t *entry = &list->entries[entry_index];
++			char full_name[1024];
++			wchar_t symbol = L'*';
++			object_desc(full_name, sizeof(full_name), cave->objects[entry->object->oidx],
++				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM | (entry->count[section] << 16), player);
++			if (!is_unknown(entry->object) && entry->object->kind)
++				symbol = entry->object->kind->d_char;
++			web_add_list_row(full_name, location, symbol);
++		}
++#endif
+ 		utf8_clipto(line_buffer, full_width);
+ 
+ 		/* Calculate the width of the line for dynamic sizing; use a fixed max
+@@ -374,10 +395,20 @@
+ 	 * safe_width so that the format function will pad the lines properly so
+ 	 * that the location string is aligned to the right edge of the list.
+ 	 */
++#ifdef __EMSCRIPTEN__
++	web_set_list_block(tb);
++#endif
+ 	object_list_format_textblock(list, tb, (int)max_height, safe_width, NULL,
+ 								 NULL);
++#ifdef __EMSCRIPTEN__
++	web_set_list_block(NULL);
++#endif
+ 	region_erase_bordered(&r);
++#ifdef __EMSCRIPTEN__
++	textui_textblock_show(tb, r, "Item list");
++#else
+ 	textui_textblock_show(tb, r, NULL);
++#endif
+ 
+ 	textblock_free(tb);
+ 	object_list_free(list);
 diff --git a/src/ui-output.c b/src/ui-output.c
 --- a/src/ui-output.c
 +++ b/src/ui-output.c
