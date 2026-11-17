@@ -89,12 +89,13 @@ diff --git a/src/ui-curse.c b/src/ui-curse.c
 diff --git a/src/ui-effect.c b/src/ui-effect.c
 --- a/src/ui-effect.c
 +++ b/src/ui-effect.c
-@@ -107,7 +107,11 @@ static int effect_menu_select(struct men
+@@ -107,7 +107,12 @@ static int effect_menu_select(struct men
  	screen_save();
  	region_erase_bordered(&m->active);
  	prt((prompt) ? prompt : "Which effect? ", 0, 0);
 +#ifdef __EMSCRIPTEN__
 +	m->web_title = prompt ? prompt : "Which effect?";
++	m->web_no_keyboard = true;
 +	m->web_choice = true;
 +#endif
  	out = menu_select(m, 0, false);
@@ -153,12 +154,13 @@ diff --git a/src/ui-player-properties.c b/src/ui-player-properties.c
  	/* Save the screen and clear it */
  	screen_save();
  
-@@ -125,8 +153,13 @@ void textui_view_ability_menu(struct pla
+@@ -125,8 +153,14 @@ void textui_view_ability_menu(struct pla
  	menu.header = buf;
  	menu_setpriv(&menu, num_abilities, ability_list);
  	loc.page_rows = num_abilities + 1;
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_abilities;
++	menu.web_no_keyboard = true;
 +	menu.web_choice = true;
 +#else
  	menu.flags = MN_DBL_TAP;
@@ -1847,7 +1849,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  		case KTRL('P'): do_cmd_messages(); break;
  		case ')': do_cmd_save_screen(); break;
  
-@@ -865,15 +888,69 @@ static bool store_process_command_key(struct keypress kp)
+@@ -865,15 +888,70 @@ static bool store_process_command_key(struct keypress kp)
  /**
   * Select an item from the store's stock, and return the stock index
   */
@@ -1859,6 +1861,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +	struct store *store = ctx->store;
 +	bool home = store->feat == FEAT_HOME;
 +
++	m->web_no_keyboard = (m->flags & MN_NO_ACTION) != 0;
 +	web_set_menu(m, m->cursor, NULL);
 +	web_set_store(home ? "Your Home" : f_info[store->feat].name, home);
 +	for (int i = 0; i < m->count; i++) {
@@ -1918,18 +1921,19 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (!no_act) {
  		m->flags &= ~MN_NO_ACTION;
  	}
-@@ -1007,7 +1084,10 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+@@ -1007,7 +1085,11 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
 +#ifdef __EMSCRIPTEN__
 +	m->web_title = header;
++	m->web_no_keyboard = true;
 +#endif
  	selected = menu_dynamic_select(m);
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1034,6 +1114,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1034,6 +1116,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
@@ -1960,7 +1964,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1103,15 +1207,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1103,15 +1209,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'g':
  				/* use the old way of purchasing items */
  				msg_flag = false;
@@ -1978,7 +1982,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_purchase(ctx, oid, false);
  				}
-@@ -1120,10 +1217,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1120,10 +1219,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'x':
  				/* use the old way of examining items */
  				msg_flag = false;
@@ -1990,7 +1994,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_examine(ctx, oid);
  				}
-@@ -1199,6 +1293,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1199,6 +1295,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
@@ -2000,7 +2004,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	menu_setpriv(menu, 0, ctx);
  
  	/* Calculate the positions of things and draw */
-@@ -1222,10 +1319,16 @@ void textui_store_knowledge(int n)
+@@ -1222,10 +1321,16 @@ void textui_store_knowledge(int n)
  	clear_from(0);
  
  	store_menu_init(&ctx, &stores[n], true);
@@ -2018,7 +2022,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	screen_load();
  
-@@ -1294,7 +1397,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1294,7 +1399,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  		prt_welcome(store->owner);
  
  	/* Shopping */
@@ -2032,7 +2036,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Shopping's done */
  	event_remove_handler(EVENT_STORECHANGED, refresh_stock, &ctx);
-@@ -1305,7 +1409,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1305,7 +1416,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  	player->upkeep->energy_use = z_info->move_energy;
  
  	/* Flush messages */
@@ -2668,24 +2672,26 @@ diff --git a/src/ui-context.c b/src/ui-context.c
  /**
   * Display a list of commands.
   */
-@@ -1177,6 +1209,11 @@
+@@ -1177,6 +1209,12 @@
  	area.row -= list->menu_level;
  	assert(area.row > 1);
  	menu_layout(&menu, &area);
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_subcommands;
++	menu.web_no_keyboard = true;
 +	menu.web_choice = true;
 +	menu.title = list->name;
 +#endif
  
  	/* Set up the screen */
  	screen_save();
-@@ -1278,6 +1315,9 @@
+@@ -1278,6 +1316,10 @@
  
  	if (!command_menu)
  		command_menu = menu_new(MN_SKIN_SCROLL, &command_menu_iter);
 +#ifdef __EMSCRIPTEN__
 +	command_menu->web_render = web_render_commands;
++	command_menu->web_no_keyboard = true;
 +#endif
  
  	while (cmds_all[len].len && cmds_all[len].menu_level == 0) {
@@ -3252,7 +3258,17 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
 --- a/src/ui-knowledge.c
 +++ b/src/ui-knowledge.c
-@@ -3915,10 +3915,15 @@
+@@ -3690,6 +3690,9 @@
+ 
+ 	screen_save();
+ 	menu_layout(&main_knowledge_menu.m, &knowledge_region);
++#ifdef __EMSCRIPTEN__
++	main_knowledge_menu.m.web_no_keyboard = true;
++#endif
+ 
+ 	clear_from(0);
+ 	menu_select(&main_knowledge_menu.m, 0, false);
+@@ -3915,10 +3918,15 @@
  	struct object *obj = NULL;
  	int ret = 3;
  
@@ -3268,7 +3284,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Start in "inventory" mode */
  	player->upkeep->command_wrk = (USE_INVEN);
-@@ -3929,8 +3934,7 @@
+@@ -3929,8 +3937,7 @@
  		screen_save();
  
  		/* Get an item to use a context command on (Display the inventory) */
@@ -3278,7 +3294,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
-@@ -4292,7 +4296,9 @@ void do_cmd_query_symbol(void)
+@@ -4292,7 +4299,9 @@ void do_cmd_query_symbol(void)
  	bool uniq = false;
  	bool norm = false;
  
@@ -3288,7 +3304,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	uint16_t *who;
  
-@@ -4316,8 +4322,10 @@ void do_cmd_query_symbol(void)
+@@ -4316,8 +4325,10 @@ void do_cmd_query_symbol(void)
  		lookup_symbol(sym.key.code, buf, sizeof(buf));
  	}
  
@@ -3299,7 +3315,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Allocate the "who" array */
  	who = mem_zalloc(z_info->r_max * sizeof(uint16_t));
-@@ -4345,12 +4353,24 @@ void do_cmd_query_symbol(void)
+@@ -4345,12 +4356,24 @@ void do_cmd_query_symbol(void)
  
  	/* No monsters to recall */
  	if (!num) {
@@ -3324,7 +3340,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	put_str("Recall details? (y/k/n): ", 0, 40);
  
  	/* Query */
-@@ -4358,6 +4378,7 @@ void do_cmd_query_symbol(void)
+@@ -4358,6 +4381,7 @@ void do_cmd_query_symbol(void)
  
  	/* Restore */
  	prt(buf, 0, 0);
@@ -3332,7 +3348,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Interpret the response */
  	if (query.code == 'k') {
-@@ -4368,10 +4389,32 @@ void do_cmd_query_symbol(void)
+@@ -4368,10 +4392,32 @@ void do_cmd_query_symbol(void)
  		sort(who, num, sizeof(*who), cmp_level);
  	} else {
  		/* Any unsupported response is "nope, no history please" */
@@ -3365,7 +3381,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	/* Start at the end, as the array is sorted lowest to highest */
  	idx = num - 1;
  
-@@ -4436,6 +4479,7 @@ void do_cmd_query_symbol(void)
+@@ -4436,6 +4482,7 @@ void do_cmd_query_symbol(void)
  
  	/* Re-display the identity */
  	prt(buf, 0, 0);
@@ -3654,12 +3670,13 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	menu_select(m, 0, true);
  	screen_load();
  
-@@ -306,6 +384,9 @@ static void spell_menu_browse(struct men
+@@ -306,6 +384,10 @@ static void spell_menu_browse(struct men
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;
 +#ifdef __EMSCRIPTEN__
 +	strnfmt(d->web_title, sizeof(d->web_title), "Browsing %ss", noun);
++	m->web_no_keyboard = true;
 +#endif
  	menu_select(m, 0, true);
  
@@ -3751,12 +3768,13 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Interact with some options
   */
-@@ -358,6 +402,12 @@ static void option_toggle_menu(const char *name, int page)
+@@ -358,6 +402,13 @@ static void option_toggle_menu(const char *name, int page)
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
  	menu_set_filter(m, option_page[page], i);
 +#ifdef __EMSCRIPTEN__
 +	m->web_render = web_render_option_toggles;
++	m->web_no_keyboard = true;
 +	m->web_select_once = true;
 +	if (page == OP_BIRTH && m->flags == MN_NO_TAGS)
 +		m->title = "Birth (difficulty) options (read-only)";
@@ -3764,7 +3782,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -453,7 +503,13 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -453,7 +504,13 @@ static void do_cmd_options_win(const char *name, int row)
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -3778,7 +3796,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -717,7 +773,7 @@ static void keymap_browse_hook(int oid, void *db, const region *loc)
+@@ -717,7 +774,7 @@ static void keymap_browse_hook(int oid, void *db, const region *loc)
  {
  	char tmp[1024];
  
@@ -3787,7 +3805,17 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	clear_from(13);
  
-@@ -817,7 +873,7 @@ static menu_action visual_menu_items [] =
+@@ -751,6 +808,9 @@
+ 		keymap_menu->title = title;
+ 		keymap_menu->selections = lower_case;
+ 		keymap_menu->browse_hook = keymap_browse_hook;
++#ifdef __EMSCRIPTEN__
++		keymap_menu->web_no_keyboard = true;
++#endif
+ 	}
+ 
+ 	menu_layout(keymap_menu, &loc);
+@@ -817,7 +877,7 @@ static menu_action visual_menu_items [] =
  
  static void visuals_browse_hook(int oid, void *db, const region *loc)
  {
@@ -3796,7 +3824,17 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	clear_from(1);
  }
  
-@@ -977,7 +1033,7 @@ static void colors_modify(const char *title, int row)
+@@ -838,6 +898,9 @@
+ 		visual_menu->title = title;
+ 		visual_menu->selections = lower_case;
+ 		visual_menu->browse_hook = visuals_browse_hook;
++#ifdef __EMSCRIPTEN__
++		visual_menu->web_no_keyboard = true;
++#endif
+ 		visual_menu->header = "To edit visuals, use the knowledge menu";
+ 	}
+ 
+@@ -977,7 +1040,7 @@ static void colors_modify(const char *title, int row)
  
  static void colors_browse_hook(int oid, void *db, const region *loc)
  {
@@ -3805,7 +3843,17 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	clear_from(1);
  }
  
-@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+@@ -1006,6 +1069,9 @@
+ 		color_menu->title = title;
+ 		color_menu->selections = lower_case;
+ 		color_menu->browse_hook = colors_browse_hook;
++#ifdef __EMSCRIPTEN__
++		color_menu->web_no_keyboard = true;
++#endif
+ 	}
+ 
+ 	menu_layout(color_menu, &SCREEN_REGION);
+@@ -1048,6 +1114,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
  }
  
  
@@ -3826,7 +3874,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1068,7 +1148,7 @@ static void do_cmd_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -3835,7 +3883,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1081,6 +1161,9 @@ static void do_cmd_delay(const char *name, int unused)
   */
  static void do_cmd_sidebar_mode(const char *name, int unused)
  {
@@ -3845,7 +3893,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+@@ -1110,6 +1193,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
  	}
  
  	screen_load();
@@ -3853,7 +3901,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  }
  
  
-@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
+@@ -1136,7 +1220,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3862,7 +3910,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
+@@ -1175,7 +1259,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3871,7 +3919,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1396,6 +1470,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
+@@ -1396,6 +1480,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
  	return false;
  }
  
@@ -3894,17 +3942,18 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display list of ego items to be ignored.
   */
-@@ -1471,6 +1561,9 @@ static void ego_menu(const char *unused, int also_unused)
+@@ -1471,6 +1571,10 @@ static void ego_menu(const char *unused, int also_unused)
  	memset(&menu, 0, sizeof(menu));
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu_setpriv(&menu, max_num, choice);
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_ego_ignore;
++	menu.web_no_keyboard = true;
 +#endif
  	menu_layout(&menu, &area);
  
  	/* Select an entry */
-@@ -1574,6 +1667,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
+@@ -1574,6 +1678,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
  	c_put_str(attr, name, row, col);
  }
  
@@ -3930,12 +3979,13 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Handle keypresses.
-@@ -1606,6 +1718,12 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
+@@ -1606,6 +1729,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
  		area.row += Term->hgt - 1 - area.row - menu.count;
  
  	menu_layout(&menu, &area);
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_quality_levels;
++	menu.web_no_keyboard = true;
 +	menu.web_choice = true;
 +	menu.title = quality_choices[oid].name;
 +	menu.cursor = ignore_level[oid];
@@ -3943,17 +3993,18 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
  				area.row + area.page_rows);
-@@ -1638,6 +1756,9 @@ static void quality_menu(const char *unused, int also_unused)
+@@ -1638,6 +1768,10 @@ static void quality_menu(const char *unused, int also_unused)
  	/* Set up the menu */
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu.title = "Quality ignore menu";
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_quality_ignore;
++	menu.web_no_keyboard = true;
 +#endif
  	menu_setpriv(&menu, ITYPE_MAX, quality_values);
  	menu_layout(&menu, &area);
  
-@@ -1767,6 +1888,23 @@ static const menu_iter ignore_sval_menu =
+@@ -1767,6 +1901,23 @@ static const menu_iter ignore_sval_menu =
  	NULL,
  };
  
@@ -3977,7 +4028,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Collect all tvals in the big ignore_choice array
-@@ -1860,6 +1998,12 @@ static bool sval_menu(int tval, const char *desc)
+@@ -1860,6 +2011,13 @@ static bool sval_menu(int tval, const char *desc)
  	menu_setpriv(menu, n_choices, choices);
  	menu->cmd_keys = "Tt";
  	menu_layout(menu, &area);
@@ -3986,11 +4037,12 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +	strnfmt(title, sizeof(title), "Ignore the following %s:", desc);
 +	menu->title = title;
 +	menu->web_render = web_render_item_kinds;
++	menu->web_no_keyboard = true;
 +#endif
  	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
  	menu_select(menu, 0, false);
  
-@@ -1998,6 +2142,21 @@ static const menu_iter options_item_iter =
+@@ -1998,6 +2156,21 @@ static const menu_iter options_item_iter =
  	NULL
  };
  
@@ -4012,17 +4064,18 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Display and handle the main ignoring menu.
-@@ -2011,6 +2170,9 @@ void do_cmd_options_item(const char *title, int row)
+@@ -2011,6 +2184,10 @@ void do_cmd_options_item(const char *title, int row)
  				 N_ELEMENTS(extra_item_options) + 1, NULL);
  
  	menu.title = title;
 +#ifdef __EMSCRIPTEN__
 +	menu.web_render = web_render_item_options;
++	menu.web_no_keyboard = true;
 +#endif
  	menu_layout(&menu, &SCREEN_REGION);
  
  	screen_save();
-@@ -2056,6 +2218,29 @@ static menu_action option_actions[] =
+@@ -2056,6 +2233,29 @@ static menu_action option_actions[] =
  };
  
  
@@ -4052,12 +4105,13 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display the options main menu.
   */
-@@ -2068,6 +2253,9 @@ void do_cmd_options(void)
+@@ -2068,6 +2268,10 @@ void do_cmd_options(void)
  
  		option_menu->title = "Options Menu";
  		option_menu->flags = MN_CASELESS_TAGS;
 +#ifdef __EMSCRIPTEN__
 +		option_menu->web_render = web_render_options;
++		option_menu->web_no_keyboard = true;
 +#endif
  	}
  

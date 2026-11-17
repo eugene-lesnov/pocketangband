@@ -233,7 +233,7 @@ const screenTitles = new Map([
 ]);
 const modesWithoutKeyboard = new Set([
     "splash", "save-slots", "birth-stats", "birth-roll", "birth-review", "history",
-    "run-direction", "quantity", "option-number", "rest", "confirm", "overview", "details", "victory", "retire",
+    "direction", "run-direction", "quantity", "option-number", "rest", "confirm", "overview", "details", "victory", "retire",
 ]);
 const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
@@ -947,7 +947,7 @@ function updateControls() {
     const outcome = isOutcomeScreen();
     const resultChild = isResultsScreen() || menu?.title === "Create spoilers";
     const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
-        !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
+        !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild && (mode !== "character" || playingGame);
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;
