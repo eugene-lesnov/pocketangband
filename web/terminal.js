@@ -109,7 +109,6 @@ const textFields = document.querySelector("#text-fields");
 const textValue = document.querySelector("#text-value");
 const textHistoryValue = document.querySelector("#text-history-value");
 const textPrompt = document.querySelector("#text-prompt");
-const editScreen = document.querySelector("#edit-screen");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
 const splashScreen = document.querySelector("#splash-screen");
@@ -128,16 +127,26 @@ const resultsList = document.querySelector("#results-list");
 const resultsFile = document.querySelector("#results-file");
 const resultsFileStatus = document.querySelector("#results-file-status");
 const downloadResult = document.querySelector("#download-result");
-const menuScreen = document.querySelector("#menu-screen");
-const menuSummary = document.querySelector("#menu-summary");
-const menuSections = document.querySelector("#menu-sections");
-const menuItems = document.querySelector("#menu-items");
-const menuRows = document.querySelector("#menu-rows");
-const menuEmpty = document.querySelector("#menu-empty");
+
+function createMenuList(screenId, descriptionId) {
+    const screen = document.getElementById(screenId);
+    screen.append(document.querySelector("#menu-list-template").content.cloneNode(true));
+    return {
+        screen, description: document.getElementById(descriptionId),
+        summary: screen.querySelector(".menu-summary"), sections: screen.querySelector(".menu-sections"),
+        items: screen.querySelector(".menu-items"), rows: screen.querySelector(".menu-rows"),
+        empty: screen.querySelector(".menu-empty"),
+    };
+}
+
+const pageList = createMenuList("menu-screen", "menu-description");
+const pickerList = createMenuList("picker-list", "picker-description");
+let activeList = pageList;
 const menuActions = document.querySelector("#menu-actions");
-const menuDescription = document.querySelector("#menu-description");
-const mapPicker = document.querySelector("#map-picker");
-const mapPickerTitle = document.querySelector("#map-picker-title");
+const picker = document.querySelector("#picker");
+const pickerPrompt = document.querySelector("#picker-prompt");
+const controls = picker.parentElement;
+const mainView = viewTitle.closest(".view");
 const pickerToggle = document.querySelector("#picker-toggle");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
@@ -274,7 +283,6 @@ let world;
 let context = {};
 let mapDirectionAction;
 let menu;
-let renderedMenu;
 let menuCursor;
 let birthSelection;
 let openPanel;
@@ -306,12 +314,9 @@ let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
 let controlKey = false;
-const pickerSizes = [
-    { name: "compact", nextAction: "Expand list to half screen" },
-    { name: "half", nextAction: "Expand list to full screen" },
-    { name: "full", nextAction: "Show map and compact list" },
-];
-let pickerSizeIndex = 0;
+let pickerExpanded = false;
+let inspectingChoice = false;
+const promptModes = new Set(["confirm", "key", "quantity", "option-number", "rest", "retire"]);
 let renderedDetails;
 let repeatName = "";
 let graphicsRestored = false;
@@ -343,7 +348,7 @@ function draw() {
     requestAnimationFrame(() => {
         drawPending = false;
         const view = activeView;
-        if (view.viewport.hidden) return;
+        if (view.viewport.hidden || (!picker.hidden && view !== views.map)) return;
         const map = view === views.map;
         if (map && (!view.viewport.clientWidth || !view.viewport.clientHeight)) return;
         let region = view === views.target ? view.crop : undefined;
@@ -874,8 +879,8 @@ function isTextEntry(state) {
     return state === "name" || state === "text";
 }
 
-function isPickingOnMap() {
-    return !!menu?.onMap && !openPanel;
+function isChoosing() {
+    return openPanel ? openPanel !== "character" : !!menu?.choice || promptModes.has(mode) || inspectingChoice;
 }
 
 function isTargeting() {
@@ -921,6 +926,7 @@ function closeInputPanel(closeKeyboard = true) {
 }
 
 function showPanel(panel, trigger) {
+    pickerExpanded = false;
     openPanel = panel;
     panelTrigger = trigger;
     if (panel) {
@@ -935,36 +941,29 @@ function showPanel(panel, trigger) {
 
 function updateControls() {
     const disabled = request === undefined || saving || deletingSave || stopped || applyingUpdate;
-    const pickingOnMap = isPickingOnMap();
+    const choosing = isChoosing();
     const outcome = isOutcomeScreen();
     const resultChild = isResultsScreen() || menu?.title === "Create spoilers";
-    const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !pickingOnMap && !openPanel &&
+    const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
         !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;
 
     renderAppUpdate();
-    updateMenuControls(disabled, pickingOnMap);
-    const showPad = updateDirectionPad(disabled, pickingOnMap, stopVisible);
+    updateMenuControls(disabled, choosing);
+    const showPad = updateDirectionPad(disabled, choosing, stopVisible);
     updateMapControls(disabled, showKeyboard, stopVisible);
     const editingHistory = updateBirthControls(disabled);
-    updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, stopVisible,
+    updateTerminalControls({ disabled, outcome, resultChild, stopVisible,
         showPad, showTargetControls, editingHistory });
     updateTargetControls(disabled, showTargetControls, showKeyboard);
     updatePromptControls(disabled, stopVisible);
     updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVisible);
 }
 
-function updateMenuControls(disabled, pickingOnMap) {
-    mapPicker.hidden = !pickingOnMap;
-    if (pickingOnMap) {
-        const { name, nextAction } = pickerSizes[pickerSizeIndex];
-        pickerToggle.setAttribute("aria-label", `${mapPickerTitle.textContent} ${nextAction}`);
-        pickerToggle.setAttribute("aria-expanded", String(name !== "compact"));
-    }
-    pickerToggle.disabled = disabled || !pickingOnMap;
-
+function updateMenuControls(disabled, choosing) {
+    pickerToggle.disabled = disabled || !choosing || pickerToggle.hidden;
     monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel;
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
@@ -973,16 +972,16 @@ function updateMenuControls(disabled, pickingOnMap) {
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
     setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
-    menuRows.disabled = menuSections.disabled = disabled;
+    activeList.rows.disabled = activeList.sections.disabled = disabled;
 }
 
-function updateDirectionPad(disabled, pickingOnMap, stopVisible) {
+function updateDirectionPad(disabled, choosing, stopVisible) {
     const command = mode === "command";
     const selectable = isTargeting() || isDirectionPrompt();
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selectable);
     const usingPad = !openPanel && (command || selectable || (isMenu() && !menu));
-    const showPad = !pickingOnMap && (usingPad || (playingGame && main.classList.contains("in-world")));
+    const showPad = !choosing && (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", mode === "run-direction");
@@ -1054,15 +1053,15 @@ function getConfirmAction(selectedRow, closesScreen) {
     }
 }
 
-function getCancelLabel(pickingOnMap) {
+function getCancelLabel() {
     if (mode === "confirm") return context.castWarning ? "Cancel" : "No";
     if (openPanel) return "Back";
-    if (pickingOnMap || isTargeting() || isDirectionPrompt() ||
+    if (isTargeting() || isDirectionPrompt() ||
         ["quantity", "option-number", "rest", "retire"].includes(mode)) return "Cancel";
     return mode === "command" ? "Esc" : "Back";
 }
 
-function updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, stopVisible,
+function updateTerminalControls({ disabled, outcome, resultChild, stopVisible,
     showPad, showTargetControls, editingHistory }) {
     const showFooter = mode !== undefined && !isTextEntry(mode) && !stopVisible && !outcome &&
         (mode !== "command" || !!openPanel);
@@ -1082,12 +1081,12 @@ function updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, 
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
     confirmKey.hidden = !!openPanel || !!menu?.options || !!menu?.birth || resultChild || isDirectionPrompt() ||
-        mode === "key" || pickingOnMap || directMenu || showTargetControls || noAimTarget;
+        mode === "key" || menu?.choice || directMenu || showTargetControls || noAimTarget;
     confirmKey.disabled = mode === "direction" || noAimTarget || (mode === "target" && !context.canSelect) ||
         (!!menu && !selectedRow);
 
     cancelKey.dataset.key = mode === "confirm" ? "n" : "Escape";
-    cancelKey.textContent = getCancelLabel(pickingOnMap);
+    cancelKey.textContent = getCancelLabel();
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     setKeyHint(cancelKey);
     cancelKey.hidden = closesScreen || mode === "victory";
@@ -1253,9 +1252,10 @@ function terminalLine(row, end) {
 function showMessagePause(data) {
     if (messagePause.hidden) messagePauseTrigger = document.activeElement;
     if (messageDialog.open) messageDialog.close();
+    mainView.inert = false;
     if (menu?.store && data.menu?.id === menu.id) {
         const store = data.menu.store;
-        if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
+        if (!store.home) activeList.summary.textContent = `Gold Remaining: ${store.gold} au`;
     }
     pausedMessage.textContent = data.context.pausedMessages?.map(formatMessage).join(" ") ??
         terminalLine(0).replace(/\s*-more-\s*$/, "");
@@ -1289,7 +1289,6 @@ function updatePrompt() {
     if (!messagePause.hidden) return;
     let text = context.mapCell?.description || context.prompt || (menu?.options ? undefined : menu?.prompt);
     if (mapDirectionAction) text = `${mapDirectionAction.label} · Choose a direction.`;
-    if (menu?.onMap) text = "";
     if (mode === "aim") {
         if (request === undefined) text = "";
         else {
@@ -1306,25 +1305,20 @@ function updatePrompt() {
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running || (mode === "run-direction" && request === undefined)) text = "";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
-    if (mode === "rest") text = "Rest for how long? Choose a preset or enter 1–9999 turns.";
-    if (mode === "rest" && !stopAction.hidden) text = "Resting…";
     if (mode === "target") {
         text = terminalLine(0);
         if (!context.attack) {
             const label = context.freeAim ? "Free selection" : "Interesting places";
             text = text ? `${label}\n${text}` : label;
         }
-    } else if (!text && mode === "quantity") {
-        text = terminalLine(0);
     }
-    if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
-    else if (["confirm", "details", "retire", "key", "option-number"].includes(mode) && context.prompt) text = "";
-    if (isTextEntry(mode) || openPanel) text = "";
+    if (mode === "details" || isTextEntry(mode) || openPanel || isChoosing()) text = "";
+    if (mode === "rest" && !stopAction.hidden) pickerPrompt.textContent = "Resting…";
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     const showResult = world?.actionMessages?.length && !openPanel &&
-        (context.newMessages || (!menuScreen.hidden && (menu?.store || menu?.pickup)));
+        (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
     journal.hidden = (hud.hidden && !showResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
     updateJournal();
@@ -1350,17 +1344,34 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     const previousSpeed = world?.speed;
     world = state;
+    const choosing = isChoosing();
+    activeList = choosing ? pickerList : pageList;
+    main.classList.toggle("choosing", choosing);
+    main.classList.toggle("picker-expanded", choosing && pickerExpanded);
+    mainView.inert = hud.inert = choosing;
+    picker.hidden = !choosing;
+    if (choosing) {
+        controls.setAttribute("role", "dialog");
+        controls.setAttribute("aria-modal", "true");
+        controls.setAttribute("aria-labelledby", "picker-heading");
+        renderPicker();
+        updatePrompt();
+        if (world) renderWorld(world, previousSpeed);
+        draw();
+        return;
+    }
+    pickerList.state = undefined;
+    controls.removeAttribute("role");
+    controls.removeAttribute("aria-modal");
+    controls.removeAttribute("aria-labelledby");
     views.target.crop = region;
-    activeView = world && (context.worldView || menu?.onMap) ? views.map :
+    activeView = world && context.worldView ? views.map :
         (isTargeting() || isDirectionPrompt()) && region ? views.target : views.terminal;
 
     const { fullScreen, inGamePanel, intro, title } = updateScreenContents();
-    const showViewport = !fullScreen && !openPanel && (!menu || menu.onMap);
+    const showViewport = !fullScreen && !openPanel && !menu;
     for (const view of Object.values(views)) view.viewport.hidden = view !== activeView || !showViewport;
 
-    const mapPicking = isPickingOnMap();
-    main.classList.toggle("map-picking", mapPicking);
-    main.dataset.pickerSize = mapPicking ? pickerSizes[pickerSizeIndex].name : "compact";
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
@@ -1381,7 +1392,7 @@ function updateView(state = world, region = views.target.crop) {
         centerPending = true;
     }
     renderMenu(menu);
-    if (openPanel) menuScreen.hidden = true;
+    if (openPanel) pageList.screen.hidden = true;
     updatePrompt();
     draw();
     if (world) renderWorld(world, previousSpeed);
@@ -1408,21 +1419,17 @@ function updateScreenContents() {
 
     updateDetailsScreen();
     const textEntry = isTextEntry(mode);
-    const editing = !textEntry && context.value !== undefined && !openPanel;
-    const question = (mode === "confirm" || mode === "retire" || mode === "key") &&
-        !context.castWarning && context.prompt;
     main.classList.toggle("text-viewport", birthStats || textEntry);
     updateTextViewport();
     birthStatsScreen.hidden = !birthStats || !!openPanel;
     nameScreen.hidden = mode !== "name";
     textScreen.hidden = mode !== "text";
-    updateEditScreen(editing, question);
 
-    const fullScreen = textEntry || editing || !!question || !detailsScreen.hidden || character || splash ||
+    const fullScreen = textEntry || !detailsScreen.hidden || character || splash ||
         birthStats || victory || results;
     const inGamePanel = !!openPanel || character || mode === "history" || !!menu?.options ||
         mode === "option-number" || outcome || victory || results || !!menu?.title || mode === "retire";
-    return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome, editing, question }) };
+    return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome }) };
 }
 
 function updateDetailsScreen() {
@@ -1464,10 +1471,26 @@ function updateDetailsScreen() {
     detailsScreen.scrollTop = 0;
 }
 
-function updateEditScreen(editing, question) {
-    editScreen.hidden = !editing && !question;
-    editValue.classList.toggle("confirmation", !editing && Boolean(question));
-    if (editing) {
+function renderPicker() {
+    const title = panelTitles[openPanel] || menu?.selectionTitle || menu?.title || menu?.prompt ||
+        context.prompt?.trim() || (mode === "quantity" ? terminalLine(0) : "") ||
+        (menu ? "Choices" : screenTitles.get(mode));
+    const expandable = !!menu || !!openPanel || inspectingChoice;
+    pickerToggle.hidden = !expandable;
+    pickerPrompt.hidden = expandable;
+    pickerToggle.setAttribute("aria-controls", openPanel ? "actions-screen" :
+        inspectingChoice ? "picker-description" : "picker-list");
+    if (expandable) {
+        pickerToggle.textContent = title;
+        pickerToggle.setAttribute("aria-expanded", String(pickerExpanded));
+        const action = pickerExpanded ? "Fit to contents" : "Expand to full screen";
+        pickerToggle.setAttribute("aria-label", `${title} ${action}`);
+    } else {
+        pickerPrompt.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
+    }
+    renderMenu(openPanel ? undefined : menu, inspectingChoice ? context.detail : undefined);
+    editValue.hidden = context.value === undefined && context.price === undefined;
+    if (context.value !== undefined) {
         const value = mode === "rest" ? restLabels.get(context.value.trim()) ?? context.value :
             mode === "quantity" && context.value === "*" ? "All" : context.value;
         const chars = [...value];
@@ -1484,17 +1507,12 @@ function updateEditScreen(editing, question) {
             editValue.replaceChildren(chars.slice(0, context.cursor).join(""), caret,
                 chars.slice(context.cursor).join(""));
         }
-    } else if (question) {
-        editValue.textContent = question;
-        if (context.price !== undefined) {
-            const price = document.createElement("small");
-            price.textContent = `Price: ${context.price} au`;
-            editValue.append(price);
-        }
+    } else if (context.price !== undefined) {
+        editValue.textContent = `Price: ${context.price} au`;
     }
 }
 
-function getViewTitle({ character, outcome, editing, question }) {
+function getViewTitle({ character, outcome }) {
     const panelTitle = panelTitles[openPanel];
     if (panelTitle !== undefined) return panelTitle;
     if (mode === "save-slots") return "Save slots";
@@ -1516,17 +1534,13 @@ function getViewTitle({ character, outcome, editing, question }) {
 
     const title = screenTitles.get(mode);
     if (title !== undefined) return title;
-    if (question) return "Confirm";
-    if (!editing) return activeView.title;
-    if (mode === "quantity") return "Quantity";
-    if (mode === "rest") return "Rest";
-    return context.prompt?.trim() || "Edit option";
+    return activeView.title;
 }
 
 function stop(message, failed) {
     stopped = true;
     if (deleteSaveDialog.open) deleteSaveDialog.close();
-    playingGame = false;
+    playingGame = inspectingChoice = false;
     request = mode = undefined;
     world = menu = undefined;
     context = {};
@@ -1575,16 +1589,19 @@ function handleWorkerMessage({ data }) {
                 ((running || mode === "run-direction") && document.activeElement === document.body);
             const playFocus = runningFromPad ? (runMode ? runModeButton : walkMode) : heroActions;
             clearPendingInput();
-            const changed = data.mode !== mode || data.menu?.onMap !== menu?.onMap ||
+            const wasChoosing = isChoosing();
+            inspectingChoice = wasChoosing && data.mode === "details" && data.context.detail !== undefined &&
+                !data.context.list;
+            const changed = data.mode !== mode || data.menu?.choice !== menu?.choice ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
-            const changedMapPicker = data.menu?.onMap &&
+            const changedPicker = data.menu?.choice &&
                 (data.menu.selectionTitle !== menu?.selectionTitle ||
                     data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
             if (mode === "results-file") clearResultFile();
             if (changed) {
-                const stayingOnMap = (context.worldView || menu?.onMap) &&
-                    (data.context.worldView || data.menu?.onMap);
+                const stayingOnMap = activeView === views.map &&
+                    (data.context.worldView || data.menu?.choice || promptModes.has(data.mode));
                 if (!stayingOnMap) centerPending = true;
                 if (mode === "save-slots") {
                     deleteSaveStatus.hidden = true;
@@ -1619,7 +1636,7 @@ function handleWorkerMessage({ data }) {
             }
             if (context.mapCell?.actions) renderMapActions();
             menu = data.menu;
-            if (!menu?.onMap) pickerSizeIndex = 0;
+            if (changed || changedPicker) pickerExpanded = false;
             deletingSave = false;
             launch.hidden = true;
             main.classList.remove("starting");
@@ -1630,7 +1647,7 @@ function handleWorkerMessage({ data }) {
             if (context.resultsFile) renderResultFile(context.resultsFile);
             if (mode === "command" && world) renderQuickActions(world);
             if (mode === "character" || mode === "birth-review") renderCharacter();
-            if (changed && (mode === "confirm" || mode === "quantity" || mode === "rest" || isTextEntry(mode))) {
+            if (changed && isTextEntry(mode)) {
                 views.terminal.viewport.scrollTo(0, 0);
             }
             updateControls();
@@ -1643,18 +1660,22 @@ function handleWorkerMessage({ data }) {
             if (pauseTrigger && document.activeElement === document.body) {
                 pauseTrigger.focus({ preventScroll: true });
             }
+            if (changed && isChoosing() && !menu) {
+                (inspectingChoice ? pickerToggle : pickerPrompt).focus({ preventScroll: true });
+            }
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
-            if ((changed || changedMapPicker) && mode === "menu" && (context.outcome || menu?.title || menu?.onMap)) {
-                const selected = menuRows.querySelector('[aria-current="true"]') ??
+            if ((changed || changedPicker) && mode === "menu" &&
+                (context.outcome || menu?.title || menu?.choice || (wasChoosing && menu))) {
+                const selected = activeList.rows.querySelector('[aria-current="true"]') ??
                     outcomeActions.querySelector('[aria-current="true"]:not([disabled])');
-                (selected ?? menuRows).focus({ preventScroll: true });
-                if (selected && menuRows.contains(selected) && menuCursor > 0) {
+                (selected ?? activeList.rows).focus({ preventScroll: true });
+                if (selected && activeList.rows.contains(selected) && menuCursor > 0) {
                     selected.scrollIntoView({ block: "nearest" });
                 }
             }
-            if (changed && !characterScreen.hidden) focusCharacter();
+            if (changed && !isChoosing() && !characterScreen.hidden) focusCharacter();
             if (mode === "command" && characterTrigger) {
                 characterTrigger.focus({ preventScroll: true });
                 characterTrigger = undefined;
@@ -1662,6 +1683,7 @@ function handleWorkerMessage({ data }) {
             if (changed && (mode === "direction" || mode === "run-direction"))
                 activeView.viewport.focus({ preventScroll: true });
             if (mode === "command" && restorePlayFocus) playFocus.focus({ preventScroll: true });
+            else if (mode === "command" && wasChoosing) activeView.viewport.focus({ preventScroll: true });
             if (!mapCellActions.hidden) {
                 mapActionButtons.scrollTop = 0;
                 mapCellActions.querySelector("button:enabled")?.focus({ preventScroll: true });
@@ -1716,7 +1738,7 @@ function handleWorkerMessage({ data }) {
             runMode = false;
             graphicsRestored = false;
             closeMessagePause();
-            playingGame = false;
+            playingGame = inspectingChoice = false;
             request = mode = world = menu = undefined;
             context = {};
             mapDirectionAction = undefined;
@@ -1970,10 +1992,10 @@ main.addEventListener("click", (event) => {
         return;
     }
     const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
-    if (input.type === "menu-row" && (menu?.store || previewBirthChoice)) {
+    if (input.type === "menu-row" && ((menu?.store && !menu.choice) || previewBirthChoice)) {
         if (request === undefined) return;
         menuCursor = input.code;
-        for (const row of menuRows.children) {
+        for (const row of activeList.rows.children) {
             if (row === button) row.setAttribute("aria-current", "true");
             else row.removeAttribute("aria-current");
         }
@@ -2350,18 +2372,13 @@ function saveSlotLabel(row) {
 }
 
 function focusSelectedSave() {
-    (menuRows.querySelector('[aria-current="true"]') ?? menuRows).focus({ preventScroll: true });
+    (activeList.rows.querySelector('[aria-current="true"]') ?? activeList.rows).focus({ preventScroll: true });
 }
 
-function renderMenu(state) {
+function renderMenu(state, description = state?.description ?? "") {
+    const { screen: menuScreen, description: menuDescription, rows: menuRows,
+        sections: menuSections, summary: menuSummary, items: menuItems, empty: menuEmpty } = activeList;
     menuScreen.hidden = !state;
-    if (state?.onMap) {
-        if (menuScreen.parentElement !== mapPicker) mapPicker.append(menuScreen);
-        mapPickerTitle.textContent = state.selectionTitle || state.title || state.prompt || context.prompt;
-    } else if (menuScreen.parentElement === mapPicker) {
-        menuDescription.before(menuScreen);
-    }
-    const description = state?.description ?? "";
     menuDescription.hidden = !description;
     if (menuDescription.textContent !== description) {
         menuDescription.textContent = description;
@@ -2373,21 +2390,23 @@ function renderMenu(state) {
     menuScreen.classList.toggle("outcome-menu", outcome);
     menuActions.classList.toggle("birth-actions", Boolean(state?.birth));
     if (!state) {
-        renderedMenu = undefined;
+        activeList.state = undefined;
         menuCursor = undefined;
-        birthSelection = undefined;
-        outcomeActions.replaceChildren();
-        renderBirthPreview();
+        if (activeList === pageList) {
+            birthSelection = undefined;
+            outcomeActions.replaceChildren();
+            renderBirthPreview();
+        }
         return;
     }
-    if (state === renderedMenu) return;
-    const previous = renderedMenu;
-    renderedMenu = state;
+    if (state === activeList.state) return;
+    const previous = activeList.state;
+    activeList.state = state;
     const active = state.sections?.find((section) => section.active)?.id;
     const previousActive = previous?.sections?.find((section) => section.active)?.id;
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
-        state.onMap !== previous.onMap || state.options !== previous.options ||
-        state.prompt !== previous.prompt;
+        state.selectionTitle !== previous.selectionTitle || state.title !== previous.title ||
+        state.options !== previous.options || state.prompt !== previous.prompt;
     menuSections.hidden = (state.sections?.length ?? 0) <= 1;
     const scrollArea = menuSections.hidden ? menuScreen : menuItems;
     const previousScroll = scrollArea.scrollTop;
@@ -2471,13 +2490,17 @@ function renderMenu(state) {
     }
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
+    const focusedAction = menuActions.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
     menuActions.replaceChildren(...state.actions.map((action) => {
         const button = state.store ? makeInput("store-action", action.key, action.label) :
             makeKey(String.fromCharCode(action.key), action.label);
         setKeyHint(button, keyFromCode(action.key));
         return button;
     }));
-    renderBirthPreview();
+    if (focusedAction && !differentList) {
+        [...menuActions.children].find((button) => button.dataset.key === focusedAction)?.focus({ preventScroll: true });
+    }
+    if (activeList === pageList) renderBirthPreview();
     scrollArea.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
         const bounds = current.getBoundingClientRect();
@@ -2624,9 +2647,9 @@ vitals.addEventListener("click", () => {
     }
 });
 
-function setPickerSize(index) {
-    if (pickerToggle.disabled || !pickerSizes[index] || index === pickerSizeIndex) return;
-    pickerSizeIndex = index;
+function setPickerExpanded(expanded) {
+    if (pickerToggle.disabled || expanded === pickerExpanded) return;
+    pickerExpanded = expanded;
     updateView();
     updateControls();
 }
@@ -2666,13 +2689,12 @@ pickerToggle.addEventListener("pointerup", (event) => {
     const dy = event.clientY - y;
     suppressPickerClick ||= pressedRequest !== request || Math.hypot(dx, dy) > 8;
     if (pressedRequest === request && Math.abs(dy) >= 32 && Math.abs(dy) >= 1.5 * Math.abs(dx)) {
-        const step = dy < 0 ? 1 : -1;
-        setPickerSize(pickerSizeIndex + step);
+        setPickerExpanded(dy < 0);
     }
 });
 pickerToggle.addEventListener("click", (event) => {
     if (event.detail === 0 || !suppressPickerClick) {
-        setPickerSize((pickerSizeIndex + 1) % pickerSizes.length);
+        setPickerExpanded(!pickerExpanded);
     }
 });
 
@@ -2875,7 +2897,7 @@ for (const type of ["gesturestart", "gesturechange"]) {
 
 const viewResize = new ResizeObserver((entries) => {
     if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;
-    if (activeView === views.map) draw();
+    if (activeView === views.map && picker.hidden) draw();
     else recenterView();
 });
 for (const { viewport } of Object.values(views)) viewResize.observe(viewport);

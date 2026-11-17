@@ -393,14 +393,14 @@ EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int
     });
 });
 
-EM_JS(void, set_menu, (const struct menu *menu, int cursor, const char *prompt, bool no_keyboard), {
+EM_JS(void, set_menu, (const struct menu *menu, int cursor, const char *prompt, bool no_keyboard, bool choice), {
     Module['inputMenu'] = { id: menu, cursor, prompt: prompt ? UTF8ToString(prompt) : "",
-        rows: [], actions: [], noKeyboard: !!no_keyboard };
+        rows: [], actions: [], noKeyboard: !!no_keyboard, choice: !!choice };
 });
 
 void web_set_menu(const struct menu *menu, int cursor, const char *prompt)
 {
-    set_menu(menu, cursor, prompt, menu->web_no_keyboard);
+    set_menu(menu, cursor, prompt, menu->web_no_keyboard, menu->web_choice);
 }
 
 EM_JS(void, web_set_menu_title, (const char *title), {
@@ -409,10 +409,6 @@ EM_JS(void, web_set_menu_title, (const char *title), {
 
 EM_JS(void, web_set_menu_selection_title, (const char *title), {
     Module['inputMenu'].selectionTitle = UTF8ToString(title).trim();
-});
-
-EM_JS(void, web_set_menu_on_map, (void), {
-    Module['inputMenu'].onMap = true;
 });
 
 EM_JS(void, web_set_pickup_menu, (void), {

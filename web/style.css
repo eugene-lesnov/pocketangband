@@ -76,7 +76,9 @@ a { color: var(--muted); font-size: 0.75rem; }
 #retry { justify-self: start; padding-inline: 0.75rem; }
 .starting :is(.view, .controls) { display: none; }
 #delete-save-dialog {
-    width: min(22rem, calc(100% - 2rem));
+    inset: auto 0 max(0.25rem, env(safe-area-inset-bottom));
+    margin: 0 auto;
+    width: min(28rem, calc(100% - 1rem));
     padding: 1rem;
     border: 1px solid var(--border);
     border-radius: 0.5rem;
@@ -443,7 +445,7 @@ dt { color: var(--muted); }
     image-rendering: pixelated;
 }
 
-#input-prompt, #edit-value.confirmation { font: 0.9375rem/1.35 system-ui, sans-serif; }
+#input-prompt { font: 0.9375rem/1.35 system-ui, sans-serif; }
 #input-prompt {
     grid-area: prompt;
     min-height: 1.7rem;
@@ -545,14 +547,23 @@ dt { color: var(--muted); }
     gap: 0.25rem;
 }
 .controls[inert] { opacity: 0.65; }
-#map-picker {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    height: calc(var(--dock-height) - 92px);
-    border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    background: var(--panel);
+#picker {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
 }
+#picker-heading { flex: none; }
+#picker-prompt {
+    display: block;
+    padding: 0.625rem;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+#picker #edit-value { margin: 0 0.25rem 0.25rem; }
+#picker-list { min-height: 0; }
 #picker-toggle {
     position: relative;
     display: grid;
@@ -578,7 +589,7 @@ dt { color: var(--muted); }
     border-radius: 1rem;
     background: var(--muted);
 }
-#map-picker .menu-rows button {
+#picker .menu-rows button {
     padding-block: 0.25rem;
 }
 .game-controls-row {
@@ -737,17 +748,17 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .keyboard-row button[aria-pressed="true"] { color: #171612; background: var(--accent); }
 
 .menu-screen { overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); }
-#menu-screen:has(#menu-sections:not([hidden])) {
+.menu-screen:has(.menu-sections:not([hidden])) {
     display: flex;
     flex-direction: column;
     overflow: clip;
 }
-#menu-screen:has(#menu-sections:not([hidden])) #menu-items {
+.menu-screen:has(.menu-sections:not([hidden])) .menu-items {
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
 }
-#menu-sections { flex: none; }
+.menu-sections { flex: none; }
 #actions-screen button:not(:has(kbd)) { display: block; }
 #actions-screen .keyboard-icon { margin-inline-end: 0.5rem; }
 #character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }
@@ -867,7 +878,7 @@ main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#can
 }
 main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !important; }
 .view:has(#name-screen:not([hidden])) { flex: none; }
-#name-screen, #text-screen, #edit-screen { padding: 0.75rem 0.625rem; }
+#name-screen, #text-screen { padding: 0.75rem 0.625rem; }
 #name-fields, #text-fields { display: grid; gap: 0.5rem; }
 #name-fields .key-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #name-prompt, #text-prompt { color: var(--accent); font-size: 0.875rem; overflow-wrap: anywhere; }
@@ -905,12 +916,11 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 }
 #edit-value .caret { border-inline-start: 2px solid var(--accent); }
 #edit-value .selection { color: #171612; background: var(--accent); }
-#edit-value small { display: block; margin-top: 0.5rem; color: var(--accent); }
-#menu-summary, #menu-empty { padding: 0.5rem 0.625rem; color: var(--muted); font-size: 0.8125rem; }
-#menu-sections, #menu-actions { display: flex; gap: 0.25rem; }
-#menu-sections { flex-wrap: wrap; padding: 0.25rem; }
-#menu-sections button, #menu-actions button { flex: 1 1 0; padding-inline: 0.35rem; }
-#menu-sections button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+.menu-summary, .menu-empty { padding: 0.5rem 0.625rem; color: var(--muted); font-size: 0.8125rem; }
+.menu-sections, #menu-actions { display: flex; gap: 0.25rem; }
+.menu-sections { flex-wrap: wrap; padding: 0.25rem; }
+.menu-sections button, #menu-actions button { flex: 1 1 0; padding-inline: 0.35rem; }
+.menu-sections button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .menu-rows { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem; }
 .menu-rows button {
     flex: none;
@@ -945,7 +955,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 #menu-actions.birth-actions { flex-wrap: wrap; }
 #menu-actions.birth-actions button { min-width: 4rem; overflow-wrap: anywhere; }
 #menu-actions.birth-actions button:only-child { flex-basis: 100%; }
-.view > :is(#birth-preview, #menu-description) {
+#birth-preview, .menu-description {
     grid-area: prompt;
     min-width: 0;
     max-height: 32dvh;
@@ -956,7 +966,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     font-size: 0.875rem;
     line-height: 1.4;
 }
-#menu-description { white-space: pre-line; overflow-wrap: anywhere; }
+.menu-description { white-space: pre-line; overflow-wrap: anywhere; }
 #birth-choice { color: var(--accent); }
 .birth-preview-hint { display: block; color: var(--muted); font-size: 0.8125rem; }
 #birth-bonuses { margin-top: 0.25rem; white-space: pre-line; overflow-wrap: anywhere; }
@@ -1045,17 +1055,31 @@ button:disabled, button[aria-disabled="true"] { opacity: 0.5; }
 main.compact-hud { --hud-height: 56px; }
 .compact-hud #vitals { height: 56px; grid-template-rows: 21px 18px; }
 .compact-hud #hud-stats { display: none; }
-.in-world .controls:not(:has(#keyboard:not([hidden]))):not(:has(#map-picker:not([hidden]))) {
+main.in-world:not(.choosing) .controls:not(:has(#keyboard:not([hidden]))) {
     min-height: calc(var(--dock-height) - var(--hud-height));
     justify-content: end;
 }
-.map-picking #vitals { height: 44px; grid-template-rows: 18px; padding-block: 10px; }
-.map-picking :is(#hud-stats, #condition-summary) { display: none; }
-.map-picking .controls { min-height: calc(var(--dock-height) - 44px); }
-[data-picker-size="half"] .controls { flex: 0 1 50%; }
-[data-picker-size="full"] .view { display: none; }
-[data-picker-size="full"] .controls { flex: 1; min-height: 0; }
-:is([data-picker-size="half"], [data-picker-size="full"]) #map-picker { flex: 1; height: auto; min-height: 0; }
+main.choosing .view { min-height: 0; }
+.choosing #vitals { height: 44px; grid-template-rows: 18px; padding-block: 10px; }
+.choosing :is(#hud-stats, #condition-summary) { display: none; }
+.choosing .controls {
+    max-height: 60%;
+    min-height: 0;
+    padding: 0.25rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--panel);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.choosing .controls > :not(#picker) { flex: none; }
+.choosing .controls:has(#keyboard:not([hidden]), #picker-prompt:not([hidden])) {
+    max-height: calc(100% - 3rem);
+}
+.picker-expanded:not(:has(#message-pause:not([hidden]))) :is(.view, #hud) { display: none; }
+main.picker-expanded .controls { flex: 1; max-height: 100%; }
+.picker-expanded :is(#picker-list, #actions-screen, #picker-description) { flex: 1; }
+#picker-list:not([hidden]) + #picker-description { max-height: 22dvh; }
 .left-handed .game-controls-row:has(#direction-pad:not([hidden])) { grid-template-columns: auto minmax(0, 1fr); }
 .left-handed #direction-pad { grid-column: 1; grid-row: 1; }
 .left-handed .game-controls-buttons { grid-column: 2; grid-row: 1; }
@@ -1088,4 +1112,3 @@ main.compact-hud { --hud-height: 56px; }
 .large-text h2 { font-size: 1rem; }
 .large-text #movement-mode button { font-size: 0.8125rem; }
 .large-text .direction-pad button { font-size: 1.25rem; }
-.large-text #map-picker { min-height: 0; }

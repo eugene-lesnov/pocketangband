@@ -99,14 +99,8 @@
                     <div id="outcome-stats"></div>
                     <time id="outcome-date"></time>
                 </section>
-                <div id="menu-summary" hidden></div>
-                <fieldset id="menu-sections" aria-label="Item lists" hidden></fieldset>
-                <div id="menu-items">
-                    <fieldset id="menu-rows" class="menu-rows" aria-label="Choices" tabindex="-1"></fieldset>
-                    <p id="menu-empty" hidden>No items.</p>
-                </div>
             </div>
-            <p id="menu-description" aria-live="polite" hidden></p>
+            <p id="menu-description" class="menu-description" aria-live="polite" hidden></p>
             <section id="birth-preview" aria-label="Choice details" hidden>
                 <strong id="birth-choice"></strong>
                 <span class="birth-preview-hint">Tap the highlighted row to confirm.</span>
@@ -153,7 +147,6 @@
                     </fieldset>
                 </section>
             </section>
-            <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
             <section id="character-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
                 <div class="character-identity">
                     <h3 id="character-name"></h3>
@@ -202,9 +195,6 @@
                     </div>
                 </fieldset>
             </form>
-            <div id="edit-screen" class="menu-screen" hidden>
-                <p id="edit-value" aria-label="Current value"></p>
-            </div>
             <div id="details-screen" class="menu-screen" tabindex="0" hidden></div>
             <section id="results-list" class="menu-screen" aria-labelledby="view-title" tabindex="0" hidden></section>
             <section id="results-file" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
@@ -247,12 +237,15 @@
         </section>
 
         <div class="controls">
-            <section id="map-picker" aria-labelledby="map-picker-title" hidden>
-                <h2>
-                    <button id="picker-toggle" type="button" aria-controls="menu-screen" aria-expanded="false" disabled>
-                        <span id="map-picker-title"></span>
-                    </button>
+            <section id="picker" aria-labelledby="picker-heading" hidden>
+                <h2 id="picker-heading">
+                    <button id="picker-toggle" type="button" aria-controls="picker-list" aria-expanded="false" disabled></button>
+                    <span id="picker-prompt" tabindex="-1"></span>
                 </h2>
+                <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
+                <div id="picker-list" class="menu-screen" hidden></div>
+                <p id="picker-description" class="menu-description" aria-live="polite" hidden></p>
+                <p id="edit-value" aria-label="Current value" hidden></p>
             </section>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
             <p id="delete-save-status" class="status" role="status" hidden></p>
@@ -343,6 +336,14 @@
             </div>
         </form>
     </dialog>
+    <template id="menu-list-template">
+        <div class="menu-summary" hidden></div>
+        <fieldset class="menu-sections" aria-label="Item lists" hidden></fieldset>
+        <div class="menu-items">
+            <fieldset class="menu-rows" aria-label="Choices" tabindex="-1"></fieldset>
+            <p class="menu-empty" hidden>No items.</p>
+        </div>
+    </template>
     <template id="delete-save-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
