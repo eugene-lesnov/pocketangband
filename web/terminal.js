@@ -569,7 +569,7 @@ function renderWorld(state, previousSpeed) {
 
     const lines = state.log.flatMap(({ text, count }) => {
         const line = text.trim();
-        return !line || /^=+$/.test(line) ? [] : [count > 1 ? `${line} (×${count})` : line];
+        return !line || /^=+$/.test(line) ? [] : [formatMessage({ text: line, count })];
     });
     if (lines.length === messages.childElementCount &&
         lines.every((line, index) => messages.children[index].textContent === line)) return;
@@ -1216,7 +1216,8 @@ function showMessagePause(data) {
         const store = data.menu.store;
         if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
     }
-    pausedMessage.textContent = data.context.pausedMessage ?? terminalLine(0).replace(/\s*-more-\s*$/, "");
+    pausedMessage.textContent = data.context.pausedMessages?.map(formatMessage).join(" ") ??
+        terminalLine(0).replace(/\s*-more-\s*$/, "");
     if (data.world) renderMonsterHealth(data.world.monsterHealth);
     messagePause.hidden = false;
     pausedMessage.scrollTop = pausedMessage.scrollHeight;
@@ -1281,24 +1282,27 @@ function updatePrompt() {
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
-    const showResult = world?.actionMessage && !openPanel &&
+    const showResult = world?.actionMessages?.length && !openPanel &&
         (context.newMessages || (!menuScreen.hidden && (menu?.store || menu?.pickup)));
     journal.hidden = (hud.hidden && !showResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
     updateJournal();
 }
 
+function formatMessage({ text, count }) {
+    return count > 1 ? `${text} (×${count})` : text;
+}
+
 function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
-    const action = (!prompt || context.newMessages) && world?.actionMessage;
-    const text = [prompt, action].filter(Boolean).join("\n") ||
+    const action = (!prompt || context.newMessages) ? world?.actionMessages : undefined;
+    const lines = action?.slice(-2).map(formatMessage) ?? [];
+    const text = [prompt, ...lines].filter(Boolean).join("\n") ||
         messages.lastElementChild?.textContent || "No messages";
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.classList.toggle("action-result", !!action);
     journal.classList.toggle("empty", !prompt && !messages.childElementCount);
-    journal.disabled = !messages.childElementCount || (!prompt && messages.childElementCount === 1 &&
-        latestMessage.scrollHeight <= latestMessage.clientHeight);
+    journal.disabled = !messages.childElementCount;
 }
 
 function updateView(state = world, region = views.target.crop) {
@@ -2826,8 +2830,6 @@ for (const type of ["gesturestart", "gesturechange"]) {
         if (!viewport.hidden && viewport.contains(event.target)) event.preventDefault();
     });
 }
-
-new ResizeObserver(updateJournal).observe(latestMessage);
 
 const viewResize = new ResizeObserver((entries) => {
     if (activeView.viewport.hidden || !entries.some(({ target }) => target === activeView.viewport)) return;

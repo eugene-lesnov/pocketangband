@@ -1074,7 +1074,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return;
  
 +#ifdef __EMSCRIPTEN__
-+	if (web_capture_action_message(msg)) return;
++	if (web_capture_action_message(msg, type)) return;
 +#endif
 +
  	/* Obtain the size */
@@ -1087,7 +1087,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +void flush_messages_for_transition(void)
 +{
 +#ifdef __EMSCRIPTEN__
-+	if (web_pending_messages()) return;
++	if (web_has_pending_messages()) return;
 +#endif
 +	event_signal(EVENT_MESSAGE_FLUSH);
 +}
@@ -1098,7 +1098,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  void message_flush(game_event_type unused, game_event_data *data, void *user)
  {
 +#ifdef __EMSCRIPTEN__
-+	if (web_pending_messages()) {
++	if (web_has_pending_messages()) {
 +		msg_flush(0);
 +		web_mark_messages_displayed();
 +		msg_flag = false;
@@ -1533,9 +1533,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
 +void web_clear_displayed_messages(void);
-+const char *web_pending_messages(void);
++bool web_has_pending_messages(void);
 +void web_mark_messages_displayed(void);
-+bool web_capture_action_message(const char *message);
++bool web_capture_action_message(const char *message, int type);
 +void web_add_journal_message(const char *message);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);

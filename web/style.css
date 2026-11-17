@@ -477,26 +477,19 @@ dt { color: var(--muted); }
 #journal:disabled #journal-indicator { visibility: hidden; }
 #journal.empty, #journal-indicator { color: var(--muted); }
 #journal.prompt { color: var(--accent); }
-#latest-message {
-    min-width: 0;
-    min-height: 0;
-    max-height: 100%;
-    padding-block: 1px;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+.journal-preview {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    max-height: 2.5em;
     overflow: hidden;
+}
+#latest-message {
+    flex: none;
     overflow-wrap: anywhere;
     white-space: pre-line;
 }
-#journal.prompt #latest-message { display: block; overflow: auto; overscroll-behavior: contain; }
-#journal.action-result { height: auto; min-height: var(--message-row-height); }
-#journal.action-result #latest-message {
-    display: block;
-    max-height: min(8em, 22dvh);
-    overflow: auto;
-    overscroll-behavior: contain;
-}
+#journal.prompt .journal-preview { display: block; overflow: auto; overscroll-behavior: contain; }
 
 #message-pause {
     position: absolute;

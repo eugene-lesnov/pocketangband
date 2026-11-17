@@ -52,7 +52,6 @@ static cmd_code direction_command;
 static bool pace_run;
 static bool background_save;
 static bool action_messages_pending;
-static char action_message[4096];
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -98,14 +97,18 @@ const char *web_set_prompt(const char *prompt)
     return previous;
 }
 
+EM_JS(void, clear_action_messages, (void), {
+    Module['actionMessages'] = [];
+});
+
 void web_clear_displayed_messages(void)
 {
-    if (!action_messages_pending) action_message[0] = '\0';
+    if (!action_messages_pending) clear_action_messages();
 }
 
-const char *web_pending_messages(void)
+bool web_has_pending_messages(void)
 {
-    return action_messages_pending ? action_message : NULL;
+    return action_messages_pending;
 }
 
 void web_mark_messages_displayed(void)
@@ -113,14 +116,20 @@ void web_mark_messages_displayed(void)
     action_messages_pending = false;
 }
 
-bool web_capture_action_message(const char *message)
+EM_JS(void, append_action_message, (const char *message, int type), {
+    const entries = Module['actionMessages'];
+    const text = UTF8ToString(message);
+    const previous = entries.at(-1);
+    if (previous?.text === text && previous.type === type) previous.count++;
+    else entries.push({ text, type, count: 1 });
+});
+
+bool web_capture_action_message(const char *message, int type)
 {
     if (!player || !character_dungeon || player->is_dead || !player->upkeep->playing) return false;
     if (!*message) return true;
-    if (!action_messages_pending || strlen(action_message) + strlen(message) + 1 >= sizeof(action_message))
-        action_message[0] = '\0';
-    if (action_message[0]) my_strcat(action_message, " ", sizeof(action_message));
-    my_strcat(action_message, message, sizeof(action_message));
+    web_clear_displayed_messages();
+    append_action_message(message, type);
     action_messages_pending = true;
     return true;
 }
@@ -128,7 +137,7 @@ bool web_capture_action_message(const char *message)
 void web_add_journal_message(const char *message)
 {
     message_add(message, MSG_GENERIC);
-    web_capture_action_message(message);
+    web_capture_action_message(message, MSG_GENERIC);
 }
 
 bool web_confirm_cast(const char *warning, const char *prompt)
@@ -639,7 +648,7 @@ enum { LOW_LIGHT_FUEL = 50 };
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
         int count, const char *const *lines, const int *repeats, bool roguelike, bool commands,
-        int turns, const char *action_message), {
+        int turns), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -650,7 +659,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
-        actionMessage: UTF8ToString(action_message),
+        actionMessages: Module['actionMessages'],
         conditions: Module['worldConditions'], stats: Module['worldStats'],
         mapStatus: Module['worldMapStatus'],
         monsterHealth: Module['worldMonsterHealth'],
@@ -818,7 +827,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands), commands, player->total_energy / 100, action_message);
+        OPT(player, rogue_like_commands), commands, player->total_energy / 100);
 }
 
 static double last_interrupt_poll;
@@ -1295,7 +1304,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
         const char *prompt, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
-        const char *new_messages, int save_event), {
+        bool new_messages, int save_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
     const context = modeName === "target" ? { ...Module['targetOptions'] } :
@@ -1316,7 +1325,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     if (warning) context.castWarning = UTF8ToString(warning);
     if (verb) context.verb = UTF8ToString(verb);
     if (new_messages) {
-        if (modeName === "more") context.pausedMessage = UTF8ToString(new_messages);
+        if (modeName === "more") context.pausedMessages = Module['actionMessages'];
         else context.newMessages = true;
     }
     if (player_x >= 0) context.player = { x: player_x, y: player_y };
@@ -1372,7 +1381,7 @@ static ui_event_type wait_for_input(void)
     if (mode == WEB_INPUT_DIRECTION && direction_command == CMD_RUN) mode = WEB_INPUT_RUN_DIRECTION;
     pace_run = mode == WEB_INPUT_RUN_DIRECTION;
 
-    const char *new_messages = (playing || mode == WEB_INPUT_MORE) ? web_pending_messages() : NULL;
+    bool new_messages = (playing || mode == WEB_INPUT_MORE) && web_has_pending_messages();
     if (mode != WEB_INPUT_MORE) web_mark_messages_displayed();
     bool aiming = mode == WEB_INPUT_TARGET || mode == WEB_INPUT_AIM ||
         mode == WEB_INPUT_DIRECTION || mode == WEB_INPUT_RUN_DIRECTION;
