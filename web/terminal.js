@@ -219,6 +219,7 @@ const screenTitles = new Map([
     ["overview", "Full dungeon map"], ["details", "Details"], ["history", "Character history"],
     ["birth-stats", "Point-based"], ["birth-roll", "Standard roller"],
     ["name", "Character name"], ["text", "Text entry"],
+    ["key", "Key input"],
 ]);
 const modesWithoutKeyboard = new Set([
     "splash", "save-slots", "birth-stats", "birth-roll", "birth-review", "history",
@@ -304,6 +305,7 @@ let centerPending = false;
 let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
+let controlKey = false;
 let pickerExpanded = false;
 let renderedDetails;
 let repeatName = "";
@@ -1034,7 +1036,7 @@ function updateTerminalControls({ disabled, pickingOnMap, outcome, resultChild, 
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
     confirmKey.hidden = !!openPanel || !!menu?.options || !!menu?.birth || resultChild || isDirectionPrompt() ||
-        pickingOnMap || directMenu || showTargetControls || noAimTarget;
+        mode === "key" || pickingOnMap || directMenu || showTargetControls || noAimTarget;
     confirmKey.disabled = mode === "direction" || noAimTarget || (mode === "target" && !context.canSelect) ||
         (!!menu && !selectedRow);
 
@@ -1268,7 +1270,7 @@ function updatePrompt() {
         text = terminalLine(0);
     }
     if (context.castWarning) text = `${context.castWarning}\n${context.prompt.trim()}`;
-    else if (["confirm", "details", "retire"].includes(mode) && context.prompt) text = "";
+    else if (["confirm", "details", "retire", "key", "option-number"].includes(mode) && context.prompt) text = "";
     if (isTextEntry(mode) || openPanel) text = "";
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
@@ -1353,7 +1355,8 @@ function updateScreenContents() {
     updateDetailsScreen();
     const textEntry = isTextEntry(mode);
     const editing = !textEntry && context.value !== undefined && !openPanel;
-    const question = (mode === "confirm" || mode === "retire") && !context.castWarning && context.prompt;
+    const question = (mode === "confirm" || mode === "retire" || mode === "key") &&
+        !context.castWarning && context.prompt;
     main.classList.toggle("text-viewport", birthStats || textEntry);
     updateTextViewport();
     birthStatsScreen.hidden = !birthStats || !!openPanel;
@@ -1460,7 +1463,7 @@ function getViewTitle({ character, outcome, editing, question }) {
     if (!editing) return activeView.title;
     if (mode === "quantity") return "Quantity";
     if (mode === "rest") return "Rest";
-    return "Edit option";
+    return context.prompt?.trim() || "Edit option";
 }
 
 function stop(message, failed) {
@@ -1528,7 +1531,7 @@ function handleWorkerMessage({ data }) {
                 if (mode === "save-slots") {
                     deleteSaveStatus.hidden = true;
                 }
-                keyboardOpen = false;
+                keyboardOpen = data.mode === "key";
                 openPanel = panelTrigger = undefined;
             }
             if (changed) {
@@ -1536,6 +1539,12 @@ function handleWorkerMessage({ data }) {
                 views.terminal.fitKey = undefined;
             }
             mode = data.mode;
+            if (changed && keyboardOpen) {
+                keyboardLayer = 0;
+                shifted = false;
+                controlKey = false;
+                renderKeyboard();
+            }
             playingGame = data.playing;
             request = data.request;
             context = data.context;
@@ -1876,9 +1885,10 @@ main.addEventListener("click", (event) => {
         sendInput({ type: "run-direction", code: direction });
         return;
     }
+    const controlled = mode === "key" && controlKey && keyboard.contains(button) && /^[a-z]$/i.test(key);
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
-        { type: "key", code: keyCode(key) };
+        { type: "key", code: controlled ? key.charCodeAt(0) & 31 : keyCode(key) };
     if (input.type === "delete-save") {
         openDeleteSave(button, input.code);
         return;
@@ -1920,7 +1930,8 @@ main.addEventListener("click", (event) => {
     if (input.type === "store-action") input.row = menuCursor;
     if (!sendInput(input)) return;
     if (openPanel) showPanel();
-    if (keyboard.contains(button) && shifted && /^[A-Z]$/.test(key) && keyboardLayer === 0) {
+    if (controlled || (keyboard.contains(button) && shifted && /^[A-Z]$/.test(key) && keyboardLayer === 0)) {
+        controlKey = false;
         shifted = false;
         renderKeyboard();
     }
@@ -2452,6 +2463,15 @@ function renderKeyboard() {
     const space = makeKey(" ", "Space");
     space.className = "space-key";
     const utility = [switchLayer, space, makeKey("Tab", "Tab")];
+    if (mode === "key") {
+        const control = makeButton("Ctrl", "Control for next letter");
+        control.setAttribute("aria-pressed", String(controlKey));
+        control.onclick = () => {
+            controlKey = !controlKey;
+            control.setAttribute("aria-pressed", String(controlKey));
+        };
+        utility.push(control);
+    }
     if (mode === "command") {
         const commands = makeButton("Cmds", "Commands");
         commands.setAttribute("aria-controls", "actions-screen");
@@ -2498,6 +2518,7 @@ function toggleKeyboard() {
     if (keyboardOpen) {
         keyboardLayer = 0;
         shifted = false;
+        controlKey = false;
         renderKeyboard();
     }
     updateControls();
@@ -2798,13 +2819,18 @@ document.addEventListener("keydown", (event) => {
         event.preventDefault();
         return;
     }
-    if (event.key === "Escape" && closeInputPanel()) {
+    if (event.key === "Escape" && closeInputPanel(mode !== "key")) {
         event.preventDefault();
         return;
     }
     if (openPanel) return;
     if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase();
+        if (mode === "key" && event.ctrlKey && !event.metaKey && /^[a-z]$/.test(key)) {
+            event.preventDefault();
+            if (!event.repeat) sendInput({ type: "key", code: key.charCodeAt(0) & 31 });
+            return;
+        }
         let shortcut;
         if (key === "s") shortcut = "Save";
         else if (!event.metaKey) {

@@ -1197,7 +1197,60 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1549,11 @@
+@@ -1315,11 +1412,22 @@ static bool textui_get_check(const char *prompt)
+ char get_char(const char *prompt, const char *options, size_t len, char fallback)
+ {
+ 	struct keypress key;
++#ifndef __EMSCRIPTEN__
+ 	char buf[80];
++#endif
+ 
+ 	/* Paranoia */
+ 	event_signal(EVENT_MESSAGE_FLUSH);
+ 
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_KEY);
++	char choices[256];
++	strnfmt(choices, sizeof(choices), "%s[%s]", prompt, options);
++	const char *old_prompt = web_set_prompt(choices);
++	key = inkey();
++	web_set_prompt(old_prompt);
++	web_set_input_mode(previous);
++#else
+ 	/* Build a "useful" prompt */
+ 	strnfmt(buf, 78, "%.70s[%s] ", prompt, options);
+ 
+@@ -1328,6 +1436,7 @@ char get_char(const char *prompt, const char *options, size_t len, char fallback
+ 
+ 	/* Get an acceptable answer */
+ 	key = inkey();
++#endif
+ 
+ 	/* Lowercase answer if necessary */
+ 	if (key.code >= 'A' && key.code <= 'Z') key.code += 32;
+@@ -1442,7 +1551,21 @@ bool get_com_ex(const char *prompt, ui_event *command)
+ 	prt(prompt, 0, 0);
+ 
+ 	/* Get a key */
++#ifdef __EMSCRIPTEN__
++	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_KEY);
++	const char *old_prompt = NULL;
++	if (previous == WEB_INPUT_TERMINAL)
++		old_prompt = web_set_prompt(prompt);
++	else
++		web_set_input_mode(previous);
++#endif
+ 	ke = inkey_m();
++#ifdef __EMSCRIPTEN__
++	if (previous == WEB_INPUT_TERMINAL) {
++		web_set_prompt(old_prompt);
++		web_set_input_mode(previous);
++	}
++#endif
+ 
+ 	/* Clear the prompt */
+ 	prt("", 0, 0);
+@@ -1452,7 +1575,11 @@
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1210,7 +1263,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,16 +1626,31 @@
+@@ -1525,16 +1652,31 @@
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1243,7 +1296,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1626,6 +1742,10 @@
+@@ -1626,6 +1768,10 @@
  
  	/* Auto-target if requested */
  	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
@@ -1254,7 +1307,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1762,25 @@
+@@ -1642,8 +1788,25 @@
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1282,7 +1335,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,18 +1798,35 @@
+@@ -1661,18 +1824,35 @@
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1319,11 +1372,10 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			} else {
  				/* Possible direction */
  				int keypresses_handled = 0;
-@@ -1719,6 +1873,18 @@
- 	/* A "valid" direction was entered */
+@@ -1720,6 +1900,18 @@ static bool textui_get_aim_dir(int *dp)
  	return (true);
  }
-+
+ 
 +#ifdef __EMSCRIPTEN__
 +bool web_get_map_aim_dir(int *dir, struct loc grid)
 +{
@@ -1335,10 +1387,33 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +	return true;
 +}
 +#endif
- 
++
  /**
   * Initialise the UI hooks to give input asked for by the game
-@@ -1840,6 +2006,21 @@
+  */
+@@ -1756,9 +1948,21 @@ static int textui_get_count(void)
+ 	while (1) {
+ 		struct keypress ke;
+ 
++#ifdef __EMSCRIPTEN__
++		char value[5];
++		strnfmt(value, sizeof(value), "%d", count);
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_OPTION_NUMBER);
++		const char *old_prompt = web_set_prompt("Repeat");
++		web_set_edit_value(value, strlen(value), false);
++#else
+ 		prt(format("Repeat: %d", count), 0, 0);
++#endif
+ 
+ 		ke = inkey();
++#ifdef __EMSCRIPTEN__
++		web_set_prompt(old_prompt);
++		web_set_input_mode(previous);
++#endif
+ 		if (ke.code == ESCAPE)
+ 			return -1;
+ 
+@@ -1840,6 +2044,21 @@
  			Term_set_cursor(false);
  		}
  
@@ -1363,11 +1438,10 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,96 @@
- #include "game-event.h"
+@@ -24,6 +24,96 @@
  #include "ui-event.h"
  #include "ui-term.h"
-+
+ 
 +#ifdef __EMSCRIPTEN__
 +enum web_input_mode {
 +	WEB_INPUT_TERMINAL, WEB_INPUT_COMMAND, WEB_INPUT_MENU, WEB_INPUT_NAME,
@@ -1377,7 +1451,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +	WEB_INPUT_BIRTH_STATS, WEB_INPUT_CHARACTER, WEB_INPUT_SPLASH, WEB_INPUT_OPTION_NUMBER,
 +	WEB_INPUT_BIRTH_ROLL, WEB_INPUT_VICTORY, WEB_INPUT_RESULTS_LIST,
 +	WEB_INPUT_RESULTS_FILE, WEB_INPUT_RETIRE, WEB_INPUT_BIRTH_REVIEW,
-+	WEB_INPUT_RUN_DIRECTION
++	WEB_INPUT_RUN_DIRECTION, WEB_INPUT_KEY
 +};
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
@@ -1457,9 +1531,10 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_menu_action(int key, const char *label);
 +void web_set_tiles(uint8_t id);
 +#endif
- 
++
  /**
   * Holds a generic command.  If hook is not NULL, that function
+  * will be called.  Otherwise, if cmd is not CMD_NULL, that command
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
@@ -2999,6 +3074,100 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
+@@ -4292,7 +4296,9 @@ void do_cmd_query_symbol(void)
+ 	bool uniq = false;
+ 	bool norm = false;
+ 
++#ifndef __EMSCRIPTEN__
+ 	bool recall = false;
++#endif
+ 
+ 	uint16_t *who;
+ 
+@@ -4316,8 +4322,10 @@ void do_cmd_query_symbol(void)
+ 		lookup_symbol(sym.key.code, buf, sizeof(buf));
+ 	}
+ 
++#ifndef __EMSCRIPTEN__
+ 	/* Display the result */
+ 	prt(buf, 0, 0);
++#endif
+ 
+ 	/* Allocate the "who" array */
+ 	who = mem_zalloc(z_info->r_max * sizeof(uint16_t));
+@@ -4345,12 +4353,24 @@ void do_cmd_query_symbol(void)
+ 
+ 	/* No monsters to recall */
+ 	if (!num) {
++#ifdef __EMSCRIPTEN__
++		web_add_journal_message(buf);
++#endif
+ 		/* Free the "who" array */
+ 		mem_free(who);
+ 		return;
+ 	}
+ 
+ 	/* Prompt */
++#ifdef __EMSCRIPTEN__
++	ui_event response;
++	if (!get_com_ex(format("%s\nRecall details? (y/k/n): ", buf), &response)) {
++		web_add_journal_message(buf);
++		mem_free(who);
++		return;
++	}
++	query = response.key;
++#else
+ 	put_str("Recall details? (y/k/n): ", 0, 40);
+ 
+ 	/* Query */
+@@ -4358,6 +4378,7 @@ void do_cmd_query_symbol(void)
+ 
+ 	/* Restore */
+ 	prt(buf, 0, 0);
++#endif
+ 
+ 	/* Interpret the response */
+ 	if (query.code == 'k') {
+@@ -4368,10 +4389,31 @@ void do_cmd_query_symbol(void)
+ 		sort(who, num, sizeof(*who), cmp_level);
+ 	} else {
+ 		/* Any unsupported response is "nope, no history please" */
++#ifdef __EMSCRIPTEN__
++		web_add_journal_message(buf);
++#endif
+ 		mem_free(who);
+ 		return;
+ 	}
+ 
++#ifdef __EMSCRIPTEN__
++	const char **names = mem_alloc(num * sizeof(*names));
++	for (int i = 0; i < num; i++)
++		names[i] = r_info[who[num - 1 - i]].name;
++	struct menu m;
++	menu_init(&m, MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
++	menu_setpriv(&m, num, names);
++	m.title = "Identify symbol";
++	m.web_no_keyboard = true;
++	menu_layout(&m, &SCREEN_REGION);
++	while (menu_select(&m, 0, true).type == EVT_SELECT) {
++		struct monster_race *race = &r_info[who[num - 1 - m.cursor]];
++		monster_race_track(player->upkeep, race);
++		handle_stuff(player);
++		lore_show_interactive(race, get_lore(race));
++	}
++	mem_free(names);
++#else
+ 	/* Start at the end, as the array is sorted lowest to highest */
+ 	idx = num - 1;
+ 
+@@ -4436,6 +4478,7 @@ void do_cmd_query_symbol(void)
+ 
+ 	/* Re-display the identity */
+ 	prt(buf, 0, 0);
++#endif
+ 
+ 	/* Free the "who" array */
+ 	mem_free(who);
 diff --git a/src/ui-spell.c b/src/ui-spell.c
 --- a/src/ui-spell.c
 +++ b/src/ui-spell.c

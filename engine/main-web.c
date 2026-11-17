@@ -59,6 +59,7 @@ static const char *const input_modes[] = {
     [WEB_INPUT_MENU] = "menu",
     [WEB_INPUT_NAME] = "name",
     [WEB_INPUT_TEXT] = "text",
+    [WEB_INPUT_KEY] = "key",
     [WEB_INPUT_QUANTITY] = "quantity",
     [WEB_INPUT_CONFIRM] = "confirm",
     [WEB_INPUT_AIM] = "aim",
