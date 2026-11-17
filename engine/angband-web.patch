@@ -1363,7 +1363,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -23,6 +23,95 @@
+@@ -23,6 +23,96 @@
  #include "game-event.h"
  #include "ui-event.h"
  #include "ui-term.h"
@@ -1385,6 +1385,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +const char *web_set_prompt(const char *prompt);
 +void web_collect_drop_messages(bool collect);
 +bool web_capture_drop_message(const char *message);
++void web_add_journal_message(const char *message);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
 +void web_set_aim_command(struct command *cmd);
@@ -1542,7 +1543,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -1052,10 +1117,29 @@ static const menu_iter dynamic_iter = {
+@@ -1052,10 +1117,30 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
  
@@ -1553,6 +1554,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +	int i = 0;
 +
 +	web_set_menu(m, m->cursor, NULL);
++	if (m->title) web_set_menu_title(m->title);
 +	for (entry = menu_priv(m); entry; entry = entry->next, i++) {
 +		if (entry->valid != MN_ROW_HIDDEN)
 +			web_add_menu_row(i, entry->text, NULL, NULL,
@@ -1828,7 +1830,17 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 diff --git a/src/ui-target.c b/src/ui-target.c
 --- a/src/ui-target.c
 +++ b/src/ui-target.c
-@@ -387,7 +387,12 @@ static ui_event target_recall_loop_object(struct object *obj, int y, int x,
+@@ -39,6 +39,9 @@
+ #include "ui-input.h"
+ #include "ui-keymap.h"
+ #include "ui-map.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-menu.h"
++#endif
+ #include "ui-mon-lore.h"
+ #include "ui-object.h"
+ #include "ui-output.h"
+@@ -387,7 +390,12 @@ static ui_event target_recall_loop_object(struct object *obj, int y, int x,
  	while (1) {
  		if (recall) {
  			display_object_recall_interactive(cave->objects[obj->oidx]);
@@ -1841,7 +1853,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  		} else {
  			char o_name[80];
  
-@@ -501,7 +506,11 @@ static bool aux_hallucinate(struct chunk *c, struct player *p,
+@@ -501,7 +509,11 @@ static bool aux_hallucinate(struct chunk *c, struct player *p,
  	prt(out_val, 0, 0);
  	move_cursor_relative(auxst->grid.y, auxst->grid.x);
  
@@ -1853,7 +1865,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  	/* Stop on everything but "return" */
  	return auxst->press.key.code != KC_ENTER;
-@@ -547,7 +556,12 @@ static bool aux_monster(struct chunk *c, struct player *p,
+@@ -547,7 +559,12 @@ static bool aux_monster(struct chunk *c, struct player *p,
  		/* Recall or target */
  		if (recall) {
  			lore_show_interactive(mon->race, lore);
@@ -1866,7 +1878,55 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  		} else {
  			char buf[80];
  
-@@ -1341,8 +1355,25 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -757,6 +774,29 @@ static bool aux_trap(struct chunk *c, struct player *p,
+ 	return true;
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_inspect_floor(struct player *p, struct object **items, int count)
++{
++	struct menu *m = menu_dynamic_new();
++	int pos;
++
++	m->title = "Floor";
++	m->web_no_keyboard = true;
++	for (int i = 0; i < count; i++) {
++		char name[1024];
++		object_desc(name, sizeof(name), items[i], ODESC_PREFIX | ODESC_FULL, p);
++		menu_dynamic_add(m, name, i);
++	}
++	menu_layout(m, &SCREEN_REGION);
++	while ((pos = menu_dynamic_select(m)) >= 0) {
++		track_object(p->upkeep, items[pos]);
++		handle_stuff(p);
++		display_object_recall_interactive(items[pos]);
++	}
++	menu_dynamic_free(m);
++}
++#endif
++
+ /**
+  * Help target_set_interactive_aux():  handle objects.
+  */
+@@ -820,6 +860,9 @@ static bool aux_object(struct chunk *c, struct player *p,
+ 					auxst->grid.y)
+ 					|| (auxst->press.type == EVT_KBRD
+ 					&& auxst->press.key.code == 'r')) {
++#ifdef __EMSCRIPTEN__
++				web_inspect_floor(p, floor_list, floor_num);
++#else
+ 				int pos;
+ 				while (1) {
+ 					/* Save screen */
+@@ -853,6 +896,7 @@ static bool aux_object(struct chunk *c, struct player *p,
+ 					}
+ 					break;
+ 				}
++#endif
+ 
+ 				/*
+ 				 * Now that the user's done with the display
+@@ -1341,8 +1385,25 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
  					player->grid.y, player->grid.x);
  
  		/* Describe and Prompt */
@@ -1892,7 +1952,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  
  		/* Remove the path */
  		if (path_drawn) load_path(path_n, path_g, path_char, path_attr);
-@@ -1391,11 +1422,16 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -1391,11 +1452,16 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
  			}
  			done = true;
  
@@ -1910,7 +1970,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  			/* If they clicked on an edge of the map, drag the cursor further
  			   to trigger a panel scroll */
  			if (press.mouse.y <= 1) {
-@@ -1407,6 +1443,7 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
+@@ -1407,6 +1473,7 @@ bool target_set_interactive(int mode, int x, int y, bool allow_pathfinding)
  			} else if (press.mouse.x >= Term->wid - 2) {
  				x++;
  			}
@@ -2011,7 +2071,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  	return new_col - col;
  }
-@@ -2607,7 +2607,7 @@
+@@ -2607,7 +2614,7 @@
  	if (floor_num == 1) {
  		/* Get the object */
  		struct object *obj = floor_list[0];
@@ -2020,6 +2080,29 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  		if (!can_pickup)
  			p = "have no room for";
+@@ -2627,6 +2634,14 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+ 		event_signal(EVENT_MESSAGE_FLUSH);
+ 		msg("You %s %s.", p, o_name);
+ 	} else {
++#ifdef __EMSCRIPTEN__
++		if (!can_pickup)
++			web_add_journal_message(format(
++				"You have no room for the pile of %d objects.", floor_num));
++		else
++			web_add_journal_message(format(
++				"You %s a pile of %d objects.", blind ? "feel" : "see", floor_num));
++#else
+ 		ui_event e;
+ 
+ 		if (!can_pickup)
+@@ -2645,6 +2660,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+ 
+ 		/* Restore screen */
+ 		screen_load();
++#endif
+ 	}
+ 
+ 	mem_free(floor_list);
 diff --git a/src/ui-display.h b/src/ui-display.h
 --- a/src/ui-display.h
 +++ b/src/ui-display.h

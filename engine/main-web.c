@@ -114,6 +114,12 @@ bool web_capture_drop_message(const char *message)
     return true;
 }
 
+void web_add_journal_message(const char *message)
+{
+    drop_message[0] = '\0';
+    message_add(message, MSG_GENERIC);
+}
+
 bool web_confirm_cast(const char *warning, const char *prompt)
 {
     message_add(warning, MSG_GENERIC);
