@@ -555,27 +555,37 @@ dt { color: var(--muted); }
     overflow: auto;
     overscroll-behavior: contain;
 }
-#picker-heading { flex: none; }
-#picker-prompt {
-    display: block;
+.picker-bar { position: relative; flex: none; }
+#picker-heading {
     padding: 0.625rem;
     white-space: pre-line;
     overflow-wrap: anywhere;
 }
+.resizable #picker-heading {
+    display: grid;
+    align-content: center;
+    min-height: 44px;
+    padding: 0.875rem 0.625rem 0.375rem;
+    color: var(--accent);
+}
+.scroll-shadow {
+    position: relative;
+    flex: none;
+    height: 0.75rem;
+    margin-top: -0.75rem;
+    background: linear-gradient(transparent, rgb(0 0 0 / 48%));
+    pointer-events: none;
+}
 #picker #edit-value { margin: 0 0.25rem 0.25rem; }
 #picker-list { min-height: 0; }
 #picker-toggle {
-    position: relative;
-    display: grid;
-    align-content: center;
+    position: absolute;
+    inset: 0;
     width: 100%;
-    padding: 0.875rem 0.625rem 0.375rem;
+    height: 100%;
+    padding: 0;
     border: 0;
     background: transparent;
-    color: var(--accent);
-    font: inherit;
-    text-align: start;
-    overflow-wrap: anywhere;
     touch-action: none;
 }
 #picker-toggle::after {
@@ -1073,13 +1083,15 @@ main.choosing .view { min-height: 0; }
     overscroll-behavior: contain;
 }
 .choosing .controls > :not(#picker) { flex: none; }
-.choosing .controls:has(#keyboard:not([hidden]), #picker-prompt:not([hidden])) {
+.choosing .controls:has(#keyboard:not([hidden]), #picker:not(.resizable)) {
     max-height: calc(100% - 3rem);
 }
 .picker-expanded:not(:has(#message-pause:not([hidden]))) :is(.view, #hud) { display: none; }
 main.picker-expanded .controls { flex: 1; max-height: 100%; }
-.picker-expanded :is(#picker-list, #actions-screen, #picker-description) { flex: 1; }
-#picker-list:not([hidden]) + #picker-description { max-height: 22dvh; }
+.picker-expanded :is(#picker-list, #actions-screen) { flex: 1; }
+.picker-expanded #picker-description { max-height: none; }
+#picker-list:not([hidden]) ~ #picker-description { max-height: 22dvh; }
+.picker-expanded #picker-list:not([hidden]) ~ #picker-description { max-height: 50%; }
 .left-handed .game-controls-row:has(#direction-pad:not([hidden])) { grid-template-columns: auto minmax(0, 1fr); }
 .left-handed #direction-pad { grid-column: 1; grid-row: 1; }
 .left-handed .game-controls-buttons { grid-column: 2; grid-row: 1; }

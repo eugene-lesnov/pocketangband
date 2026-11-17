@@ -238,13 +238,15 @@
 
         <div class="controls">
             <section id="picker" aria-labelledby="picker-heading" hidden>
-                <h2 id="picker-heading">
-                    <button id="picker-toggle" type="button" aria-controls="picker-list" aria-expanded="false" disabled></button>
-                    <span id="picker-prompt" tabindex="-1"></span>
-                </h2>
+                <header class="picker-bar">
+                    <h2 id="picker-heading" tabindex="-1"></h2>
+                    <button id="picker-toggle" type="button" aria-controls="picker-list" aria-expanded="false" disabled hidden></button>
+                </header>
                 <fieldset id="actions-screen" class="menu-screen menu-rows" disabled hidden></fieldset>
                 <div id="picker-list" class="menu-screen" hidden></div>
+                <div id="picker-list-shadow" class="scroll-shadow" aria-hidden="true" hidden></div>
                 <p id="picker-description" class="menu-description" aria-live="polite" hidden></p>
+                <div id="picker-description-shadow" class="scroll-shadow" aria-hidden="true" hidden></div>
                 <p id="edit-value" aria-label="Current value" hidden></p>
             </section>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>

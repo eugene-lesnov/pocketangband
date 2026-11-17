@@ -144,7 +144,9 @@ const pickerList = createMenuList("picker-list", "picker-description");
 let activeList = pageList;
 const menuActions = document.querySelector("#menu-actions");
 const picker = document.querySelector("#picker");
-const pickerPrompt = document.querySelector("#picker-prompt");
+const pickerHeading = document.querySelector("#picker-heading");
+const pickerListShadow = document.querySelector("#picker-list-shadow");
+const pickerDescriptionShadow = document.querySelector("#picker-description-shadow");
 const controls = picker.parentElement;
 const mainView = viewTitle.closest(".view");
 const pickerToggle = document.querySelector("#picker-toggle");
@@ -960,10 +962,11 @@ function updateControls() {
     updateTargetControls(disabled, showTargetControls, showKeyboard);
     updatePromptControls(disabled, stopVisible);
     updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVisible);
+    updatePickerOverflow();
 }
 
 function updateMenuControls(disabled, choosing) {
-    pickerToggle.disabled = disabled || !choosing || pickerToggle.hidden;
+    pickerToggle.disabled = disabled || !choosing;
     monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel;
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
@@ -1313,7 +1316,7 @@ function updatePrompt() {
         }
     }
     if (mode === "details" || isTextEntry(mode) || openPanel || isChoosing()) text = "";
-    if (mode === "rest" && !stopAction.hidden) pickerPrompt.textContent = "Resting…";
+    if (mode === "rest" && !stopAction.hidden) pickerHeading.textContent = "Resting…";
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
@@ -1475,18 +1478,15 @@ function renderPicker() {
     const title = panelTitles[openPanel] || menu?.selectionTitle || menu?.title || menu?.prompt ||
         context.prompt?.trim() || (mode === "quantity" ? terminalLine(0) : "") ||
         (menu ? "Choices" : screenTitles.get(mode));
-    const expandable = !!menu || !!openPanel || inspectingChoice;
-    pickerToggle.hidden = !expandable;
-    pickerPrompt.hidden = expandable;
+    const resizable = !!menu || !!openPanel || inspectingChoice;
+    picker.classList.toggle("resizable", resizable);
+    pickerHeading.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
     pickerToggle.setAttribute("aria-controls", openPanel ? "actions-screen" :
         inspectingChoice ? "picker-description" : "picker-list");
-    if (expandable) {
-        pickerToggle.textContent = title;
+    if (resizable) {
         pickerToggle.setAttribute("aria-expanded", String(pickerExpanded));
         const action = pickerExpanded ? "Fit to contents" : "Expand to full screen";
         pickerToggle.setAttribute("aria-label", `${title} ${action}`);
-    } else {
-        pickerPrompt.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
     }
     renderMenu(openPanel ? undefined : menu, inspectingChoice ? context.detail : undefined);
     editValue.hidden = context.value === undefined && context.price === undefined;
@@ -1661,7 +1661,7 @@ function handleWorkerMessage({ data }) {
                 pauseTrigger.focus({ preventScroll: true });
             }
             if (changed && isChoosing() && !menu) {
-                (inspectingChoice ? pickerToggle : pickerPrompt).focus({ preventScroll: true });
+                pickerHeading.focus({ preventScroll: true });
             }
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
@@ -2647,8 +2647,30 @@ vitals.addEventListener("click", () => {
     }
 });
 
+function updatePickerOverflow() {
+    if (picker.hidden) return;
+    const list = openPanel ? actionsScreen : pickerList.sections.hidden ? pickerList.screen : pickerList.items;
+    const description = pickerList.description;
+    const listOverflow = list.scrollHeight - list.clientHeight;
+    const descriptionOverflow = description.scrollHeight - description.clientHeight;
+    const moreRows = listOverflow - Math.max(0, list.scrollTop) > 1;
+    const moreText = descriptionOverflow - Math.max(0, description.scrollTop) > 1;
+    const showHandle = picker.classList.contains("resizable") &&
+        (pickerExpanded || listOverflow > 1 || descriptionOverflow > 1);
+    if (!showHandle && document.activeElement === pickerToggle) pickerHeading.focus({ preventScroll: true });
+    pickerToggle.hidden = !showHandle;
+    pickerListShadow.hidden = !moreRows;
+    pickerDescriptionShadow.hidden = !moreText;
+}
+
+const pickerResize = new ResizeObserver(updatePickerOverflow);
+for (const area of [actionsScreen, pickerList.screen, pickerList.items, pickerList.rows, pickerList.description]) {
+    pickerResize.observe(area);
+}
+picker.addEventListener("scroll", updatePickerOverflow, { capture: true, passive: true });
+
 function setPickerExpanded(expanded) {
-    if (pickerToggle.disabled || expanded === pickerExpanded) return;
+    if (pickerToggle.hidden || pickerToggle.disabled || expanded === pickerExpanded) return;
     pickerExpanded = expanded;
     updateView();
     updateControls();
