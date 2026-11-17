@@ -1384,11 +1384,12 @@ function updateDetailsScreen() {
     renderedDetails = content;
     detailsScreen.classList.toggle("visible-list", !!list);
     if (list) {
-        detailsScreen.replaceChildren(...list.map(({ text, location, symbol }) => {
+        detailsScreen.replaceChildren(...list.map(({ text, location, symbol, color }) => {
             if (location === undefined) {
                 const heading = document.createElement("p");
                 heading.className = "visible-list-heading";
                 heading.textContent = text;
+                if (color) heading.style.color = color;
                 return heading;
             }
             const row = document.createElement("div");
@@ -1400,6 +1401,7 @@ function updateDetailsScreen() {
             const name = document.createElement("span");
             name.className = "visible-list-name";
             name.textContent = text;
+            if (color) name.style.color = color;
             const distance = document.createElement("span");
             distance.className = "visible-list-location";
             distance.textContent = location;
@@ -2370,24 +2372,22 @@ function renderMenu(state) {
         }
         const description = document.createElement("span");
         description.textContent = label;
-        if (row.spell) {
-            button.classList.add("spell-choice");
-            button.style.setProperty("--spell-color", row.spell.color);
-            description.className = "spell-text";
-        }
+        if (row.color) description.style.color = row.color;
+        if (row.spellInfo !== undefined) button.classList.add("spell-choice");
         if (row.detail && !state.birth?.preview) {
             const detail = document.createElement("small");
             detail.textContent = row.detail;
-            if (row.spell?.info) {
+            if (row.spellInfo) {
                 const info = document.createElement("span");
-                info.className = "spell-text";
-                info.textContent = row.spell.info;
+                info.style.color = row.color;
+                info.textContent = row.spellInfo;
                 detail.append(" ", info);
             }
             description.append(detail);
         }
         const price = document.createElement("span");
         price.className = "price";
+        price.classList.toggle("unaffordable", !!row.unaffordable);
         price.textContent = row.price;
         const ending = outcome && ["n", "q"].some((key) => row.key === keyCode(key));
         const rowKey = row.key ? keyFromCode(row.key) : "";
@@ -2399,8 +2399,9 @@ function renderMenu(state) {
             if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
         }
         button.setAttribute("aria-label",
-            [label, state.birth?.preview ? "" : row.detail, row.spell?.info,
-                row.checked === undefined ? row.price : ""]
+            [label, state.birth?.preview ? "" : row.detail, row.spellInfo,
+                row.checked === undefined ? row.price : "",
+                row.unaffordable ? "You do not have enough gold for this item." : ""]
                 .filter(Boolean).join(", "));
         if (mode === "save-slots" && row.index > 0 && row.enabled) {
             const controls = document.createElement("div");

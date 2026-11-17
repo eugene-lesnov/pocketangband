@@ -1512,7 +1512,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,100 @@
+@@ -24,6 +24,101 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1560,7 +1560,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_monster_sort(bool by_exp);
 +void web_set_list_block(const void *block);
 +bool web_is_list_block(const void *block);
-+void web_add_list_row(const char *text, const char *location, wchar_t symbol);
++void web_add_list_row(const char *text, const char *location, wchar_t symbol, int attr);
 +void web_set_details(const wchar_t *text, size_t length);
 +void web_set_history(const char *text);
 +void web_show_splash(bool startup);
@@ -1604,6 +1604,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_confirmation_price(int32_t price);
 +void web_add_menu_row(int index, const char *name, const char *detail,
 +	const char *price, char key, bool enabled);
++void web_set_menu_row_color(int attr, bool unaffordable);
 +void web_set_menu_spell(const char *info, int attr);
 +void web_set_menu_description(const wchar_t *description);
 +void web_menu_action(int key, const char *label);
@@ -1613,7 +1614,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +186,7 @@ ui_event inkey_m(void);
+@@ -92,6 +187,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1821,7 +1822,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  		screen_load();
  
-@@ -865,15 +886,61 @@ static bool store_process_command_key(struct keypress kp)
+@@ -865,15 +886,66 @@ static bool store_process_command_key(struct keypress kp)
  /**
   * Select an item from the store's stock, and return the stock index
   */
@@ -1840,16 +1841,21 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +		char name[160];
 +		char detail[32];
 +		char price[32] = "";
++		bool unaffordable = false;
 +		int weight = object_weight_one(obj);
 +
 +		object_desc(name, sizeof(name), obj,
 +			ODESC_PREFIX | ODESC_FULL | (home ? 0 : ODESC_STORE), player);
 +		strnfmt(detail, sizeof(detail), "%d.%d lb each", weight / 10, weight % 10);
-+		if (!home)
++		if (!home) {
++			int cost = price_item(store, obj, false, 1);
++			unaffordable = player->au < cost;
 +			strnfmt(price, sizeof(price), "%ld au%s",
-+				(long)price_item(store, obj, false, 1),
++				(long)cost,
 +				tval_can_have_charges(obj) && obj->number > 1 ? " avg" : "");
++		}
 +		web_add_menu_row(i, name, detail, price, m->selections[i], true);
++		web_set_menu_row_color(obj->kind->base->attr, unaffordable);
 +	}
 +	if (!(m->flags & MN_NO_ACTION)) {
 +		if (!ctx->inspect_only) {
@@ -1884,7 +1890,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (!no_act) {
  		m->flags &= ~MN_NO_ACTION;
  	}
-@@ -1007,7 +1074,13 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+@@ -1007,7 +1079,13 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -1898,7 +1904,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1034,6 +1107,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1034,6 +1112,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
@@ -1929,7 +1935,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1103,15 +1200,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1103,15 +1205,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'g':
  				/* use the old way of purchasing items */
  				msg_flag = false;
@@ -1947,7 +1953,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_purchase(ctx, oid, false);
  				}
-@@ -1120,10 +1210,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1120,10 +1215,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'x':
  				/* use the old way of examining items */
  				msg_flag = false;
@@ -1959,7 +1965,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_examine(ctx, oid);
  				}
-@@ -1199,6 +1286,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1199,6 +1291,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
@@ -1969,7 +1975,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	menu_setpriv(menu, 0, ctx);
  
  	/* Calculate the positions of things and draw */
-@@ -1222,10 +1312,16 @@ void textui_store_knowledge(int n)
+@@ -1222,10 +1317,16 @@ void textui_store_knowledge(int n)
  	clear_from(0);
  
  	store_menu_init(&ctx, &stores[n], true);
@@ -1987,7 +1993,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	screen_load();
  
-@@ -1294,7 +1390,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1294,7 +1395,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  		prt_welcome(store->owner);
  
  	/* Shopping */
@@ -2686,7 +2692,43 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -1002,6 +1002,70 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+@@ -131,6 +131,15 @@ static wchar_t object_char(struct object *obj)
+ 	return object_kind_char(obj->kind);
+ }
+ 
++static int object_name_attr(const struct object *obj)
++{
++	if (!obj || (tval_is_book_k(obj->kind) &&
++			!player_object_to_book(player, obj))) {
++		return COLOUR_SLATE;
++	}
++	return obj->kind->base->attr;
++}
++
+ /**
+  * Display an object.  Each object may be prefixed with a label.
+  * Used by show_inven(), show_equip(), show_quiver() and show_floor().
+@@ -174,18 +183,8 @@ static void show_obj(int obj_num, int row, int col, bool cursor,
+ 		items[obj_num].o_name[truncate] = '\0';
+ 	}
+ 
+ 	/* Item kind determines the color of the output */
+-	if (obj) {
+-		attr = obj->kind->base->attr;
+-
+-		/* Unreadable books are a special case */
+-		if (tval_is_book_k(obj->kind) &&
+-			(player_object_to_book(player, obj) == NULL)) {
+-			attr = COLOUR_SLATE;
+-		}
+-	} else {
+-		attr = COLOUR_SLATE;
+-	}
++	attr = object_name_attr(obj);
+ 
+ 	/* Object name */
+ 	c_put_str(attr, items[obj_num].o_name, row + obj_num,
+@@ -1002,6 +1001,71 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
  	return false;
  }
  
@@ -2750,6 +2792,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +			my_strcat(detail, choices[i].equip_label, sizeof(detail));
 +		}
 +		web_add_menu_row(i, name, detail, price, obj ? choices[i].key : 0, obj != NULL);
++		web_set_menu_row_color(object_name_attr(obj), false);
 +	}
 +}
 +#endif
@@ -2832,7 +2875,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  		if (tb != NULL)
  			textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
 +#endif
  
  		/* Force a minimum width so that the prompt doesn't get cut off. */
@@ -2842,12 +2885,12 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  	if (tb != NULL)
  		textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
 +#endif
  
  	for (index = 0; index < total && line_count < lines_to_display; index++) {
  		char asleep[20] = { '\0' };
-@@ -137,6 +144,13 @@
+@@ -137,6 +144,14 @@
  		get_mon_name(line_buffer, sizeof(line_buffer),
  					 list->entries[index].race,
  					 list->entries[index].count[section]);
@@ -2855,23 +2898,24 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
 +		if (web_is_list_block(tb)) {
 +			char full_name[sizeof(line_buffer) + sizeof(asleep)];
 +			strnfmt(full_name, sizeof(full_name), "%s%s", line_buffer, asleep);
-+			web_add_list_row(full_name, location, list->entries[index].race->d_char);
++			web_add_list_row(full_name, location, list->entries[index].race->d_char,
++				monster_list_entry_line_color(&list->entries[index]));
 +		}
 +#endif
  		utf8_clipto(line_buffer, name_width);
  		my_strcat(line_buffer, asleep, sizeof(line_buffer));
  
-@@ -220,6 +234,9 @@
+@@ -220,6 +235,9 @@
  
  		if (tb != NULL)
  			textblock_append_c(tb, COLOUR_ORANGE, "%s", message);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(message, NULL, 0);
++		if (web_is_list_block(tb)) web_add_list_row(message, NULL, 0, COLOUR_ORANGE);
 +#endif
  
  		return true;
  	}
-@@ -432,8 +449,14 @@
+@@ -432,8 +450,14 @@
  		 * safe_width so that the format function will pad the lines properly so
  		 * that the location string is aligned to the right edge of the list.
  		 */
@@ -2886,7 +2930,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  		region_erase_bordered(&r);
  
  		char buf[300];
-@@ -445,7 +468,12 @@
+@@ -445,7 +469,12 @@
  			my_strcpy(buf, "Press 'x' to turn ON 'sort by exp'", sizeof(buf));
  		}
  
@@ -2917,7 +2961,7 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
  		if (tb != NULL)
  			textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
 +#endif
  
  		/* Force a minimum width so that the prompt doesn't get cut off. */
@@ -2927,12 +2971,12 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
  	if (tb != NULL)
  		textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0);
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
 +#endif
  
  	for (entry_index = 0; entry_index < total && line_count < lines_to_display;
  		 entry_index++) {
-@@ -121,6 +130,18 @@
+@@ -121,6 +130,19 @@
  		/* Add the object count and clip the object name to fit. */
  		object_list_format_name(&list->entries[entry_index], line_buffer,
  								sizeof(line_buffer));
@@ -2945,13 +2989,14 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
 +				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM | (entry->count[section] << 16), player);
 +			if (!is_unknown(entry->object) && entry->object->kind)
 +				symbol = entry->object->kind->d_char;
-+			web_add_list_row(full_name, location, symbol);
++			web_add_list_row(full_name, location, symbol,
++				object_list_entry_line_attribute(entry));
 +		}
 +#endif
  		utf8_clipto(line_buffer, full_width);
  
  		/* Calculate the width of the line for dynamic sizing; use a fixed max
-@@ -374,10 +395,20 @@
+@@ -374,10 +396,20 @@
  	 * safe_width so that the format function will pad the lines properly so
  	 * that the location string is aligned to the right edge of the list.
  	 */

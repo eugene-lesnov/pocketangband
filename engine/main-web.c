@@ -222,6 +222,28 @@ EM_JS(void, web_set_monster_sort, (bool by_exp), {
 
 static const void *list_block;
 
+static void web_text_color(char *buffer, size_t size, int attr)
+{
+    static const uint8_t tint[MAX_COLORS] = {
+        [COLOUR_SLATE] = 48,
+        [COLOUR_RED] = 60,
+        [COLOUR_GREEN] = 50,
+        [COLOUR_UMBER] = 60,
+        [COLOUR_L_DARK] = 60,
+        [COLOUR_L_PURPLE] = 40,
+        [COLOUR_L_RED] = 55,
+        [COLOUR_L_UMBER] = 30,
+        [COLOUR_VIOLET] = 50,
+    };
+    const uint8_t *color = angband_color_table[attr];
+    unsigned int rgb[3];
+    for (int i = 0; i < 3; ++i) {
+        int value = color[i + 1];
+        rgb[i] = value + ((255 - value) * tint[attr] + 50) / 100;
+    }
+    strnfmt(buffer, size, "#%02x%02x%02x", rgb[0], rgb[1], rgb[2]);
+}
+
 EM_JS(void, start_list, (void), {
     Module['inputContext'] = { list: [] };
 });
@@ -237,11 +259,19 @@ bool web_is_list_block(const void *block)
     return block && block == list_block;
 }
 
-EM_JS(void, web_add_list_row, (const char *text, const char *location, wchar_t symbol), {
+EM_JS(void, add_list_row, (const char *text, const char *location, wchar_t symbol, const char *color), {
     Module['inputContext'].list.push({ text: UTF8ToString(text).trim(),
         location: location ? UTF8ToString(location).trim() : undefined,
-        symbol: symbol ? String.fromCodePoint(symbol) : "" });
+        symbol: symbol ? String.fromCodePoint(symbol) : "",
+        color: UTF8ToString(color) });
 });
+
+void web_add_list_row(const char *text, const char *location, wchar_t symbol, int attr)
+{
+    char color[8];
+    web_text_color(color, sizeof(color), attr);
+    add_list_row(text, location, symbol, color);
+}
 
 EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
     let detail = "";
@@ -440,20 +470,27 @@ EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
         price: price ? UTF8ToString(price).trim() : "", key, enabled: !!enabled });
 });
 
-EM_JS(void, set_menu_spell, (const char *info, const uint8_t *color, bool lighten), {
-    const channel = (offset) => {
-        const value = HEAPU8[color + offset];
-        return lighten ? Math.round(value + (255 - value) * 0.6) : value;
-    };
-    Module['inputMenu'].rows.at(-1).spell = {
-        info: info ? UTF8ToString(info).trim() : "",
-        color: `rgb(${channel(1)} ${channel(2)} ${channel(3)})`,
-    };
+EM_JS(void, set_menu_row_color, (const char *color, bool unaffordable), {
+    const row = Module['inputMenu'].rows.at(-1);
+    row.color = UTF8ToString(color);
+    row.unaffordable = !!unaffordable;
+});
+
+void web_set_menu_row_color(int attr, bool unaffordable)
+{
+    char color[8];
+    web_text_color(color, sizeof(color), attr);
+    set_menu_row_color(color, unaffordable);
+}
+
+EM_JS(void, set_menu_spell, (const char *info), {
+    Module['inputMenu'].rows.at(-1).spellInfo = info ? UTF8ToString(info).trim() : "";
 });
 
 void web_set_menu_spell(const char *info, int attr)
 {
-    set_menu_spell(info, angband_color_table[attr], attr == COLOUR_RED || attr == COLOUR_L_DARK);
+    web_set_menu_row_color(attr, false);
+    set_menu_spell(info);
 }
 
 EM_JS(void, web_menu_action, (int key, const char *label), {
