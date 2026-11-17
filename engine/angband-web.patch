@@ -1513,7 +1513,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,102 @@
+@@ -24,6 +24,103 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1611,12 +1611,13 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_menu_description(const wchar_t *description);
 +void web_menu_action(int key, const char *label);
 +void web_set_tiles(uint8_t id);
++void web_resize_map(void);
 +#endif
 +
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +187,7 @@ ui_event inkey_m(void);
+@@ -92,6 +188,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -2271,7 +2272,18 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  	return new_col - col;
  }
-@@ -2607,7 +2614,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+@@ -2511,6 +2518,10 @@ static void new_level_display_update(game_event_type type,
+ 	/* Enforce illegal panel */
+ 	Term->offset_y = z_info->dungeon_hgt;
+ 	Term->offset_x = z_info->dungeon_wid;
++
++#ifdef __EMSCRIPTEN__
++	web_resize_map();
++#endif
+ 
+ 	/* Choose panel */
+ 	verify_panel();
+@@ -2607,7 +2618,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  	if (floor_num == 1) {
  		/* Get the object */
  		struct object *obj = floor_list[0];
@@ -2280,7 +2292,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  		if (!can_pickup)
  			p = "have no room for";
-@@ -2624,9 +2631,17 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+@@ -2624,9 +2635,17 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  		}
  
  		/* Message */
@@ -2299,7 +2311,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  		ui_event e;
  
  		if (!can_pickup)
-@@ -2645,6 +2660,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+@@ -2645,6 +2664,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  
  		/* Restore screen */
  		screen_load();

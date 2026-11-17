@@ -61,8 +61,10 @@
             </section>
             <div id="map-screen" class="screen" role="region" aria-label="Angband map" tabindex="0" hidden>
                 <div class="map-grid">
-                    <pre id="map" aria-hidden="true"></pre>
-                    <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
+                    <div id="map-surface">
+                        <pre id="map" aria-hidden="true"></pre>
+                        <canvas id="map-tiles" class="tile-grid" aria-hidden="true" hidden></canvas>
+                    </div>
                 </div>
             </div>
             <button id="open-map-lists" type="button" aria-label="Visible lists" title="Visible lists"

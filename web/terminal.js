@@ -252,6 +252,7 @@ const views = {
     },
     map: {
         viewport: document.querySelector("#map-screen"),
+        gridElement: document.querySelector("#map-surface"),
         pre: document.querySelector("#map"),
         canvas: document.querySelector("#map-tiles"),
         title: "Map",
@@ -343,8 +344,10 @@ function draw() {
         drawPending = false;
         const view = activeView;
         if (view.viewport.hidden) return;
-        const region = view === views.target ? view.crop : undefined;
-        const source = view === views.map ? views.map.frame : views.terminal.frame;
+        const map = view === views.map;
+        if (map && (!view.viewport.clientWidth || !view.viewport.clientHeight)) return;
+        let region = view === views.target ? view.crop : undefined;
+        const source = map ? view.frame : views.terminal.frame;
         if (!source) return;
         const aiming = mode === "aim" && request !== undefined;
         const target = aiming && context.target &&
@@ -361,8 +364,25 @@ function draw() {
         const cell = view === views.map ? world : cursorCell ?? target ?? context.player;
         const focusChanged = cell?.x !== view.focusCell?.x || cell?.y !== view.focusCell?.y ||
             cell?.depth !== view.focusCell?.depth;
-        const regionChanged = !sameRegion(region, view.region);
         const graphicsChanged = source.graphicsMode !== view.rendered?.graphicsMode;
+        if (map) {
+            const sizeChanged = source.width !== view.grid?.columns || source.height !== view.grid?.rows;
+            if (sizeChanged) {
+                view.grid = { x: 0, y: 0, columns: source.width, rows: source.height };
+                view.gridElement.style.setProperty("--columns", source.width);
+                view.gridElement.style.setProperty("--rows", source.height);
+            }
+            if (graphicsChanged) {
+                view.gridElement.classList.toggle("tiles",
+                    Boolean(graphicsModes.get(source.graphicsMode)?.atlas && source.terrainAttributes));
+            }
+            updateViewZoom(view);
+            if (cell && (centerPending || focusChanged || sizeChanged || graphicsChanged)) {
+                centerCell(view, selected?.actions ? selected : cell);
+            }
+            region = visibleMapRegion(view);
+        }
+        const regionChanged = !sameRegion(region, view.region);
         const changed = source !== view.rendered || cursor !== view.cursor || regionChanged || path !== view.path ||
             mapActions !== view.mapActions || choosing !== view.choosing;
         if (changed) {
@@ -371,8 +391,13 @@ function draw() {
                 positions?.length ? new Set(positions.map(({ x, y }) => y * source.width + x)) : undefined;
             const frame = cursor === source.cursor && !highlighted ? source : { ...source, cursor, highlighted };
             const { grid, gridElement } = renderFrame(view, frame, region);
-            view.grid = grid;
-            view.gridElement = gridElement;
+            if (map) {
+                view.gridElement.style.setProperty("--first-column", grid.x);
+                view.gridElement.style.setProperty("--first-row", grid.y);
+            } else {
+                view.grid = grid;
+                view.gridElement = gridElement;
+            }
             view.rendered = source;
             view.region = region;
             view.cursor = cursor;
@@ -380,18 +405,33 @@ function draw() {
             view.mapActions = mapActions;
             view.choosing = choosing;
         }
-        updateViewZoom(view);
+        if (!map) updateViewZoom(view);
         updatePrompt();
         if (view === views.terminal) {
             if (!view.fit && (centerPending || changed) && !menu &&
                 (isMenu() || isTextEntry(mode) || mode === "quantity" || mode === "rest")) showCursor(view);
-        } else if (!view.fit && cell &&
+        } else if (!map && !view.fit && cell &&
             (centerPending || focusChanged || regionChanged || graphicsChanged || previousGrid !== view.gridElement)) {
-            centerCell(view, (view === views.map && selected?.actions) ? selected : cell);
+            centerCell(view, cell);
         }
         view.focusCell = cell;
         centerPending = false;
     });
+}
+
+function visibleMapRegion({ viewport, gridElement, grid: { columns, rows } }) {
+    const screen = viewport.getBoundingClientRect();
+    const bounds = gridElement.getBoundingClientRect();
+    const left = screen.left + viewport.clientLeft - bounds.left;
+    const top = screen.top + viewport.clientTop - bounds.top;
+    const cellWidth = bounds.width / columns;
+    const cellHeight = bounds.height / rows;
+    const margin = 2;
+    const x = Math.max(0, Math.floor(left / cellWidth) - margin);
+    const y = Math.max(0, Math.floor(top / cellHeight) - margin);
+    const right = Math.min(columns, Math.ceil((left + viewport.clientWidth) / cellWidth) + margin);
+    const bottom = Math.min(rows, Math.ceil((top + viewport.clientHeight) / cellHeight) + margin);
+    return { x, y, width: right - x, height: bottom - y };
 }
 
 function sameRegion(a, b) {
@@ -431,7 +471,8 @@ function showCursor({ viewport, pre }) {
 }
 
 function zoomIndex(view) {
-    return view.zoom ?? (view.gridElement === view.canvas ? defaultTileZoom : defaultAsciiZoom);
+    const tiles = view === views.map ? view.gridElement.classList.contains("tiles") : view.gridElement === view.canvas;
+    return view.zoom ?? (tiles ? defaultTileZoom : defaultAsciiZoom);
 }
 
 function updateViewZoom(view) {
@@ -2690,7 +2731,7 @@ for (const view of Object.values(views)) {
         const source = view === views.map ? view.frame : views.terminal.frame;
         if (request === undefined || pressedRequest !== request || activeView !== view ||
             !type || !view.grid || !view.gridElement.contains(document.elementFromPoint(x, y)) ||
-            view.rendered !== source || !sameRegion(view.region, view.crop)) return;
+            view.rendered !== source || (view !== views.map && !sameRegion(view.region, view.crop))) return;
         const { x: left, y: top, columns, rows } = view.grid;
         const grid = view.gridElement.getBoundingClientRect();
         const column = Math.floor((x - grid.left) * columns / grid.width);
@@ -2698,6 +2739,7 @@ for (const view of Object.values(views)) {
         if (column < 0 || column >= columns || row < 0 || row >= rows) return;
         const cellX = left + column;
         const cellY = top + row;
+        if (view === views.map && !containsCell(view.region, { x: cellX, y: cellY })) return;
         if (mapDirectionAction && view === views.map) {
             const target = mapDirectionAction.targets.find((cell) => cell.x === cellX && cell.y === cellY);
             if (!openMenu && target) sendMapAction(mapDirectionAction, target);
@@ -2837,6 +2879,7 @@ const viewResize = new ResizeObserver((entries) => {
     else recenterView();
 });
 for (const { viewport } of Object.values(views)) viewResize.observe(viewport);
+views.map.viewport.addEventListener("scroll", draw, { passive: true });
 
 function requestBackgroundSave() {
     if (!worker || stopped || backgroundSaveRequested) return;

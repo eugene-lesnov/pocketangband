@@ -843,6 +843,15 @@ static bool web_has_overhead_map(void)
     return window_flag[MAP_TERM] == PW_OVERHEAD && textui_map_is_visible();
 }
 
+void web_resize_map(void)
+{
+    term *map = angband_term[MAP_TERM];
+    term *previous = Term;
+    Term_activate(map);
+    Term_resize(cave->width * tile_width, cave->height * tile_height);
+    Term_activate(previous);
+}
+
 struct loc web_direction_grid(int x, int y)
 {
     if (direction_command == CMD_RUN && web_has_overhead_map()) return web_map_grid(x, y);
@@ -1235,10 +1244,6 @@ void web_poll_interrupt(void)
     if (pace_run && player->upkeep->running) {
         if (web_has_overhead_map()) {
             term *map = angband_term[MAP_TERM];
-            if (OPT(player, center_player)) {
-                modify_panel(map, player->grid.y - map->hgt / (2 * tile_height),
-                    player->grid.x - map->wid / (2 * tile_width));
-            }
             handle_stuff(player);
             term *previous = Term;
             Term_activate(map);
@@ -1519,7 +1524,8 @@ errr init_web(int argc, char **argv)
     (void)argv;
     if (!init_graphics_modes()) return 1;
     init_terminal(&terminal, 0, 80, 24);
-    init_terminal(&map, MAP_TERM, 36, 28);
+    init_terminal(&map, MAP_TERM, 1, 1);
+    map.fixed_shape = false;
     Term_activate(&terminal);
     return 0;
 }

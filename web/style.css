@@ -412,9 +412,27 @@ dt { color: var(--muted); }
     inset: 50% auto auto 50%;
     transform: translate(-50%, -50%) scale(var(--fit-scale, 1));
 }
-#map, #target {
+#map-surface, #map, #target {
     font-size: calc(var(--zoom, 1) * 0.9375rem);
     line-height: 1.16;
+}
+#map-surface {
+    --cell-width: 1ch;
+    --cell-height: 1lh;
+    position: relative;
+    width: calc(var(--columns) * var(--cell-width));
+    height: calc(var(--rows) * var(--cell-height));
+    font-family: var(--mono);
+}
+#map-surface.tiles {
+    --cell-width: 1em;
+    --cell-height: 1em;
+    font-size: calc(var(--zoom, 1) * 1rem);
+}
+#map-surface > :is(pre, canvas) {
+    position: absolute;
+    left: calc(var(--first-column) / var(--columns) * 100%);
+    top: calc(var(--first-row) / var(--rows) * 100%);
 }
 
 .tile-grid {
