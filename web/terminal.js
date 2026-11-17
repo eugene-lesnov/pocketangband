@@ -138,7 +138,7 @@ const menuActions = document.querySelector("#menu-actions");
 const menuDescription = document.querySelector("#menu-description");
 const mapPicker = document.querySelector("#map-picker");
 const mapPickerTitle = document.querySelector("#map-picker-title");
-const expandPicker = document.querySelector("#expand-picker");
+const pickerToggle = document.querySelector("#picker-toggle");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
 const birthBonuses = document.querySelector("#birth-bonuses");
@@ -305,7 +305,12 @@ let keyboardOpen = false;
 let keyboardLayer = 0;
 let shifted = false;
 let controlKey = false;
-let pickerExpanded = false;
+const pickerSizes = [
+    { name: "compact", nextAction: "Expand list to half screen" },
+    { name: "half", nextAction: "Expand list to full screen" },
+    { name: "full", nextAction: "Show map and compact list" },
+];
+let pickerSizeIndex = 0;
 let renderedDetails;
 let repeatName = "";
 let graphicsRestored = false;
@@ -912,9 +917,12 @@ function updateControls() {
 
 function updateMenuControls(disabled, pickingOnMap) {
     mapPicker.hidden = !pickingOnMap;
-    expandPicker.textContent = pickerExpanded ? "Show map" : "Expand";
-    expandPicker.setAttribute("aria-expanded", String(pickerExpanded));
-    expandPicker.disabled = disabled;
+    if (pickingOnMap) {
+        const { name, nextAction } = pickerSizes[pickerSizeIndex];
+        pickerToggle.setAttribute("aria-label", `${mapPickerTitle.textContent} ${nextAction}`);
+        pickerToggle.setAttribute("aria-expanded", String(name !== "compact"));
+    }
+    pickerToggle.disabled = disabled || !pickingOnMap;
 
     monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel;
     monsterSort.disabled = disabled;
@@ -1307,7 +1315,7 @@ function updateView(state = world, region = views.target.crop) {
 
     const mapPicking = isPickingOnMap();
     main.classList.toggle("map-picking", mapPicking);
-    main.classList.toggle("picker-expanded", mapPicking && pickerExpanded);
+    main.dataset.pickerSize = mapPicking ? pickerSizes[pickerSizeIndex].name : "compact";
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
@@ -1566,7 +1574,7 @@ function handleWorkerMessage({ data }) {
             }
             if (context.mapCell?.actions) renderMapActions();
             menu = data.menu;
-            if (!menu?.onMap) pickerExpanded = false;
+            if (!menu?.onMap) pickerSizeIndex = 0;
             deletingSave = false;
             launch.hidden = true;
             main.classList.remove("starting");
@@ -2571,11 +2579,58 @@ vitals.addEventListener("click", () => {
     }
 });
 
-expandPicker.addEventListener("click", () => {
-    pickerExpanded = !pickerExpanded;
+function setPickerSize(index) {
+    if (pickerToggle.disabled || !pickerSizes[index] || index === pickerSizeIndex) return;
+    pickerSizeIndex = index;
     updateView();
     updateControls();
+}
+
+let pickerTouch;
+let suppressPickerClick = false;
+document.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary) {
+        if (pickerTouch && event.pointerType === "touch") {
+            pickerTouch = undefined;
+            suppressPickerClick = true;
+        }
+        return;
+    }
+    pickerTouch = undefined;
+    suppressPickerClick = false;
+    if (event.pointerType === "touch" && !pickerToggle.disabled && pickerToggle.contains(event.target)) {
+        pickerTouch = { id: event.pointerId, x: event.clientX, y: event.clientY, request };
+    }
+}, { capture: true });
+pickerToggle.addEventListener("pointermove", (event) => {
+    if (pickerTouch?.id === event.pointerId &&
+        Math.hypot(event.clientX - pickerTouch.x, event.clientY - pickerTouch.y) > 8) {
+        suppressPickerClick = true;
+    }
 });
+pickerToggle.addEventListener("pointercancel", (event) => {
+    if (pickerTouch?.id !== event.pointerId) return;
+    pickerTouch = undefined;
+    suppressPickerClick = true;
+});
+pickerToggle.addEventListener("pointerup", (event) => {
+    if (pickerTouch?.id !== event.pointerId) return;
+    const { x, y, request: pressedRequest } = pickerTouch;
+    pickerTouch = undefined;
+    const dx = event.clientX - x;
+    const dy = event.clientY - y;
+    suppressPickerClick ||= pressedRequest !== request || Math.hypot(dx, dy) > 8;
+    if (pressedRequest === request && Math.abs(dy) >= 32 && Math.abs(dy) >= 1.5 * Math.abs(dx)) {
+        const step = dy < 0 ? 1 : -1;
+        setPickerSize(pickerSizeIndex + step);
+    }
+});
+pickerToggle.addEventListener("click", (event) => {
+    if (event.detail === 0 || !suppressPickerClick) {
+        setPickerSize((pickerSizeIndex + 1) % pickerSizes.length);
+    }
+});
+
 function updateMessageFade() {
     if (!messageDialog.open || !messages.childElementCount) return;
     const area = messages.getBoundingClientRect();

@@ -542,10 +542,31 @@ dt { color: var(--muted); }
     border-radius: 0.5rem;
     background: var(--panel);
 }
-#map-picker-title { padding: 0.45rem 0.625rem; color: var(--accent); }
-.picker-heading { display: flex; align-items: center; min-height: 44px; }
-.picker-heading h2 { flex: 1; min-width: 0; }
-#expand-picker { flex: none; min-width: 64px; padding-inline: 0.5rem; }
+#picker-toggle {
+    position: relative;
+    display: grid;
+    align-content: center;
+    width: 100%;
+    padding: 0.875rem 0.625rem 0.375rem;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    text-align: start;
+    overflow-wrap: anywhere;
+    touch-action: none;
+}
+#picker-toggle::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 0.375rem;
+    inset-inline: 0;
+    margin-inline: auto;
+    width: 2rem;
+    height: 0.25rem;
+    border-radius: 1rem;
+    background: var(--muted);
+}
 #map-picker .menu-rows button {
     padding-block: 0.25rem;
 }
@@ -1020,9 +1041,10 @@ main.compact-hud { --hud-height: 56px; }
 .map-picking #vitals { height: 44px; grid-template-rows: 18px; padding-block: 10px; }
 .map-picking :is(#hud-stats, #condition-summary) { display: none; }
 .map-picking .controls { min-height: calc(var(--dock-height) - 44px); }
-.picker-expanded .view { display: none; }
-.picker-expanded .controls { flex: 1; min-height: 0; }
-.picker-expanded #map-picker { flex: 1; height: auto; min-height: 0; }
+[data-picker-size="half"] .controls { flex: 0 1 50%; }
+[data-picker-size="full"] .view { display: none; }
+[data-picker-size="full"] .controls { flex: 1; min-height: 0; }
+:is([data-picker-size="half"], [data-picker-size="full"]) #map-picker { flex: 1; height: auto; min-height: 0; }
 .left-handed .game-controls-row:has(#direction-pad:not([hidden])) { grid-template-columns: auto minmax(0, 1fr); }
 .left-handed #direction-pad { grid-column: 1; grid-row: 1; }
 .left-handed .game-controls-buttons { grid-column: 2; grid-row: 1; }

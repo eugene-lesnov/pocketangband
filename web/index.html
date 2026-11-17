@@ -246,10 +246,11 @@
 
         <div class="controls">
             <section id="map-picker" aria-labelledby="map-picker-title" hidden>
-                <div class="picker-heading">
-                    <h2 id="map-picker-title"></h2>
-                    <button id="expand-picker" type="button" aria-expanded="false">Expand</button>
-                </div>
+                <h2>
+                    <button id="picker-toggle" type="button" aria-controls="menu-screen" aria-expanded="false" disabled>
+                        <span id="map-picker-title"></span>
+                    </button>
+                </h2>
             </section>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
             <p id="delete-save-status" class="status" role="status" hidden></p>
