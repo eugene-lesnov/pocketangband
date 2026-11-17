@@ -1512,7 +1512,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,99 @@
+@@ -24,6 +24,100 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1604,6 +1604,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_confirmation_price(int32_t price);
 +void web_add_menu_row(int index, const char *name, const char *detail,
 +	const char *price, char key, bool enabled);
++void web_set_menu_spell(const char *info, int attr);
 +void web_set_menu_description(const wchar_t *description);
 +void web_menu_action(int key, const char *label);
 +void web_set_tiles(uint8_t id);
@@ -1612,7 +1613,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +185,7 @@ ui_event inkey_m(void);
+@@ -92,6 +186,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -3494,7 +3495,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  
  static const menu_iter spell_menu_iter = {
  	NULL,	/* get_tag = NULL, just use lowercase selections */
-@@ -215,6 +234,54 @@ static const menu_iter spell_menu_iter =
+@@ -215,6 +234,56 @@ static const menu_iter spell_menu_iter =
  	NULL	/* no resize hook */
  };
  
@@ -3522,15 +3523,17 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 +		bool valid = spell_menu_valid(m, i);
 +		char detail[100];
 +		char info[30];
-+		int attr;
++		int attr = COLOUR_L_DARK;
++		const char *status = NULL;
 +		bool legible = spell->slevel < 99;
 +		if (legible) {
-+			const char *status = spell_menu_info(index, spell, info, sizeof(info), &attr);
-+			strnfmt(detail, sizeof(detail), "Lv %d · Mana %d · Fail %d%%%s",
-+				spell->slevel, spell->smana, spell_chance(index), status);
++			status = spell_menu_info(index, spell, info, sizeof(info), &attr);
++			strnfmt(detail, sizeof(detail), "Lv %d · Mana %d · Fail %d%%",
++				spell->slevel, spell->smana, spell_chance(index));
 +		}
 +		web_add_menu_row(i, legible ? spell->name : "(illegible)",
 +			legible ? detail : NULL, NULL, m->selections[i], valid);
++		web_set_menu_spell(status, attr);
 +		if (!casting && d->show_description && i == m->cursor &&
 +				spell_okay_to_browse(player, index)) {
 +			void (*previous_hook)(uint8_t, const char *) = text_out_hook;
@@ -3549,7 +3552,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -249,7 +316,11 @@ static struct menu *spell_menu_new(const
+@@ -249,7 +318,11 @@ static struct menu *spell_menu_new(const
  	m->header = "Name                             Lv Mana Fail Info";
  	m->flags = MN_CASELESS_TAGS | MN_KEYMAP_ESC;
  	m->selections = all_letters_nohjkl;
@@ -3561,7 +3564,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	m->cmd_keys = "?";
  
  	/* Set size */
-@@ -287,6 +358,10 @@ static int spell_menu_select(struct menu
+@@ -287,6 +360,10 @@ static int spell_menu_select(struct menu
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
@@ -3572,7 +3575,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	menu_select(m, 0, true);
  	screen_load();
  
-@@ -306,6 +381,9 @@ static void spell_menu_browse(struct men
+@@ -306,6 +383,9 @@ static void spell_menu_browse(struct men
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;

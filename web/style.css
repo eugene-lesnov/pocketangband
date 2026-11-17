@@ -902,6 +902,9 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .menu-rows kbd { color: var(--accent); font: 0.8125rem var(--mono); }
 .menu-rows small { display: block; color: var(--muted); }
 .menu-rows .price { color: var(--accent); white-space: nowrap; }
+.menu-rows .spell-text { color: var(--spell-color); }
+.menu-rows .spell-choice:disabled { opacity: 1; background: var(--panel); }
+.spell-choice:disabled kbd { color: var(--muted); }
 .birth-menu .menu-rows button {
     grid-template-columns: minmax(0, 1fr);
     font-size: 0.9375rem;

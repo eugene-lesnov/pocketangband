@@ -2370,9 +2370,20 @@ function renderMenu(state) {
         }
         const description = document.createElement("span");
         description.textContent = label;
+        if (row.spell) {
+            button.classList.add("spell-choice");
+            button.style.setProperty("--spell-color", row.spell.color);
+            description.className = "spell-text";
+        }
         if (row.detail && !state.birth?.preview) {
             const detail = document.createElement("small");
             detail.textContent = row.detail;
+            if (row.spell?.info) {
+                const info = document.createElement("span");
+                info.className = "spell-text";
+                info.textContent = row.spell.info;
+                detail.append(" ", info);
+            }
             description.append(detail);
         }
         const price = document.createElement("span");
@@ -2388,7 +2399,8 @@ function renderMenu(state) {
             if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
         }
         button.setAttribute("aria-label",
-            [label, state.birth?.preview ? "" : row.detail, row.checked === undefined ? row.price : ""]
+            [label, state.birth?.preview ? "" : row.detail, row.spell?.info,
+                row.checked === undefined ? row.price : ""]
                 .filter(Boolean).join(", "));
         if (mode === "save-slots" && row.index > 0 && row.enabled) {
             const controls = document.createElement("div");

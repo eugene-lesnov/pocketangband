@@ -440,6 +440,22 @@ EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
         price: price ? UTF8ToString(price).trim() : "", key, enabled: !!enabled });
 });
 
+EM_JS(void, set_menu_spell, (const char *info, const uint8_t *color, bool lighten), {
+    const channel = (offset) => {
+        const value = HEAPU8[color + offset];
+        return lighten ? Math.round(value + (255 - value) * 0.6) : value;
+    };
+    Module['inputMenu'].rows.at(-1).spell = {
+        info: info ? UTF8ToString(info).trim() : "",
+        color: `rgb(${channel(1)} ${channel(2)} ${channel(3)})`,
+    };
+});
+
+void web_set_menu_spell(const char *info, int attr)
+{
+    set_menu_spell(info, angband_color_table[attr], attr == COLOUR_RED || attr == COLOUR_L_DARK);
+}
+
 EM_JS(void, web_menu_action, (int key, const char *label), {
     Module['inputMenu'].actions.push({ key, label: UTF8ToString(label) });
 });
