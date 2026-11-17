@@ -79,7 +79,6 @@ const repeatAction = document.querySelector("#repeat-action");
 const movementMode = document.querySelector("#movement-mode");
 const walkMode = document.querySelector("#walk-mode");
 const runModeButton = document.querySelector("#run-mode");
-const panelCharacter = document.querySelector("#panel-character");
 const mapCellActions = document.querySelector("#map-cell-actions");
 const mapActionButtons = document.querySelector("#map-action-buttons");
 const mapActionDirection = document.querySelector("#map-action-direction");
@@ -921,8 +920,6 @@ function updateMenuControls(disabled, pickingOnMap) {
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
 
-    panelCharacter.hidden = !playingGame || !menu || !!context.outcome || !!openPanel || pickingOnMap;
-    panelCharacter.disabled = disabled || !context.character;
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
@@ -1743,7 +1740,8 @@ function sendInput(input) {
     worker.postMessage({ ...input, request });
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
-        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction"].includes(input.type)) {
+        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction",
+            "open-character"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
             stopTimer = setTimeout(() => {
@@ -2563,15 +2561,13 @@ heroActions.addEventListener("click", () => {
 openMenu.addEventListener("click", () => {
     if (mode === "command" && request !== undefined) showPanel("menu", openMenu);
 });
-function openCharacter(event) {
+vitals.addEventListener("click", () => {
     if (mode === "command") {
-        if (sendInput({ type: "key", code: keyCode("C") })) characterTrigger = vitals;
+        if (sendInput({ type: "open-character" })) characterTrigger = vitals;
     } else if (request !== undefined && context.character) {
-        showPanel("character", event.currentTarget);
+        showPanel("character", vitals);
     }
-}
-vitals.addEventListener("click", openCharacter);
-panelCharacter.addEventListener("click", openCharacter);
+});
 
 expandPicker.addEventListener("click", () => {
     pickerExpanded = !pickerExpanded;

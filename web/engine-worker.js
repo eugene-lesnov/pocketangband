@@ -53,6 +53,8 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
+    } else if (data.type === "open-character") {
+        if (waiting?.mode !== "command" || data.request !== waiting.request) return;
     } else if (data.type === "run-direction") {
         if (waiting?.mode !== "command" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 1 || data.code > 9 || data.code === 5) return;
