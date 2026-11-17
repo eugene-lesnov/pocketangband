@@ -758,17 +758,17 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .keyboard-row button[aria-pressed="true"] { color: #171612; background: var(--accent); }
 
 .menu-screen { overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--border); }
-.menu-screen:has(.menu-sections:not([hidden])) {
+.menu-screen.scroll-menu-items {
     display: flex;
     flex-direction: column;
     overflow: clip;
 }
-.menu-screen:has(.menu-sections:not([hidden])) .menu-items {
+.menu-screen.scroll-menu-items > .menu-items {
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
 }
-.menu-sections { flex: none; }
+.menu-summary, .menu-sections { flex: none; }
 #actions-screen button:not(:has(kbd)) { display: block; }
 #actions-screen .keyboard-icon { margin-inline-end: 0.5rem; }
 #character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }

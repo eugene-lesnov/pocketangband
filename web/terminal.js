@@ -132,7 +132,7 @@ function createMenuList(screenId, descriptionId) {
     const screen = document.getElementById(screenId);
     screen.append(document.querySelector("#menu-list-template").content.cloneNode(true));
     return {
-        screen, description: document.getElementById(descriptionId),
+        screen, scrollArea: screen, description: document.getElementById(descriptionId),
         summary: screen.querySelector(".menu-summary"), sections: screen.querySelector(".menu-sections"),
         items: screen.querySelector(".menu-items"), rows: screen.querySelector(".menu-rows"),
         empty: screen.querySelector(".menu-empty"),
@@ -2401,14 +2401,17 @@ function renderMenu(state, description = state?.description ?? "") {
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
         state.selectionTitle !== previous.selectionTitle || state.title !== previous.title ||
         state.options !== previous.options || state.prompt !== previous.prompt;
+    const previousScroll = activeList.scrollArea.scrollTop;
+    const showGold = state.store && !state.store.home;
     menuSections.hidden = (state.sections?.length ?? 0) <= 1;
-    const scrollArea = menuSections.hidden ? menuScreen : menuItems;
-    const previousScroll = scrollArea.scrollTop;
+    const scrollItems = showGold || !menuSections.hidden;
+    menuScreen.classList.toggle("scroll-menu-items", scrollItems);
+    const scrollArea = scrollItems ? menuItems : menuScreen;
+    activeList.scrollArea = scrollArea;
     if (differentList) birthSelection = undefined;
     else if (state.birth?.preview && state.cursor !== previous.cursor) birthSelection = state.cursor;
     menuCursor = birthSelection ?? state.cursor;
-    const summary = state.birth?.summary || (state.store && !state.store.home ?
-        `Gold Remaining: ${state.store.gold} au` : "");
+    const summary = state.birth?.summary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.hidden = !summary;
     menuSummary.textContent = summary;
     menuSections.replaceChildren(...(state.sections ?? []).map((section) => {
@@ -2643,7 +2646,7 @@ vitals.addEventListener("click", () => {
 
 function updatePickerOverflow() {
     if (picker.hidden) return;
-    const list = openPanel ? actionsScreen : pickerList.sections.hidden ? pickerList.screen : pickerList.items;
+    const list = openPanel ? actionsScreen : pickerList.scrollArea;
     const description = pickerList.description;
     const listOverflow = list.scrollHeight - list.clientHeight;
     const descriptionOverflow = description.scrollHeight - description.clientHeight;
