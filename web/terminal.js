@@ -2333,7 +2333,7 @@ function renderMenu(state) {
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
         state.onMap !== previous.onMap || state.options !== previous.options ||
         state.prompt !== previous.prompt;
-    menuSections.hidden = (state.sections?.length ?? 0) <= (state.onMap ? 1 : 0);
+    menuSections.hidden = (state.sections?.length ?? 0) <= 1;
     const scrollArea = menuSections.hidden ? menuScreen : menuItems;
     const previousScroll = scrollArea.scrollTop;
     if (differentList) birthSelection = undefined;
