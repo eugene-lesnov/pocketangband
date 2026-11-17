@@ -1447,7 +1447,8 @@ function getViewTitle({ character, outcome, editing, question }) {
     if (mode === "save-slots") return "Save slots";
 
     const activeSection = menu?.sections?.find((section) => section.active);
-    const menuTitle = menu?.birth?.title ?? menu?.options ?? menu?.store?.name ?? menu?.title ?? activeSection?.label;
+    const menuTitle = menu?.birth?.title ?? menu?.options ?? menu?.selectionTitle ??
+        menu?.store?.name ?? menu?.title ?? activeSection?.label;
     if (menuTitle !== undefined && menuTitle !== null) return menuTitle;
     if (menu && !outcome) return "Choices";
     if (mode === "details" && context.prompt) return context.prompt;
@@ -1525,7 +1526,8 @@ function handleWorkerMessage({ data }) {
                 data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
             const changedMapPicker = data.menu?.onMap &&
-                (data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
+                (data.menu.selectionTitle !== menu?.selectionTitle ||
+                    data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
             if (mode === "results-file") clearResultFile();
             if (changed) {
                 const stayingOnMap = (context.worldView || menu?.onMap) &&
@@ -2302,7 +2304,7 @@ function renderMenu(state) {
     menuScreen.hidden = !state;
     if (state?.onMap) {
         if (menuScreen.parentElement !== mapPicker) mapPicker.append(menuScreen);
-        mapPickerTitle.textContent = state.title || state.prompt || context.prompt;
+        mapPickerTitle.textContent = state.selectionTitle || state.title || state.prompt || context.prompt;
     } else if (menuScreen.parentElement === mapPicker) {
         menuDescription.before(menuScreen);
     }
