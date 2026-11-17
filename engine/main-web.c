@@ -51,8 +51,8 @@ static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
 static bool background_save;
-static bool collecting_drop_messages;
-static char drop_message[4096];
+static bool collecting_action_messages;
+static char action_message[4096];
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -98,26 +98,26 @@ const char *web_set_prompt(const char *prompt)
     return previous;
 }
 
-void web_collect_drop_messages(bool collect)
+void web_collect_action_messages(bool collect)
 {
-    collecting_drop_messages = collect;
-    if (collect) drop_message[0] = '\0';
+    collecting_action_messages = collect;
+    if (collect) action_message[0] = '\0';
 }
 
-bool web_capture_drop_message(const char *message)
+bool web_capture_action_message(const char *message)
 {
-    if (!collecting_drop_messages) {
-        drop_message[0] = '\0';
+    if (!collecting_action_messages) {
+        action_message[0] = '\0';
         return false;
     }
-    if (drop_message[0]) my_strcat(drop_message, " ", sizeof(drop_message));
-    my_strcat(drop_message, message, sizeof(drop_message));
+    if (action_message[0]) my_strcat(action_message, " ", sizeof(action_message));
+    my_strcat(action_message, message, sizeof(action_message));
     return true;
 }
 
 void web_add_journal_message(const char *message)
 {
-    drop_message[0] = '\0';
+    action_message[0] = '\0';
     message_add(message, MSG_GENERIC);
 }
 
@@ -393,14 +393,26 @@ EM_JS(void, web_set_store, (const char *name, bool home), {
     Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home };
 });
 
-EM_JS(void, web_enter_store_menu, (void), {
+EM_JS(void, enter_store_menu, (void), {
     if (!Module['storeMenus']) Module['storeMenus'] = [];
     Module['storeMenus'].push(null);
 });
 
-EM_JS(void, web_leave_store_menu, (void), {
+void web_enter_store_menu(void)
+{
+    action_message[0] = '\0';
+    enter_store_menu();
+}
+
+EM_JS(void, leave_store_menu, (void), {
     Module['storeMenus'].pop();
 });
+
+void web_leave_store_menu(void)
+{
+    action_message[0] = '\0';
+    leave_store_menu();
+}
 
 EM_JS_DEPS(menu_description, "$UTF32ToString");
 EM_JS(void, web_set_menu_description, (const wchar_t *description), {
@@ -556,7 +568,7 @@ enum { LOW_LIGHT_FUEL = 50 };
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
         int count, const char *const *lines, const int *repeats, bool roguelike, bool commands,
-        int turns, const char *drop_message), {
+        int turns, const char *action_message), {
     const log = [];
     for (let i = count - 1; i >= 0; i--) {
         log.push({
@@ -567,7 +579,7 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
-        dropMessage: UTF8ToString(drop_message),
+        actionMessage: UTF8ToString(action_message),
         conditions: Module['worldConditions'], stats: Module['worldStats'],
         mapStatus: Module['worldMapStatus'],
         monsterHealth: Module['worldMonsterHealth'],
@@ -735,7 +747,7 @@ static void publish_world(bool commands)
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
-        OPT(player, rogue_like_commands), commands, player->total_energy / 100, drop_message);
+        OPT(player, rogue_like_commands), commands, player->total_energy / 100, action_message);
 }
 
 static double last_interrupt_poll;

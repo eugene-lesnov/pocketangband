@@ -1275,18 +1275,19 @@ function updatePrompt() {
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
-    journal.hidden = hud.hidden || saveNotice;
+    const storeResult = menu?.store && !menuScreen.hidden && world?.actionMessage;
+    journal.hidden = (hud.hidden && !storeResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
     updateJournal();
 }
 
 function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
-    const drop = !prompt && world?.dropMessage;
-    const text = prompt || drop || messages.lastElementChild?.textContent || "No messages";
+    const action = !prompt && world?.actionMessage;
+    const text = prompt || action || messages.lastElementChild?.textContent || "No messages";
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.classList.toggle("drop-result", !!drop);
+    journal.classList.toggle("action-result", !!action);
     journal.classList.toggle("empty", !prompt && !messages.childElementCount);
     journal.disabled = !messages.childElementCount || (!prompt && messages.childElementCount === 1 &&
         latestMessage.scrollHeight <= latestMessage.clientHeight);

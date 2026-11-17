@@ -1067,7 +1067,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return;
  
 +#ifdef __EMSCRIPTEN__
-+	if (web_capture_drop_message(msg)) return;
++	if (web_capture_action_message(msg)) return;
 +#endif
 +
  	/* Obtain the size */
@@ -1457,8 +1457,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
-+void web_collect_drop_messages(bool collect);
-+bool web_capture_drop_message(const char *message);
++void web_collect_action_messages(bool collect);
++bool web_capture_action_message(const char *message);
 +void web_add_journal_message(const char *message);
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
@@ -1649,6 +1649,50 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  	return m;
  }
  
+diff --git a/src/store.c b/src/store.c
+--- a/src/store.c
++++ b/src/store.c
+@@ -42,6 +42,9 @@
+ #include "store.h"
+ #include "target.h"
+ #include "debug.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ 
+ 
+ static void store_maint(struct store *s);
+@@ -1649,7 +1652,7 @@
+ 
+ 	struct object *obj, *bought, *known_obj;
+ 
+-	char o_name[80];
++	char o_name[1024];
+ 	int price;
+ 
+ 	struct store *store = store_at(cave, player->grid);
+@@ -1708,6 +1711,10 @@
+ 	/* Describe the object (fully) again for the message */
+ 	object_desc(o_name, sizeof(o_name), bought, ODESC_PREFIX | ODESC_FULL,
+ 		player);
++
++#ifdef __EMSCRIPTEN__
++	web_collect_action_messages(true);
++#endif
+ 
+ 	/* Message */
+ 	if (one_in_(3)) msgt(MSG_STORE5, "%s", ONE_OF(comment_accept));
+@@ -1767,6 +1774,10 @@
+ 				store_maint(store);
+ 		}
+ 	}
++
++#ifdef __EMSCRIPTEN__
++	web_collect_action_messages(false);
++#endif
+ 
+ 	event_signal(EVENT_STORECHANGED);
+ 	event_signal(EVENT_INVENTORY);
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
@@ -2271,7 +2315,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	if (amt > obj->number) amt = obj->number;
  
 +#ifdef __EMSCRIPTEN__
-+	web_collect_drop_messages(true);
++	web_collect_action_messages(true);
 +#endif
 +
  	/* Take off equipment, don't combine */
@@ -2281,7 +2325,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	/* Drop it near the player */
  	drop_near(cave, &dropped, 0, player->grid, false, true);
 +#ifdef __EMSCRIPTEN__
-+	web_collect_drop_messages(false);
++	web_collect_action_messages(false);
 +#endif
  
  	/* Sound for quiver objects */
@@ -2351,7 +2395,25 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			/* Choice */ USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK)
  		return;
  
-@@ -682,7 +695,7 @@
+@@ -347,11 +360,17 @@
+ 	else
+ 		act = "You were wearing";
+ 
++#ifdef __EMSCRIPTEN__
++	web_collect_action_messages(true);
++#endif
+ 	inven_wield(obj, slot);
+ 
+ 	/* Message */
+ 	msgt(MSG_WIELD, "%s %s (%c).", act, o_name,
+ 		gear_to_label(player, equip_obj));
++#ifdef __EMSCRIPTEN__
++	web_collect_action_messages(false);
++#endif
+ }
+ 
+ /**
+@@ -682,7 +701,7 @@
  			 * Describe what's left of single use items or newly
  			 * identified items of all kinds.
  			 */
@@ -2360,7 +2422,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  			object_desc(name, sizeof(name), work_obj,
  				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM |
-@@ -1089,7 +1102,7 @@
+@@ -1089,7 +1108,7 @@
  
  	/* Get an item */
  	if (cmd_get_item(cmd, "item", &obj,
@@ -2369,7 +2431,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			"You have nothing you can refuel with.",
  			obj_can_refill,
  			USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK) return;
-@@ -1140,15 +1153,25 @@
+@@ -1140,15 +1159,25 @@
  	if (spell->smana > player->csp) {
  		const char *verb = spell->realm->verb;
  		const char *noun = spell->realm->spell_noun;

@@ -490,8 +490,8 @@ dt { color: var(--muted); }
     white-space: pre-line;
 }
 #journal.prompt #latest-message { display: block; overflow: auto; overscroll-behavior: contain; }
-#journal.drop-result { height: auto; min-height: var(--message-row-height); }
-#journal.drop-result #latest-message {
+#journal.action-result { height: auto; min-height: var(--message-row-height); }
+#journal.action-result #latest-message {
     display: block;
     max-height: min(8em, 22dvh);
     overflow: auto;
