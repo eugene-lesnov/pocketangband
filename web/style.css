@@ -433,8 +433,8 @@ dt { color: var(--muted); }
 }
 #map-surface > :is(pre, canvas) {
     position: absolute;
-    left: calc(var(--first-column) / var(--columns) * 100%);
-    top: calc(var(--first-row) / var(--rows) * 100%);
+    left: calc(var(--first-column) * var(--cell-width));
+    top: calc(var(--first-row) * var(--cell-height));
 }
 
 .tile-grid {

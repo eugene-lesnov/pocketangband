@@ -175,9 +175,6 @@ async function play(afterRun) {
             world = state;
             currentTurns = state.turns;
         },
-        sendRunPosition(x, y) {
-            self.postMessage({ type: "run-position", x, y, request: runningRequest });
-        },
         takeInput() {
             return input.shift();
         },

@@ -368,7 +368,7 @@ function draw() {
         const previousGrid = view.gridElement;
         const cursorCell = mode === "target" && cursor >= 0 ?
             { x: cursor % source.width, y: Math.floor(cursor / source.width) } : undefined;
-        const cell = view === views.map ? world : cursorCell ?? target ?? context.player;
+        const cell = map ? source.player : cursorCell ?? target ?? context.player;
         const focusChanged = cell?.x !== view.focusCell?.x || cell?.y !== view.focusCell?.y ||
             cell?.depth !== view.focusCell?.depth;
         const graphicsChanged = source.graphicsMode !== view.rendered?.graphicsMode;
@@ -1568,12 +1568,6 @@ function handleWorkerMessage({ data }) {
             if (view === activeView || view === views.terminal) draw();
             break;
         }
-        case "run-position":
-            if (running && data.request === pendingInput && world) {
-                world = { ...world, x: data.x, y: data.y };
-                draw();
-            }
-            break;
         case "waiting": {
             if (data.mode === "more") {
                 clearTimeout(stopTimer);

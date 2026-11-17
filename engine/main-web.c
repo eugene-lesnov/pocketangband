@@ -566,7 +566,8 @@ void web_set_tiles(uint8_t id)
 
 EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
         const int *attrs, const wchar_t *terrain_chars, const int *terrain_attrs,
-        const uint8_t *colors, int color_count, int background_stride, int shade, int cursor, int graphics_mode), {
+        const uint8_t *colors, int color_count, int background_stride, int shade, int cursor, int graphics_mode,
+        int player_x, int player_y, int player_depth), {
     const cellCount = width * height;
     const codepoints = HEAPU32.slice(chars >>> 2, (chars >>> 2) + cellCount);
     const attributes = HEAP32.slice(attrs >>> 2, (attrs >>> 2) + cellCount);
@@ -574,6 +575,7 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
     const frame = { surface: map ? "map" : "terminal",
         width, height, codepoints, attributes, palette,
         backgroundStride: background_stride, shade, cursor, graphicsMode: graphics_mode };
+    if (player_depth >= 0) frame.player = { x: player_x, y: player_y, depth: player_depth };
     if (terrain_attrs) {
         frame.terrainCodepoints = HEAPU32.slice(terrain_chars >>> 2, (terrain_chars >>> 2) + cellCount);
         frame.terrainAttributes = HEAP32.slice(terrain_attrs >>> 2, (terrain_attrs >>> 2) + cellCount);
@@ -1229,10 +1231,6 @@ EM_JS(bool, take_interrupt, (void), {
     return Module['takeInterrupt']();
 });
 
-EM_JS(void, send_run_position, (int x, int y), {
-    Module['sendRunPosition'](x, y);
-});
-
 void web_poll_interrupt(void)
 {
     if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
@@ -1245,8 +1243,6 @@ void web_poll_interrupt(void)
             Term_activate(map);
             Term_fresh();
             Term_activate(previous);
-            send_run_position((player->grid.x - map->offset_x) * tile_width,
-                (player->grid.y - map->offset_y) * tile_height);
         }
         last_interrupt_poll = now;
         emscripten_sleep(RUN_STEP_DELAY_MS);
@@ -1477,9 +1473,16 @@ static errr web_xtra(int action, int value)
             const term_win *screen = Term->old;
             int cursor = screen->cv && !screen->cu ? screen->cy * Term->wid + screen->cx : -1;
             bool tiles = use_graphics != GRAPHICS_NONE;
-            send_frame(Term == angband_term[MAP_TERM], Term->wid, Term->hgt, screen->vc, screen->va,
+            bool map = Term == angband_term[MAP_TERM];
+            int x = 0, y = 0, depth = -1;
+            if (map && player && character_dungeon) {
+                x = (player->grid.x - Term->offset_x) * tile_width;
+                y = (player->grid.y - Term->offset_y) * tile_height;
+                depth = player->depth;
+            }
+            send_frame(map, Term->wid, Term->hgt, screen->vc, screen->va,
                 tiles ? screen->vtc : NULL, tiles ? screen->vta : NULL,
-                &angband_color_table[0][0], MAX_COLORS, MULT_BG, COLOUR_SHADE, cursor, use_graphics);
+                &angband_color_table[0][0], MAX_COLORS, MULT_BG, COLOUR_SHADE, cursor, use_graphics, x, y, depth);
             return 0;
         }
         case TERM_XTRA_DELAY:
