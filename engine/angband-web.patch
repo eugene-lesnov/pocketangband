@@ -217,7 +217,7 @@ diff --git a/src/main.c b/src/main.c
 diff --git a/src/ui-game.c b/src/ui-game.c
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
-@@ -522,6 +522,14 @@
+@@ -522,6 +522,14 @@ void textui_process_command(void)
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -232,7 +232,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		case EVT_RESIZE: do_cmd_redraw(); return;
  		case EVT_MOUSE: textui_process_click(e); return;
  		case EVT_BUTTON:
-@@ -627,10 +635,16 @@
+@@ -627,10 +635,16 @@ errr textui_get_cmd(cmd_context context)
  void check_for_player_interrupt(game_event_type type, game_event_data *data,
  								void *user)
  {
@@ -250,7 +250,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +772,34 @@
+@@ -758,6 +772,34 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
  	mem_free(entries);
  }
  
@@ -285,19 +285,17 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +807,16 @@
+@@ -765,10 +807,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
 - * game.  Otherwise, it will be false.
-- */
--static void select_savefile(bool retry, bool *new_game)
--{
 + * game.  Otherwise, it will be false when a save was selected.  Returns
 + * false when the menu needs to be rebuilt.
-+ */
+  */
+-static void select_savefile(bool retry, bool *new_game)
 +static bool select_savefile(bool retry, bool *new_game)
-+{
+ {
 +#ifdef __EMSCRIPTEN__
 +	const int notify = EVT_WEB_DELETE;
 +#else
@@ -306,7 +304,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -868,6 +916,9 @@
+@@ -868,6 +916,9 @@ static void select_savefile(bool retry, bool *new_game)
  	menu_layout(m, &m_region);
  	m->cursor = default_entry;
  	m->flags |= MN_DBL_TAP;
@@ -316,7 +314,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  
  	screen_save();
  	prt("Select the save to use (movement keys and enter or mouse) or quit",
-@@ -875,11 +926,25 @@
+@@ -875,11 +926,25 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -343,7 +341,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -890,12 +955,22 @@
+@@ -890,12 +955,22 @@ static void select_savefile(bool retry, bool *new_game)
  	}
  
  	menu_free(m);
@@ -360,14 +358,13 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 +		return false;
 +#else
  		quit(NULL);
--	}
 +#endif
-+	}
+ 	}
 +	return !(selection.type & notify);
  }
  
  /**
-@@ -910,6 +985,12 @@
+@@ -910,6 +985,12 @@ void play_game(enum game_mode_type mode)
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -380,7 +377,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -920,7 +1001,9 @@
+@@ -920,7 +1001,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -391,7 +388,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -946,6 +1029,14 @@
+@@ -946,6 +1029,14 @@ void play_game(enum game_mode_type mode)
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -406,7 +403,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1010,6 +1101,19 @@
+@@ -1010,6 +1101,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -426,7 +423,16 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  /**
   * Save the game.
   */
-@@ -1046,11 +1150,25 @@
+@@ -1032,7 +1136,7 @@ bool save_game_checked(void)
+ 	disturb(player);
+ 
+ 	/* Clear messages */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Handle stuff */
+ 	handle_stuff(player);
+@@ -1046,11 +1150,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -453,7 +459,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1182,6 @@
+@@ -1064,23 +1182,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -477,7 +483,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1094,10 +1195,8 @@
+@@ -1094,10 +1195,8 @@ bool save_game_checked(void)
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -490,7 +496,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1129,17 +1228,26 @@
+@@ -1129,17 +1228,26 @@ void close_game(bool prompt_failed_save)
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -518,7 +524,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1149,6 +1257,10 @@
+@@ -1149,6 +1257,10 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -529,7 +535,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1269,7 @@
+@@ -1157,6 +1269,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -1015,7 +1021,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Make the event a keypress */
  	if (ke.type == EVT_ESCAPE) {
-@@ -364,7 +368,11 @@
+@@ -364,7 +368,11 @@ ui_event inkey_m(void)
  
  	/* Only accept a keypress */
  	while (ke.type != EVT_ESCAPE && ke.type != EVT_KBRD	&&
@@ -1028,7 +1034,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		ke = inkey_ex();
  	if (ke.type == EVT_ESCAPE) {
  		ke.type = EVT_KBRD;
-@@ -389,8 +397,22 @@
+@@ -389,8 +397,22 @@ static void msg_flush(int x)
  	/* Pause for response */
  	Term_putstr(x, 0, -1, a, "-more-");
  
@@ -1052,7 +1058,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the line */
  	Term_erase(0, 0, 255);
-@@ -496,6 +518,9 @@
+@@ -496,6 +518,9 @@ void display_message(game_event_type unused, game_event_data *data, void *user)
  
  	type = data->message.type;
  	msg = data->message.msg;
@@ -1062,7 +1068,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	if (Term && type == MSG_BELL) {
  		Term_xtra(TERM_XTRA_NOISE, 0);
-@@ -505,6 +530,10 @@
+@@ -505,6 +530,10 @@ void display_message(game_event_type unused, game_event_data *data, void *user)
  	if (!msg || !Term || !character_generated)
  		return;
  
@@ -1073,7 +1079,37 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	/* Obtain the size */
  	(void)Term_get_size(&w, &h);
  
-@@ -894,7 +923,31 @@
+@@ -603,11 +632,29 @@ void bell_message(game_event_type unused, game_event_data *data, void *user)
+ 	player->upkeep->redraw |= PR_MESSAGE;
+ }
+ 
++void flush_messages_for_transition(void)
++{
++#ifdef __EMSCRIPTEN__
++	if (web_pending_messages()) return;
++#endif
++	event_signal(EVENT_MESSAGE_FLUSH);
++}
++
+ /**
+  * Print the queued messages.
+  */
+ void message_flush(game_event_type unused, game_event_data *data, void *user)
+ {
++#ifdef __EMSCRIPTEN__
++	if (web_pending_messages()) {
++		msg_flush(0);
++		web_mark_messages_displayed();
++		msg_flag = false;
++		message_column = 0;
++		return;
++	}
++#endif
++
+ 	/* Reset */
+ 	if (!msg_flag) message_column = 0;
+ 
+@@ -894,7 +941,31 @@ bool askfor_aux(char *buf, size_t len, bool (*keypress_h)(char *, size_t, size_t
  		Term_gotoxy(x + k, y);
  
  		/* Get a key */
@@ -1105,7 +1141,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Let the keypress handler deal with the keypress */
  		done = keypress_h(buf, len, &k, &nul, ch, firsttime);
-@@ -992,7 +1045,16 @@
+@@ -992,7 +1063,16 @@ bool askfor_aux_ext(char *buf, size_t len,
  		 * mouse events to look like keystrokes.
  		 */
  		while (1) {
@@ -1122,7 +1158,16 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  				break;
  			}
-@@ -1171,7 +1233,20 @@
+@@ -1162,7 +1242,7 @@ bool get_character_name(char *buf, size_t buflen)
+ 	bool res;
+ 
+ 	/* Paranoia */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Display prompt */
+ 	prt("Enter a name for your character (* for a random name): ", 0, 0);
+@@ -1171,7 +1251,20 @@ bool get_character_name(char *buf, size_t buflen)
  	my_strcpy(buf, player->full_name, buflen);
  
  	/* Ask the user for a string */
@@ -1143,7 +1188,14 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1204,7 +1279,13 @@
+@@ -1198,13 +1291,19 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
+ 	bool res;
+ 
+ 	/* Paranoia */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Display prompt */
  	prt(prompt, 0, 0);
  
  	/* Ask the user for a string */
@@ -1157,7 +1209,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear prompt */
  	prt("", 0, 0);
-@@ -1220,6 +1301,7 @@
+@@ -1220,6 +1319,7 @@ static bool textui_get_string(const char *prompt, char *buf, size_t len)
   */
  static int textui_get_quantity(const char *prompt, int max)
  {
@@ -1165,7 +1217,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	int amt = 1;
  
  	/* Prompt if needed */
-@@ -1240,7 +1322,14 @@
+@@ -1240,7 +1340,14 @@ static int textui_get_quantity(const char *prompt, int max)
  		strnfmt(buf, sizeof(buf), "%d", amt);
  
  		/* Ask for a quantity */
@@ -1181,7 +1233,12 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  		/* Extract a number */
  		amt = atoi(buf);
-@@ -1284,7 +1373,15 @@
+@@ -1280,11 +1387,19 @@ static bool textui_get_check(const char *prompt)
+ 	strnfmt(buf, 78, "%.70s[y/n] ", prompt);
+ 
+ 	/* Paranoia */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
  
  	/* Prompt for it */
  	prt(buf, 0, 0);
@@ -1197,7 +1254,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Erase the prompt */
  	prt("", 0, 0);
-@@ -1315,11 +1412,22 @@ static bool textui_get_check(const char *prompt)
+@@ -1315,11 +1430,22 @@ static bool textui_get_check(const char *prompt)
  char get_char(const char *prompt, const char *options, size_t len, char fallback)
  {
  	struct keypress key;
@@ -1206,7 +1263,8 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 +#endif
  
  	/* Paranoia */
- 	event_signal(EVENT_MESSAGE_FLUSH);
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
  
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_KEY);
@@ -1220,7 +1278,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  	/* Build a "useful" prompt */
  	strnfmt(buf, 78, "%.70s[%s] ", prompt, options);
  
-@@ -1328,6 +1436,7 @@ char get_char(const char *prompt, const char *options, size_t len, char fallback
+@@ -1328,6 +1454,7 @@ char get_char(const char *prompt, const char *options, size_t len, char fallback
  
  	/* Get an acceptable answer */
  	key = inkey();
@@ -1228,7 +1286,14 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Lowercase answer if necessary */
  	if (key.code >= 'A' && key.code <= 'Z') key.code += 32;
-@@ -1442,7 +1551,21 @@ bool get_com_ex(const char *prompt, ui_event *command)
+@@ -1436,13 +1563,27 @@ bool get_com_ex(const char *prompt, ui_event *command)
+ 	ui_event ke;
+ 
+ 	/* Paranoia XXX XXX XXX */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Display a prompt */
  	prt(prompt, 0, 0);
  
  	/* Get a key */
@@ -1250,7 +1315,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Clear the prompt */
  	prt("", 0, 0);
-@@ -1452,7 +1575,11 @@
+@@ -1452,7 +1593,11 @@ bool get_com_ex(const char *prompt, ui_event *command)
  
  	/* Done */
  	if ((ke.type == EVT_KBRD && ke.key.code != ESCAPE) ||
@@ -1263,7 +1328,16 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		return true;
  	else
  		return false;
-@@ -1525,16 +1652,31 @@
+@@ -1511,7 +1656,7 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+ 	/* Get a direction */
+ 	while (!dir) {
+ 		/* Paranoia*/
+-		event_signal(EVENT_MESSAGE_FLUSH);
++		flush_messages_for_transition();
+ 
+ 		/* Get first keypress - the first test is to avoid displaying the
+ 		 * prompt for direction if there's already a keypress queued up
+@@ -1525,16 +1670,31 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1296,7 +1370,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1626,6 +1768,10 @@
+@@ -1626,6 +1786,10 @@ static bool textui_get_aim_dir(int *dp)
  
  	/* Auto-target if requested */
  	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
@@ -1307,7 +1381,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1788,25 @@
+@@ -1642,8 +1806,25 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1335,7 +1409,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,18 +1824,35 @@
+@@ -1661,18 +1842,35 @@ static bool textui_get_aim_dir(int *dp)
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1372,7 +1446,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			} else {
  				/* Possible direction */
  				int keypresses_handled = 0;
-@@ -1720,6 +1900,18 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1720,6 +1918,18 @@ static bool textui_get_aim_dir(int *dp)
  	return (true);
  }
  
@@ -1391,7 +1465,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  /**
   * Initialise the UI hooks to give input asked for by the game
   */
-@@ -1756,9 +1948,21 @@ static int textui_get_count(void)
+@@ -1756,9 +1966,21 @@ static int textui_get_count(void)
  	while (1) {
  		struct keypress ke;
  
@@ -1413,7 +1487,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  		if (ke.code == ESCAPE)
  			return -1;
  
-@@ -1840,6 +2044,21 @@
+@@ -1840,6 +2062,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -1438,7 +1512,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,96 @@
+@@ -24,6 +24,99 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1457,7 +1531,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
-+void web_collect_action_messages(bool collect);
++void web_clear_displayed_messages(void);
++const char *web_pending_messages(void);
++void web_mark_messages_displayed(void);
 +bool web_capture_action_message(const char *message);
 +void web_add_journal_message(const char *message);
 +bool web_confirm_cast(const char *warning, const char *prompt);
@@ -1515,6 +1591,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_menu(const struct menu *menu, int cursor, const char *prompt);
 +void web_set_menu_title(const char *title);
 +void web_set_menu_on_map(void);
++void web_set_pickup_menu(void);
 +int web_set_save_slots(const char *const *names, int count, int cursor);
 +void web_set_options_title(const char *title);
 +void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
@@ -1535,6 +1612,14 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
+@@ -92,6 +185,7 @@ ui_event inkey_m(void);
+ void display_message(game_event_type unused, game_event_data *data, void *user);
+ void bell_message(game_event_type unused, game_event_data *data, void *user);
+ void message_flush(game_event_type unused, game_event_data *data, void *user);
++void flush_messages_for_transition(void);
+ void clear_from(int row);
+ bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
+ 						 struct keypress keypress, bool firsttime);
 diff --git a/src/ui-menu.c b/src/ui-menu.c
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
@@ -1652,17 +1737,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 diff --git a/src/store.c b/src/store.c
 --- a/src/store.c
 +++ b/src/store.c
-@@ -42,6 +42,9 @@
- #include "store.h"
- #include "target.h"
- #include "debug.h"
-+#ifdef __EMSCRIPTEN__
-+#include "ui-input.h"
-+#endif
- 
- 
- static void store_maint(struct store *s);
-@@ -1649,7 +1652,7 @@
+@@ -1649,7 +1649,7 @@ void do_cmd_buy(struct command *cmd)
  
  	struct object *obj, *bought, *known_obj;
  
@@ -1671,32 +1746,10 @@ diff --git a/src/store.c b/src/store.c
  	int price;
  
  	struct store *store = store_at(cave, player->grid);
-@@ -1708,6 +1711,10 @@
- 	/* Describe the object (fully) again for the message */
- 	object_desc(o_name, sizeof(o_name), bought, ODESC_PREFIX | ODESC_FULL,
- 		player);
-+
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(true);
-+#endif
- 
- 	/* Message */
- 	if (one_in_(3)) msgt(MSG_STORE5, "%s", ONE_OF(comment_accept));
-@@ -1767,6 +1774,10 @@
- 				store_maint(store);
- 		}
- 	}
-+
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(false);
-+#endif
- 
- 	event_signal(EVENT_STORECHANGED);
- 	event_signal(EVENT_INVENTORY);
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
-@@ -458,21 +458,40 @@ static void store_redraw(struct store_co
+@@ -458,21 +458,40 @@ static void store_redraw(struct store_context *ctx)
  	}
  }
  
@@ -1739,7 +1792,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Success */
  	return (true);
-@@ -563,8 +582,10 @@ static bool store_sell(struct store_cont
+@@ -563,8 +582,10 @@ static bool store_sell(struct store_context *ctx)
  			prt(format("Price: %ld", (long)price), 1, 0);
  
  		/* Confirm sale */
@@ -1752,7 +1805,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  			screen_load();
  			return false;
  		}
-@@ -713,10 +734,10 @@ static bool store_purchase(struct store_
+@@ -713,10 +734,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  		prt(format("Price: %ld", (long)price), 1, 0);
  
  		/* Confirm purchase */
@@ -1767,7 +1820,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  		screen_load();
  
-@@ -865,15 +886,61 @@ static bool store_process_command_key(st
+@@ -865,15 +886,61 @@ static bool store_process_command_key(struct keypress kp)
  /**
   * Select an item from the store's stock, and return the stock index
   */
@@ -1830,7 +1883,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (!no_act) {
  		m->flags &= ~MN_NO_ACTION;
  	}
-@@ -1007,7 +1074,13 @@ static bool context_menu_store_item(stru
+@@ -1007,7 +1074,13 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -1844,7 +1897,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	menu_dynamic_free(m);
  	string_free(labels);
-@@ -1034,6 +1107,30 @@ static bool store_menu_handle(struct men
+@@ -1034,6 +1107,30 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
@@ -1875,7 +1928,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1103,15 +1200,8 @@ static bool store_menu_handle(struct men
+@@ -1103,15 +1200,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'g':
  				/* use the old way of purchasing items */
  				msg_flag = false;
@@ -1893,7 +1946,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_purchase(ctx, oid, false);
  				}
-@@ -1120,10 +1210,7 @@ static bool store_menu_handle(struct men
+@@ -1120,10 +1210,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'x':
  				/* use the old way of examining items */
  				msg_flag = false;
@@ -1905,7 +1958,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				if (oid >= 0) {
  					store_examine(ctx, oid);
  				}
-@@ -1199,6 +1286,9 @@ static void store_menu_init(struct store
+@@ -1199,6 +1286,9 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
@@ -1925,14 +1978,15 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	menu_select(&ctx.menu, 0, false);
  
  	/* Flush messages XXX XXX XXX */
- 	event_signal(EVENT_MESSAGE_FLUSH);
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
 +#ifdef __EMSCRIPTEN__
 +	web_leave_store_menu();
 +#endif
  
  	screen_load();
  
-@@ -1294,7 +1390,13 @@ void use_store(game_event_type type, gam
+@@ -1294,7 +1390,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  		prt_welcome(store->owner);
  
  	/* Shopping */
@@ -1946,6 +2000,15 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Shopping's done */
  	event_remove_handler(EVENT_STORECHANGED, refresh_stock, &ctx);
+@@ -1305,7 +1407,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+ 	player->upkeep->energy_use = z_info->move_energy;
+ 
+ 	/* Flush messages */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Load the screen */
+ 	screen_load();
 diff --git a/src/ui-target.c b/src/ui-target.c
 --- a/src/ui-target.c
 +++ b/src/ui-target.c
@@ -2100,7 +2163,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
 diff --git a/src/ui-display.c b/src/ui-display.c
 --- a/src/ui-display.c
 +++ b/src/ui-display.c
-@@ -1047,23 +1047,16 @@
+@@ -1047,23 +1047,16 @@ static const uint8_t mon_feeling_color[] =
  	COLOUR_BLUE, /* "This seems a quiet, peaceful place" */
  };
  
@@ -2127,7 +2190,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  	/* Get feelings */
  	obj_feeling = cave->feeling / 10;
-@@ -1085,16 +1078,16 @@
+@@ -1085,16 +1078,16 @@ static size_t prt_level_feeling(int row, int col)
  	 * to get a feeling. If not display as ?
  	 */
  	if (cave->feeling_squares < z_info->feeling_need) {
@@ -2150,7 +2213,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  	}
  
  	/* 
-@@ -1106,19 +1099,33 @@
+@@ -1106,19 +1099,33 @@ static size_t prt_level_feeling(int row, int col)
  	 * We also reverse this so that what we show is a danger feeling.
  	 */
  	if (mon_feeling == 0)
@@ -2190,7 +2253,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  	return new_col - col;
  }
-@@ -2607,7 +2614,7 @@
+@@ -2607,7 +2614,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  	if (floor_num == 1) {
  		/* Get the object */
  		struct object *obj = floor_list[0];
@@ -2199,8 +2262,12 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  		if (!can_pickup)
  			p = "have no room for";
-@@ -2627,6 +2634,14 @@ static void see_floor_items(game_event_type type, game_event_data *data,
- 		event_signal(EVENT_MESSAGE_FLUSH);
+@@ -2624,9 +2631,17 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+ 		}
+ 
+ 		/* Message */
+-		event_signal(EVENT_MESSAGE_FLUSH);
++		flush_messages_for_transition();
  		msg("You %s %s.", p, o_name);
  	} else {
 +#ifdef __EMSCRIPTEN__
@@ -2255,17 +2322,7 @@ diff --git a/src/obj-pile.c b/src/obj-pile.c
 diff --git a/src/obj-gear.c b/src/obj-gear.c
 --- a/src/obj-gear.c
 +++ b/src/obj-gear.c
-@@ -30,6 +30,9 @@
- #include "obj-util.h"
- #include "player-calcs.h"
- #include "player-util.h"
-+#ifdef __EMSCRIPTEN__
-+#include "ui-input.h"
-+#endif
- 
- static const struct slot_info {
- 	int index;
-@@ -526,7 +529,7 @@
+@@ -526,7 +526,7 @@ struct object *gear_object_for_use(struct player *p, struct object *obj,
  {
  	struct object *usable;
  	struct object *first_remainder = NULL;
@@ -2274,7 +2331,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	char label = gear_to_label(p, obj);
  	bool artifact = (obj->known->artifact != NULL);
  
-@@ -891,7 +894,7 @@
+@@ -891,7 +891,7 @@ void inven_carry(struct player *p, struct object *obj, bool absorb,
  	update_stuff(p);
  
  	if (message) {
@@ -2283,7 +2340,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  		struct object *first;
  		uint16_t total;
  		char label;
-@@ -933,7 +936,7 @@
+@@ -933,7 +933,7 @@ void inven_wield(struct object *obj, int slot)
  	struct object *wielded, *old = player->body.slots[slot].obj;
  
  	const char *fmt;
@@ -2292,7 +2349,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	bool dummy = false;
  
  	/* Increase equipment counter if empty slot */
-@@ -1034,7 +1037,7 @@
+@@ -1034,7 +1034,7 @@ void inven_takeoff(struct object *obj)
  {
  	int slot = equipped_item_slot(player->body, obj);
  	const char *act;
@@ -2301,7 +2358,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  
  	/* Paranoia */
  	if (slot == player->body.count) return;
-@@ -1082,7 +1085,7 @@
+@@ -1082,7 +1082,7 @@ void inven_drop(struct object *obj, int amt)
  	bool equipped = false;
  	bool quiver;
  
@@ -2310,28 +2367,7 @@ diff --git a/src/obj-gear.c b/src/obj-gear.c
  	char label;
  
  	/* Error check */
-@@ -1104,6 +1107,10 @@
- 	/* Not too many */
- 	if (amt > obj->number) amt = obj->number;
- 
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(true);
-+#endif
-+
- 	/* Take off equipment, don't combine */
- 	if (object_is_equipped(player->body, obj)) {
- 		equipped = true;
-@@ -1168,6 +1175,9 @@
- 	/* Drop it near the player */
- 	drop_near(cave, &dropped, 0, player->grid, false, true);
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(false);
-+#endif
- 
- 	/* Sound for quiver objects */
- 	if (quiver)
- 		sound(MSG_QUIVER);
-@@ -1345,7 +1355,7 @@
+@@ -1345,7 +1345,7 @@ bool pack_is_overfull(void)
  void pack_overflow(struct object *obj)
  {
  	int i;
@@ -2353,7 +2389,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  /**
   * ------------------------------------------------------------------------
-@@ -182,7 +185,7 @@
+@@ -182,7 +185,7 @@ void do_cmd_inscribe(struct command *cmd)
  	const char *str;
  
  	char prompt[1024];
@@ -2362,7 +2398,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  	if (!player_get_resume_normal_shape(player, cmd)) {
  		return;
-@@ -265,7 +268,7 @@
+@@ -265,7 +268,7 @@ void do_cmd_takeoff(struct command *cmd)
  void do_cmd_wield(struct command *cmd)
  {
  	struct object *equip_obj;
@@ -2371,7 +2407,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  	const char *act;
  
  	unsigned n;
-@@ -277,11 +280,21 @@
+@@ -277,11 +280,21 @@ void do_cmd_wield(struct command *cmd)
  		return;
  	}
  
@@ -2395,25 +2431,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			/* Choice */ USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK)
  		return;
  
-@@ -347,11 +360,17 @@
- 	else
- 		act = "You were wearing";
- 
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(true);
-+#endif
- 	inven_wield(obj, slot);
- 
- 	/* Message */
- 	msgt(MSG_WIELD, "%s %s (%c).", act, o_name,
- 		gear_to_label(player, equip_obj));
-+#ifdef __EMSCRIPTEN__
-+	web_collect_action_messages(false);
-+#endif
- }
- 
- /**
-@@ -682,7 +701,7 @@
+@@ -682,7 +695,7 @@ static bool use_aux(struct command *cmd, struct object *obj, enum use use,
  			 * Describe what's left of single use items or newly
  			 * identified items of all kinds.
  			 */
@@ -2422,7 +2440,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  
  			object_desc(name, sizeof(name), work_obj,
  				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM |
-@@ -1089,7 +1108,7 @@
+@@ -1089,7 +1102,7 @@ void do_cmd_refill(struct command *cmd)
  
  	/* Get an item */
  	if (cmd_get_item(cmd, "item", &obj,
@@ -2431,7 +2449,7 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  			"You have nothing you can refuel with.",
  			obj_can_refill,
  			USE_INVEN | USE_FLOOR | USE_QUIVER) != CMD_OK) return;
-@@ -1140,15 +1159,25 @@
+@@ -1140,15 +1153,25 @@ void do_cmd_cast(struct command *cmd)
  	if (spell->smana > player->csp) {
  		const char *verb = spell->realm->verb;
  		const char *noun = spell->realm->spell_noun;
@@ -2667,7 +2685,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -1002,6 +1002,69 @@
+@@ -1002,6 +1002,70 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
  	return false;
  }
  
@@ -2684,6 +2702,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	struct object_menu_data *choices = menu_priv(menu);
 +
 +	web_set_menu(menu, menu->cursor, prompt);
++	if (item_cmd == CMD_PICKUP) web_set_pickup_menu();
 +	if (item_cmd == CMD_CAST || item_cmd == CMD_FIRE || item_cmd == CMD_THROW ||
 +			item_cmd == CMD_USE || item_cmd == CMD_USE_WAND || item_cmd == CMD_USE_ROD ||
 +			item_cmd == CMD_USE_STAFF || item_cmd == CMD_EAT || item_cmd == CMD_REFILL ||
@@ -2737,7 +2756,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1222,10 @@
+@@ -1159,6 +1223,10 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
@@ -2748,7 +2767,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1289,14 @@
+@@ -1222,6 +1290,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -2763,7 +2782,16 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
-@@ -1457,6 +1532,14 @@
+@@ -1371,7 +1447,7 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+ 		olist_mode |= OLIST_RECHARGE;
+ 
+ 	/* Paranoia XXX XXX XXX */
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	/* Full inventory */
+ 	i1 = 0;
+@@ -1457,6 +1533,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
  	throwing_num = scan_items(throwing_list, throwing_max, player,
  		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
  
@@ -2778,6 +2806,15 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	/* Require at least one legal choice */
  	if (allow_inven || allow_equip || allow_quiver || allow_floor) {
  		/* Use throwing menu if at all possible */
+@@ -1654,7 +1738,7 @@ void display_object_recall_interactive(struct object *obj)
+ 	char header_buf[120];
+ 	textblock *tb;
+ 
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	tb = object_info(obj, OINFO_NONE);
+ 	object_desc(header_buf, sizeof(header_buf), obj,
 diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
 --- a/src/ui-mon-list.c
 +++ b/src/ui-mon-list.c
@@ -2972,6 +3009,33 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  }
  
  
+@@ -427,7 +440,7 @@ void screen_save(void)
+ {
+ 	player->upkeep->redraw |= PR_MAP;
+ 	redraw_stuff(player);
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 	Term_save();
+ 	screen_save_depth++;
+ }
+@@ -437,7 +450,7 @@ void screen_save(void)
+  */
+ void screen_load(void)
+ {
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 	Term_load();
+ 	screen_save_depth--;
+ }
+@@ -448,7 +461,7 @@ void screen_load(void)
+  */
+ void screen_load_all(void)
+ {
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 	Term_load_all();
+ 	screen_save_depth--;
+ }
 diff --git a/src/ui-player.c b/src/ui-player.c
 --- a/src/ui-player.c
 +++ b/src/ui-player.c
@@ -3521,7 +3585,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 diff --git a/src/ui-options.c b/src/ui-options.c
 --- a/src/ui-options.c
 +++ b/src/ui-options.c
-@@ -138,6 +138,18 @@ static void option_toggle_display(struct
+@@ -138,6 +138,18 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
  		option_name(oid)), row, col + 45);
  }
  
@@ -3540,7 +3604,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Handle keypresses for an option entry.
   */
-@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct
+@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
  		} else if (event->key.code == 't' || event->key.code == 'T') {
  			option_set(option_name(oid), !player->opts.opt[oid]);
  		} else if (event->key.code == 's' || event->key.code == 'S') {
@@ -3564,7 +3628,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  			screen_load();
  		/*
  		 * For birth options, only allow restore from custom defaults
-@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct
+@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
  				screen_load();
  				menu_refresh(m, false);
  			} else {
@@ -3578,7 +3642,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  				screen_load();
  			}
  		/*
-@@ -318,6 +342,26 @@ static const menu_iter option_toggle_ite
+@@ -318,6 +342,26 @@ static const menu_iter option_toggle_iter = {
  };
  
  
@@ -3605,7 +3669,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Interact with some options
   */
-@@ -358,6 +402,12 @@ static void option_toggle_menu(const cha
+@@ -358,6 +402,12 @@ static void option_toggle_menu(const char *name, int page)
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
  	menu_set_filter(m, option_page[page], i);
@@ -3618,7 +3682,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -453,7 +503,13 @@ static void do_cmd_options_win(const cha
+@@ -453,7 +503,13 @@ static void do_cmd_options_win(const char *name, int row)
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -3632,7 +3696,34 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf
+@@ -717,7 +773,7 @@ static void keymap_browse_hook(int oid, void *db, const region *loc)
+ {
+ 	char tmp[1024];
+ 
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	clear_from(13);
+ 
+@@ -817,7 +873,7 @@ static menu_action visual_menu_items [] =
+ 
+ static void visuals_browse_hook(int oid, void *db, const region *loc)
+ {
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 	clear_from(1);
+ }
+ 
+@@ -977,7 +1033,7 @@ static void colors_modify(const char *title, int row)
+ 
+ static void colors_browse_hook(int oid, void *db, const region *loc)
+ {
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 	clear_from(1);
+ }
+ 
+@@ -1048,6 +1104,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
  }
  
  
@@ -3653,7 +3744,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *nam
+@@ -1068,7 +1138,7 @@ static void do_cmd_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -3662,7 +3753,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *nam
+@@ -1081,6 +1151,9 @@ static void do_cmd_delay(const char *name, int unused)
   */
  static void do_cmd_sidebar_mode(const char *name, int unused)
  {
@@ -3672,7 +3763,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const ch
+@@ -1110,6 +1183,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
  	}
  
  	screen_load();
@@ -3680,7 +3771,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  }
  
  
-@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *n
+@@ -1136,7 +1210,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3689,7 +3780,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const
+@@ -1175,7 +1249,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3698,7 +3789,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1396,6 +1470,22 @@ static bool ego_action(struct menu * men
+@@ -1396,6 +1470,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
  	return false;
  }
  
@@ -3721,7 +3812,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display list of ego items to be ignored.
   */
-@@ -1471,6 +1561,9 @@ static void ego_menu(const char *unused,
+@@ -1471,6 +1561,9 @@ static void ego_menu(const char *unused, int also_unused)
  	memset(&menu, 0, sizeof(menu));
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu_setpriv(&menu, max_num, choice);
@@ -3731,7 +3822,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(&menu, &area);
  
  	/* Select an entry */
-@@ -1574,6 +1667,25 @@ static void quality_subdisplay(struct me
+@@ -1574,6 +1667,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
  	c_put_str(attr, name, row, col);
  }
  
@@ -3757,7 +3848,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Handle keypresses.
-@@ -1606,6 +1718,11 @@ static bool quality_action(struct menu *
+@@ -1606,6 +1718,11 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
  		area.row += Term->hgt - 1 - area.row - menu.count;
  
  	menu_layout(&menu, &area);
@@ -3769,7 +3860,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
  				area.row + area.page_rows);
-@@ -1638,6 +1755,9 @@ static void quality_menu(const char *unu
+@@ -1638,6 +1755,9 @@ static void quality_menu(const char *unused, int also_unused)
  	/* Set up the menu */
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu.title = "Quality ignore menu";
@@ -3779,7 +3870,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_setpriv(&menu, ITYPE_MAX, quality_values);
  	menu_layout(&menu, &area);
  
-@@ -1767,6 +1887,23 @@ static const menu_iter ignore_sval_menu
+@@ -1767,6 +1887,23 @@ static const menu_iter ignore_sval_menu =
  	NULL,
  };
  
@@ -3803,7 +3894,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Collect all tvals in the big ignore_choice array
-@@ -1860,6 +1997,12 @@ static bool sval_menu(int tval, const ch
+@@ -1860,6 +1997,12 @@ static bool sval_menu(int tval, const char *desc)
  	menu_setpriv(menu, n_choices, choices);
  	menu->cmd_keys = "Tt";
  	menu_layout(menu, &area);
@@ -3816,7 +3907,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
  	menu_select(menu, 0, false);
  
-@@ -1998,6 +2141,21 @@ static const menu_iter options_item_iter
+@@ -1998,6 +2141,21 @@ static const menu_iter options_item_iter =
  	NULL
  };
  
@@ -3838,7 +3929,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Display and handle the main ignoring menu.
-@@ -2011,6 +2169,9 @@ void do_cmd_options_item(const char *tit
+@@ -2011,6 +2169,9 @@ void do_cmd_options_item(const char *title, int row)
  				 N_ELEMENTS(extra_item_options) + 1, NULL);
  
  	menu.title = title;
@@ -4473,3 +4564,47 @@ diff --git a/src/wizard.h b/src/wizard.h
 +bool spoil_obj_desc(const char *fname);
  
  #endif /* !INCLUDED_WIZARD_H */
+diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
+--- a/src/cmd-pickup.c
++++ b/src/cmd-pickup.c
+@@ -38,6 +38,9 @@
+ #include "player-history.h"
+ #include "player-util.h"
+ #include "trap.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ 
+ /**
+  * Pick up all gold at the player's current location.
+@@ -454,6 +457,10 @@ void do_cmd_pickup(struct command *cmd)
+ 	/* See if we have an item already */
+ 	(void) cmd_get_arg_item(cmd, "item", &obj);
+ 
++#ifdef __EMSCRIPTEN__
++	web_clear_displayed_messages();
++#endif
++
+ 	/* Pick up floor objects with a menu for multiple objects */
+ 	energy_cost += player_pickup_item(player, obj, false)
+ 		* z_info->move_energy / 10;
+diff --git a/src/ui-mon-lore.c b/src/ui-mon-lore.c
+--- a/src/ui-mon-lore.c
++++ b/src/ui-mon-lore.c
+@@ -19,6 +19,7 @@
+ #include "angband.h"
+ #include "init.h"
+ #include "mon-lore.h"
++#include "ui-input.h"
+ #include "ui-mon-lore.h"
+ #include "ui-output.h"
+ #include "ui-prefs.h"
+@@ -165,7 +166,7 @@ void lore_show_interactive(const struct monster_race *race,
+ 	textblock *tb;
+ 	assert(race && lore);
+ 
+-	event_signal(EVENT_MESSAGE_FLUSH);
++	flush_messages_for_transition();
+ 
+ 	tb = textblock_new();
+ 	lore_description(tb, race, lore, false);

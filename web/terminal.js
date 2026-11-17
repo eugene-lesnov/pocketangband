@@ -1211,9 +1211,10 @@ function showMessagePause(data) {
         const store = data.menu.store;
         if (!store.home) menuSummary.textContent = `Gold Remaining: ${store.gold} au`;
     }
-    pausedMessage.textContent = terminalLine(0).replace(/\s*-more-\s*$/, "");
+    pausedMessage.textContent = data.context.pausedMessage ?? terminalLine(0).replace(/\s*-more-\s*$/, "");
     if (data.world) renderMonsterHealth(data.world.monsterHealth);
     messagePause.hidden = false;
+    pausedMessage.scrollTop = pausedMessage.scrollHeight;
     for (const element of pausedControls) element.inert = true;
     continueMessage.disabled = false;
     continueMessage.focus({ preventScroll: true });
@@ -1275,16 +1276,18 @@ function updatePrompt() {
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
-    const storeResult = menu?.store && !menuScreen.hidden && world?.actionMessage;
-    journal.hidden = (hud.hidden && !storeResult) || saveNotice;
+    const showResult = world?.actionMessage && !openPanel &&
+        (context.newMessages || (!menuScreen.hidden && (menu?.store || menu?.pickup)));
+    journal.hidden = (hud.hidden && !showResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
     updateJournal();
 }
 
 function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
-    const action = !prompt && world?.actionMessage;
-    const text = prompt || action || messages.lastElementChild?.textContent || "No messages";
+    const action = (!prompt || context.newMessages) && world?.actionMessage;
+    const text = [prompt, action].filter(Boolean).join("\n") ||
+        messages.lastElementChild?.textContent || "No messages";
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
     journal.classList.toggle("action-result", !!action);
