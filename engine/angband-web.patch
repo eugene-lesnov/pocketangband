@@ -1710,6 +1710,15 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
+@@ -798,7 +863,7 @@ ui_event menu_select(struct menu *menu,
+ 				continue;
+ 
+ 			/* Switch key */
+-			if (!no_act && menu->switch_keys &&
++			if (!no_act && menu->switch_keys && in.key.code != ESCAPE &&
+ 				strchr(menu->switch_keys, (char)in.key.code)) {
+ 				menu_handle_action(menu, &in);
+ 				if (popup)
 @@ -1052,10 +1117,31 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
