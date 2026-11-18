@@ -312,28 +312,34 @@ void web_set_list_row_cell(int dx, int dy)
 }
 
 EM_JS(void, set_detail_text, (const wchar_t *text, const uint8_t *attrs, size_t length,
-        const uint8_t *colors, int color_count, int graphics_mode, bool list_recall), {
+        const uint8_t *colors, int color_count, int graphics_mode, bool list_recall, bool menu_card), {
     const context = Module['inputContext'];
-    if (!list_recall && context?.list) {
+    if (!list_recall && !menu_card && context?.list) {
         context.detail = "";
         return;
     }
     const detail = { codepoints: HEAPU32.slice(text >>> 2, (text >>> 2) + length),
         attributes: HEAPU8.slice(attrs, attrs + length), palette: HEAPU8.slice(colors, colors + 4 * color_count),
         graphicsMode: graphics_mode };
-    if (list_recall) Module['listDetail'] = detail;
+    if (menu_card) Module['inputMenu'].card = detail;
+    else if (list_recall) Module['listDetail'] = detail;
     else Module['inputContext'] = { detail };
 });
 
-static void publish_details(textblock *tb, bool list_recall)
+static void publish_details(textblock *tb, bool list_recall, bool menu_card)
 {
     set_detail_text(textblock_text(tb), textblock_attrs(tb), textblock_length(tb),
-        &angband_color_table[0][0], MAX_COLORS, use_graphics, list_recall);
+        &angband_color_table[0][0], MAX_COLORS, use_graphics, list_recall, menu_card);
 }
 
 void web_set_details(textblock *tb)
 {
-    publish_details(tb, false);
+    publish_details(tb, false, false);
+}
+
+void web_set_menu_card(textblock *tb)
+{
+    publish_details(tb, false, true);
 }
 
 EMSCRIPTEN_KEEPALIVE void web_list_details(int race, int object)
@@ -347,7 +353,7 @@ EMSCRIPTEN_KEEPALIVE void web_list_details(int race, int object)
     } else {
         return;
     }
-    publish_details(tb, true);
+    publish_details(tb, true, false);
     textblock_free(tb);
 }
 
@@ -492,6 +498,41 @@ void web_set_menu(const struct menu *menu, int cursor, const char *prompt)
     set_menu(menu, cursor, prompt, menu->web_no_keyboard, menu->web_choice);
 }
 
+EM_JS(void, web_begin_search, (void), {
+    Module['knowledgeSearch'] = { rows: [] };
+});
+
+EM_JS(void, web_search_section, (int section, const char *name, bool store, bool enabled), {
+    const search = Module['knowledgeSearch'];
+    search.section = section;
+    search.rows.push({ index: search.rows.length, section, entry: -2, sectionOnly: true,
+        name: UTF8ToString(name), enabled: !!enabled, group: store ? "Stores and Home" : undefined,
+        collapsible: !!store });
+});
+
+EM_JS(void, web_add_search_entry, (int entry, const char *name, const char *group, const char *price), {
+    const search = Module['knowledgeSearch'];
+    search.rows.push({ index: search.rows.length, section: search.section, entry, enabled: true,
+        name: UTF8ToString(name), detail: group ? UTF8ToString(group) : "", price: price ? UTF8ToString(price) : "" });
+});
+
+EM_JS(void, web_show_search_rows, (void), {
+    const menu = Module['inputMenu'];
+    menu.search = true;
+    menu.rows = Module['knowledgeSearch'].rows;
+});
+
+EM_JS(int, web_search_target, (int index, int *entry), {
+    const row = Module['knowledgeSearch'].rows[index];
+    if (!row?.enabled) return -1;
+    HEAP32[entry >>> 2] = row.entry;
+    return row.section;
+});
+
+EM_JS(void, web_end_search, (void), {
+    Module['knowledgeSearch'] = undefined;
+});
+
 EM_JS(void, web_set_menu_title, (const char *title), {
     Module['inputMenu'].title = UTF8ToString(title);
 });
@@ -531,8 +572,8 @@ void web_set_menu_sections(int current, int available)
         SHOW_THROWING);
 }
 
-EM_JS(void, web_set_store, (const char *name, bool home), {
-    Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home };
+EM_JS(void, web_set_store, (const char *name, bool home, bool inspect_only), {
+    Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home, inspectOnly: !!inspect_only };
 });
 
 EM_JS(void, enter_store_menu, (void), {
@@ -567,6 +608,23 @@ EM_JS(void, web_add_menu_row, (int index, const char *name, const char *detail,
         detail: detail ? UTF8ToString(detail).trim() : "",
         price: price ? UTF8ToString(price).trim() : "", key, enabled: !!enabled });
 });
+
+EM_JS(void, web_set_row_group, (const char *name, bool collapsible), {
+    const row = Module['inputMenu'].rows.at(-1);
+    row.group = UTF8ToString(name);
+    row.collapsible = !!collapsible;
+});
+
+EM_JS(void, set_row_symbol, (int graphics, int attr, wchar_t symbol, const char *color), {
+    Module['inputMenu'].rows.at(-1).visual = { graphics, attr, symbol, color: UTF8ToString(color) };
+});
+
+void web_set_row_symbol(int attr, wchar_t symbol)
+{
+    char color[8];
+    web_text_color(color, sizeof(color), attr % MAX_COLORS);
+    set_row_symbol(use_graphics, attr, symbol, color);
+}
 
 EM_JS(void, set_menu_row_color, (const char *color, bool unaffordable), {
     const row = Module['inputMenu'].rows.at(-1);

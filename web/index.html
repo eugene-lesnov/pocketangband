@@ -21,6 +21,17 @@
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">Terminal</h2>
+                <button id="knowledge-search-toggle" type="button" aria-label="Search Knowledge"
+                    aria-expanded="false" aria-controls="knowledge-search" hidden>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+                        <g><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></g>
+                        <path d="m6 6 12 12M18 6 6 18"/>
+                    </svg>
+                </button>
+                <input id="knowledge-search" type="text" role="searchbox" inputmode="search" enterkeyhint="done"
+                    aria-label="Search Knowledge" placeholder="Search Knowledge" autocomplete="off"
+                    autocapitalize="off" spellcheck="false" hidden>
                 <button id="monster-sort" type="button" data-key="x" aria-pressed="false" hidden>Sort by exp</button>
                 <div id="zoom" role="group" aria-label="Zoom" hidden>
                     <button id="zoom-in" type="button" aria-label="Zoom in">+</button>

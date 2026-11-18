@@ -64,6 +64,11 @@ const characterProgress = document.querySelector("#character-progress");
 const characterProgressLabel = document.querySelector("#character-progress-label");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
+const knowledgeSearch = document.querySelector("#knowledge-search");
+const knowledgeSearchToggle = document.querySelector("#knowledge-search-toggle");
+let knowledgeScroll = 0;
+const knowledgePageSize = 60;
+const knowledgeLimits = new Map();
 const messageSearchToggle = document.querySelector("#message-search-toggle");
 const messageSearch = document.querySelector("#message-search");
 const messageSearchStatus = document.querySelector("#message-search-status");
@@ -1132,7 +1137,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     const closesScreen = !context.listPreview && ["details", "character", "overview"].includes(mode);
     const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
     const [key, label] = getConfirmAction(selectedRow, closesScreen);
-    const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
+    const directMenu = playingGame && mode === "menu" && !!menu && (!menu.store || menu.store.inspectOnly);
     terminalKeys.classList.toggle("aim-controls", aiming);
     confirmKey.dataset.key = key;
     confirmKey.textContent = label;
@@ -1404,6 +1409,10 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("picker-expanded", choosing && pickerExpanded);
     mainView.inert = hud.inert = choosing;
     picker.hidden = !choosing;
+    knowledgeSearchToggle.hidden = choosing || !!openPanel || menu?.title !== "Knowledge";
+    knowledgeSearch.hidden = knowledgeSearchToggle.hidden || !menu?.search;
+    knowledgeSearchToggle.setAttribute("aria-expanded", String(!knowledgeSearch.hidden));
+    knowledgeSearchToggle.setAttribute("aria-label", knowledgeSearch.hidden ? "Search Knowledge" : "Close search");
     if (choosing) {
         controls.setAttribute("role", "dialog");
         controls.setAttribute("aria-modal", "true");
@@ -1561,6 +1570,8 @@ function renderPicker() {
         (menu ? "Choices" : screenTitles.get(mode));
     const resizable = !!menu || !!openPanel || inspectingChoice;
     picker.classList.toggle("resizable", resizable);
+    if (menu?.card) pickerHeading.setAttribute("aria-describedby", "knowledge-card-text");
+    else pickerHeading.removeAttribute("aria-describedby");
     pickerHeading.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
     pickerToggle.setAttribute("aria-controls", openPanel ? "actions-screen" :
         inspectingChoice ? "picker-description" : "picker-list");
@@ -1667,7 +1678,8 @@ function handleWorkerMessage({ data }) {
             const wasChoosing = isChoosing();
             inspectingChoice = wasChoosing && data.mode === "details" && data.context.detail !== undefined &&
                 !data.context.list;
-            const changed = data.mode !== mode || data.menu?.choice !== menu?.choice ||
+            const closingKnowledgeSearch = menu?.search && data.menu?.title === "Knowledge" && !data.menu.search;
+            const changed = !!menu?.search !== !!data.menu?.search || data.mode !== mode || data.menu?.choice !== menu?.choice ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
             const changedPicker = data.menu?.choice &&
@@ -1712,6 +1724,11 @@ function handleWorkerMessage({ data }) {
                 renderTextEntry();
             }
             if (context.mapCell?.actions) renderMapActions();
+            if (closingKnowledgeSearch) {
+                knowledgeSearch.value = "";
+                knowledgeLimits.clear();
+                knowledgeScroll = 0;
+            }
             menu = data.menu;
             if (changed || changedPicker) pickerExpanded = false;
             deletingSave = false;
@@ -1743,7 +1760,15 @@ function handleWorkerMessage({ data }) {
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
-            if ((changed || changedPicker) && mode === "menu" &&
+            if (menu?.search) {
+                const selected = pageList.rows.querySelector('[aria-current="true"]');
+                (menu.cursor < 0 ? knowledgeSearch : selected)?.focus({ preventScroll: true });
+                pageList.scrollArea.scrollTop = knowledgeScroll;
+            } else if (closingKnowledgeSearch) {
+                knowledgeSearchToggle.focus({ preventScroll: true });
+            } else if (changed && menu?.card) {
+                pickerHeading.focus({ preventScroll: true });
+            } else if ((changed || changedPicker) && mode === "menu" &&
                 (context.outcome || menu?.title || menu?.choice || (wasChoosing && menu))) {
                 const selected = activeList.rows.querySelector('[aria-current="true"]') ??
                     outcomeActions.querySelector('[aria-current="true"]:not([disabled])');
@@ -2128,7 +2153,7 @@ main.addEventListener("click", (event) => {
         return;
     }
     const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
-    if (input.type === "menu-row" && ((menu?.store && !menu.choice) || previewBirthChoice)) {
+    if (input.type === "menu-row" && ((menu?.store && !menu.store.inspectOnly && !menu.choice) || previewBirthChoice)) {
         if (request === undefined) return;
         menuCursor = input.code;
         for (const row of activeList.rows.children) {
@@ -2144,6 +2169,7 @@ main.addEventListener("click", (event) => {
         }
         return;
     }
+    if (menu?.search && input.type === "menu-row") knowledgeScroll = pageList.scrollArea.scrollTop;
     if (input.type === "store-action") input.row = menuCursor;
     if (!sendInput(input)) return;
     if (openPanel) showPanel();
@@ -2512,6 +2538,43 @@ function focusSelectedSave() {
     (activeList.rows.querySelector('[aria-current="true"]') ?? activeList.rows).focus({ preventScroll: true });
 }
 
+function knowledgeResults(rows, query) {
+    const words = query.split(/\s+/);
+    const groups = new Map();
+    let count = 0;
+    let section;
+    for (const row of rows) {
+        if (row.sectionOnly) section = row;
+        if (!row.enabled) continue;
+        const group = section.group ?? section.name;
+        const name = row.name.toLowerCase();
+        const detail = row.detail?.toLowerCase() ?? "";
+        const path = `${name} ${section.name.toLowerCase()} › ${detail}`;
+        let rank;
+        if (name === query) rank = 0;
+        else if (detail === query) rank = 1;
+        else if (name.startsWith(query)) rank = 2;
+        else if (name.includes(query)) rank = 3;
+        else if (words.every(word => path.includes(word))) rank = 4;
+        else continue;
+        if (!groups.has(group)) groups.set(group, [[], [], [], [], []]);
+        groups.get(group)[rank].push({ ...row, group,
+            detail: section.group && !row.sectionOnly ? section.name : row.detail });
+        count++;
+    }
+
+    const visible = [];
+    for (const [group, ranked] of groups) {
+        const matches = ranked.flat();
+        const limit = knowledgeLimits.get(group) ?? (groups.size > 1 ? 5 : knowledgePageSize);
+        visible.push(...matches.slice(0, limit));
+        if (matches.length > limit) {
+            visible.push({ group, moreFrom: limit, nextIndex: matches[limit].index });
+        }
+    }
+    return { visible, count };
+}
+
 function renderMenu(state, description = state?.description ?? "") {
     const { screen: menuScreen, description: menuDescription, rows: menuRows,
         sections: menuSections, summary: menuSummary, items: menuItems, empty: menuEmpty } = activeList;
@@ -2551,23 +2614,50 @@ function renderMenu(state, description = state?.description ?? "") {
     if (differentList) birthSelection = undefined;
     else if (state.birth?.preview && state.cursor !== previous.cursor) birthSelection = state.cursor;
     menuCursor = birthSelection ?? state.cursor;
+    const query = state.search ? knowledgeSearch.value.trim().toLowerCase() : "";
+    const results = query ? knowledgeResults(state.rows, query) : undefined;
+    const rows = results?.visible ?? (state.search ? state.rows.filter(row => row.sectionOnly) : state.rows);
     const summary = state.birth?.summary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
-    menuSummary.hidden = !summary;
-    menuSummary.textContent = summary;
+    menuSummary.textContent = results?.count ?
+        `${results.count} ${results.count === 1 ? "match" : "matches"}` : summary;
+    menuSummary.hidden = !menuSummary.textContent;
     menuSections.replaceChildren(...(state.sections ?? []).map((section) => {
         const button = makeInput("menu-section", section.id, section.label);
         button.disabled = section.active;
         button.setAttribute("aria-pressed", String(section.active));
         return button;
     }));
-    menuEmpty.hidden = state.rows.length > 0;
+    menuEmpty.hidden = rows.length > 0;
+    menuEmpty.textContent = query ? "No matches." : "No items.";
     const focused = document.activeElement?.closest("button[data-input]");
     const focusedCode = focused && (menuRows.contains(focused) || outcomeActions.contains(focused)) ?
         focused.dataset.value : undefined;
     let current;
     const endings = [];
     const choices = [];
-    for (const row of state.rows) {
+    if (state.card) {
+        const body = document.createElement("div");
+        body.className = "detail-text";
+        body.id = "knowledge-card-text";
+        renderDescription(body, state.card);
+        choices.push(body);
+    }
+    let group, groupRows;
+    for (const row of rows) {
+        if (row.moreFrom !== undefined) {
+            const more = document.createElement("button");
+            more.type = "button";
+            more.textContent = "Show more";
+            more.setAttribute("aria-label", `Show more in ${row.group}`);
+            more.addEventListener("click", () => {
+                knowledgeLimits.set(row.group, row.moreFrom + knowledgePageSize);
+                pageList.state = undefined;
+                renderMenu(state);
+                menuRows.querySelector(`button[data-value="${row.nextIndex}"]`)?.focus();
+            });
+            choices.push(more);
+            continue;
+        }
         const label = mode === "save-slots" ? saveSlotLabel(row) : row.name;
         const button = makeInput("menu-row", row.index, label);
         button.disabled = !row.enabled;
@@ -2608,10 +2698,47 @@ function renderMenu(state, description = state?.description ?? "") {
             if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
         }
         button.setAttribute("aria-label",
-            [label, state.birth?.preview ? "" : row.detail, row.spellInfo,
+            [label, query && row.group !== label ? row.group : "", state.birth?.preview ? "" : row.detail, row.spellInfo,
                 row.checked === undefined ? row.price : "",
                 row.unaffordable ? "You do not have enough gold for this item." : ""]
                 .filter(Boolean).join(", "));
+        if (row.visual) {
+            const { graphics, attr, symbol, color } = row.visual;
+            const glyph = document.createElement("span");
+            glyph.className = "visible-list-symbol";
+            glyph.setAttribute("aria-hidden", "true");
+            const tiles = graphicsModes.get(graphics);
+            const tile = tiles?.atlas && tileAt(tiles, attr, symbol);
+            if (tile) styleTerminalTile(glyph, tiles, tile);
+            else {
+                glyph.textContent = String.fromCodePoint(symbol);
+                glyph.style.color = color;
+            }
+            button.firstElementChild.replaceWith(glyph);
+        }
+        if (group !== row.group) {
+            group = row.group;
+            groupRows = undefined;
+            if (!query && row.collapsible) {
+                const section = document.createElement("details");
+                const title = document.createElement("summary");
+                title.textContent = group;
+                section.className = "knowledge-stores";
+                section.open = !differentList && !!menuRows.querySelector("details[open]");
+                section.append(title);
+                groupRows = section;
+                choices.push(section);
+            } else if (group) {
+                const heading = document.createElement("h3");
+                heading.textContent = group;
+                choices.push(heading);
+            }
+        }
+        if (groupRows) {
+            groupRows.append(button);
+            if (button === current) groupRows.open = true;
+            continue;
+        }
         if (mode === "save-slots" && row.index > 0 && row.enabled) {
             const controls = document.createElement("div");
             controls.className = "save-slot-row";
@@ -2853,6 +2980,23 @@ function setMessageSearchOpen(open) {
 }
 
 messages.addEventListener("scroll", updateMessageFade, { passive: true });
+knowledgeSearchToggle.addEventListener("click", () => {
+    const opening = !menu?.search;
+    if (!sendInput({ type: "key", code: keyCode(opening ? "/" : "Escape") })) return;
+    if (opening) {
+        knowledgeSearch.value = "";
+        knowledgeScroll = 0;
+        knowledgeSearch.hidden = false;
+        knowledgeSearch.focus({ preventScroll: true });
+    }
+});
+knowledgeSearch.addEventListener("input", () => {
+    if (!menu?.search) return;
+    knowledgeLimits.clear();
+    knowledgeScroll = 0;
+    pageList.state = undefined;
+    renderMenu(menu);
+});
 messageSearchToggle.addEventListener("click", () => {
     const opening = messageSearch.hidden;
     const wasFiltered = Boolean(messageSearch.value.trim());
@@ -3084,6 +3228,21 @@ window.addEventListener("pageshow", () => {
 
 document.addEventListener("keydown", (event) => {
     if (deleteSaveDialog.open || messageDialog.open) return;
+    if (menu?.search || event.target === knowledgeSearch) {
+        if (event.isComposing) return;
+        if (event.key === "Escape") {
+            event.preventDefault();
+            if (!event.repeat) sendInput({ type: "key", code: keyCode("Escape") });
+        } else if (event.key === "ArrowDown" || (event.key === "ArrowUp" && event.target !== knowledgeSearch) ||
+            (event.key === "Enter" && event.target === knowledgeSearch)) {
+            event.preventDefault();
+            const buttons = [...pageList.rows.querySelectorAll("button:enabled")].filter(button => button.getClientRects().length);
+            const step = event.key === "ArrowUp" ? -1 : 1;
+            const next = buttons.indexOf(document.activeElement) + step;
+            (next < 0 ? knowledgeSearch : buttons[Math.min(next, buttons.length - 1)])?.focus();
+        }
+        return;
+    }
     if (!messagePause.hidden) {
         if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
         const code = keyCode(event.key);
@@ -3187,6 +3346,10 @@ document.addEventListener("keydown", (event) => {
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 
     if (event.key === "Tab") return;
+    if (menu?.card && event.target === pickerHeading && event.key === "Enter") {
+        event.preventDefault();
+        return;
+    }
     if (menu && event.key === "Enter") {
         event.preventDefault();
         if (menu.rows.some((row) => row.index === menuCursor && row.enabled)) {
