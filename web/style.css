@@ -177,7 +177,7 @@ dt { color: var(--muted); }
     background: transparent;
     color: var(--muted);
 }
-#monster-sort > .key-hint { margin: 0; color: inherit; }
+#monster-sort > .key-hint { margin: 0; }
 #monster-sort::before {
     content: "";
     width: 0.4em;
