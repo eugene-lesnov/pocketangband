@@ -373,7 +373,8 @@ function draw() {
         const target = aiming && context.target &&
             (view === views.map || containsCell(region, context.target)) ?
             context.target : undefined;
-        const selected = target ?? (view === views.map ? context.mapCell : undefined);
+        const previewCell = map ? context.listPreview?.cell : undefined;
+        const selected = previewCell ?? target ?? (map ? context.mapCell : undefined);
         const cursor = selected ? selected.y * source.width + selected.x : source.cursor;
         const path = aiming && view !== views.terminal ? context.aimPath : undefined;
         const mapActions = view === views.map ? context.mapCell?.actions : undefined;
@@ -381,7 +382,7 @@ function draw() {
         const previousGrid = view.gridElement;
         const cursorCell = mode === "target" && cursor >= 0 ?
             { x: cursor % source.width, y: Math.floor(cursor / source.width) } : undefined;
-        const cell = map ? source.player : cursorCell ?? target ?? context.player;
+        const cell = map ? previewCell ?? source.player : cursorCell ?? target ?? context.player;
         const focusChanged = cell?.x !== view.focusCell?.x || cell?.y !== view.focusCell?.y ||
             cell?.depth !== view.focusCell?.depth;
         const graphicsChanged = source.graphicsMode !== view.rendered?.graphicsMode;
@@ -938,6 +939,10 @@ function isResultsScreen() {
 }
 
 function closeInputPanel(closeKeyboard = true) {
+    if (context.listPreview) {
+        showListPreview();
+        return true;
+    }
     if (!mapLists.hidden) {
         setMapListsOpen(false);
         openMapLists.focus({ preventScroll: true });
@@ -1010,7 +1015,7 @@ function updateControls() {
 
 function updateMenuControls(disabled, choosing) {
     pickerToggle.disabled = disabled || !choosing;
-    monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel;
+    monsterSort.hidden = mode !== "details" || context.sortByExp === undefined || !!openPanel || !!context.listPreview;
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
 
@@ -1116,7 +1121,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     terminalKeys.classList.toggle("results-controls", mode === "victory" || resultChild || mode === "retire");
 
     const aiming = mode === "aim";
-    const closesScreen = ["details", "character", "overview"].includes(mode);
+    const closesScreen = !context.listPreview && ["details", "character", "overview"].includes(mode);
     const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
     const [key, label] = getConfirmAction(selectedRow, closesScreen);
     const directMenu = playingGame && mode === "menu" && !!menu && !menu.store;
@@ -1125,8 +1130,8 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     confirmKey.textContent = label;
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
-    confirmKey.hidden = !!openPanel || !!menu?.options || !!menu?.birth || resultChild || isDirectionPrompt() ||
-        mode === "key" || menu?.choice || directMenu || showTargetControls || noAimTarget;
+    confirmKey.hidden = !!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth || resultChild ||
+        isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls || noAimTarget;
     confirmKey.disabled = mode === "direction" || noAimTarget || (mode === "target" && !context.canSelect) ||
         (!!menu && !selectedRow);
 
@@ -1364,7 +1369,7 @@ function updatePrompt() {
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
-    journal.hidden = (hud.hidden && !showResult) || saveNotice;
+    journal.hidden = !!context.listPreview || (hud.hidden && !showResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
     updateJournal();
 }
@@ -1407,7 +1412,7 @@ function updateView(state = world, region = views.target.crop) {
     controls.removeAttribute("aria-modal");
     controls.removeAttribute("aria-labelledby");
     views.target.crop = region;
-    activeView = world && context.worldView ? views.map :
+    activeView = context.listPreview || (world && context.worldView) ? views.map :
         (isTargeting() || isDirectionPrompt()) && region ? views.target : views.terminal;
 
     const { fullScreen, inGamePanel, intro, title } = updateScreenContents();
@@ -1417,15 +1422,15 @@ function updateView(state = world, region = views.target.crop) {
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
     }
-    const showMap = activeView !== views.terminal && !activeView.viewport.hidden;
+    const showWorld = !context.listPreview && activeView !== views.terminal && !activeView.viewport.hidden;
     main.classList.toggle("in-play", playingGame);
-    main.classList.toggle("in-world", showMap);
+    main.classList.toggle("in-world", showWorld);
     main.classList.toggle("in-game-panel", inGamePanel);
     main.classList.toggle("intro", intro);
-    hud.hidden = !showMap || !world;
+    hud.hidden = !showWorld || !world;
     mapStatus.hidden = hud.hidden;
     if (hud.hidden) monsterHealth.hidden = true;
-    viewTitle.textContent = title;
+    viewTitle.textContent = context.listPreview?.title ?? title;
     zoom.hidden = activeView.viewport.hidden;
     if (previous !== activeView) {
         if (activeView === views.target) {
@@ -1474,16 +1479,24 @@ function updateScreenContents() {
     return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome }) };
 }
 
+function showListPreview(preview) {
+    const focus = preview ? cancelKey : context.listPreview.row;
+    context.listPreview = preview;
+    updateView();
+    updateControls();
+    focus.focus({ preventScroll: true });
+}
+
 function updateDetailsScreen() {
     const { detail, list } = context;
     const content = list ?? detail;
-    detailsScreen.hidden = detail === undefined;
+    detailsScreen.hidden = detail === undefined || !!context.listPreview;
     if (detailsScreen.hidden || renderedDetails === content) return;
 
     renderedDetails = content;
     detailsScreen.classList.toggle("visible-list", !!list);
     if (list) {
-        detailsScreen.replaceChildren(...list.map(({ text, location, symbol, color }) => {
+        detailsScreen.replaceChildren(...list.map(({ text, location, symbol, color, cell }) => {
             if (location === undefined) {
                 const heading = document.createElement("p");
                 heading.className = "visible-list-heading";
@@ -1491,8 +1504,17 @@ function updateDetailsScreen() {
                 if (color) heading.style.color = color;
                 return heading;
             }
-            const row = document.createElement("div");
+            const row = document.createElement(cell ? "button" : "div");
             row.className = "visible-list-row";
+            if (cell) {
+                const title = `${text} · ${location}`;
+                row.type = "button";
+                row.setAttribute("aria-label", `Show on map: ${title}`);
+                row.addEventListener("click", () => {
+                    if (request !== undefined && views.map.frame && context.list === list)
+                        showListPreview({ cell, title, row });
+                });
+            }
             const glyph = document.createElement("span");
             glyph.className = "visible-list-symbol";
             glyph.setAttribute("aria-hidden", "true");
@@ -3074,7 +3096,7 @@ document.addEventListener("keydown", (event) => {
         event.preventDefault();
         return;
     }
-    if (openPanel) return;
+    if (openPanel || context.listPreview) return;
     if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase();
         if (mode === "key" && event.ctrlKey && !event.metaKey && /^[a-z]$/.test(key)) {

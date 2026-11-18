@@ -952,6 +952,14 @@ main:has(#character-screen:not([hidden])) #terminal-keys > [hidden] { display: n
     gap: 0.5rem;
     padding-block: 0.25rem;
 }
+button.visible-list-row {
+    width: 100%;
+    align-content: center;
+    margin-block: 0.125rem;
+    padding-inline: 0.375rem;
+    font: inherit;
+    text-align: start;
+}
 .visible-list-symbol { font-family: var(--mono); }
 .visible-list-name { white-space: pre-wrap; }
 .visible-list-location { color: var(--muted); font: 0.75rem var(--mono); white-space: nowrap; }

@@ -283,6 +283,17 @@ void web_add_list_row(const char *text, const char *location, wchar_t symbol, in
     add_list_row(text, location, symbol, color);
 }
 
+EM_JS(void, set_list_row_cell, (int x, int y), {
+    Module['inputContext'].list.at(-1).cell = { x, y };
+});
+
+void web_set_list_row_cell(int dx, int dy)
+{
+    const term *map = angband_term[WEB_MAP_TERM];
+    set_list_row_cell((player->grid.x + dx - map->offset_x) * tile_width,
+        (player->grid.y + dy - map->offset_y) * tile_height);
+}
+
 EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
     let detail = "";
     for (let i = 0; i < length; i += 4096) {
