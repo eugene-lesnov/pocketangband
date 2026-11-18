@@ -62,6 +62,7 @@ const characterProgress = document.querySelector("#character-progress");
 const characterProgressLabel = document.querySelector("#character-progress-label");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
+const messageSearchToggle = document.querySelector("#message-search-toggle");
 const messageSearch = document.querySelector("#message-search");
 const messageSearchStatus = document.querySelector("#message-search-status");
 const latestMessage = document.querySelector("#latest-message");
@@ -1776,7 +1777,7 @@ function handleWorkerMessage({ data }) {
             if (!messageDialog.open || data.recall !== messageRecallRequest) break;
             recalledMessages = (data.entries ?? (world?.lastMessage ? [world.lastMessage] : []))
                 .filter(({ text }) => text.trim() && !/^=+$/.test(text.trim()));
-            messageSearch.disabled = !recalledMessages.length;
+            messageSearchToggle.disabled = !recalledMessages.length;
             renderMessageRecall();
             break;
         case "restarting":
@@ -2240,7 +2241,7 @@ for (const button of directionButtons) {
 }
 for (const [button, key] of [[closeMapCellActions, "Escape"], [stopAction, "Escape"],
     [monsterSort, "x"],
-    [messageDialog.querySelector("button"), "Escape"],
+    [messageDialog.querySelector("form button"), "Escape"],
     [continueMessage, "Enter"], [document.querySelector("#confirm-name"), "Enter"]]) setKeyHint(button, key);
 
 function commandKey([key, , alternative], roguelike) {
@@ -2788,11 +2789,31 @@ function updateMessageFade() {
     messages.classList.toggle("scrolled", messages.scrollTop > 1);
 }
 
+function setMessageSearchOpen(open) {
+    messageSearch.hidden = !open;
+    messageSearchToggle.setAttribute("aria-expanded", String(open));
+    messageSearchToggle.setAttribute("aria-label", open ? "Close search" : "Find messages");
+    if (!open) messageSearch.value = "";
+}
+
 messages.addEventListener("scroll", updateMessageFade, { passive: true });
+messageSearchToggle.addEventListener("click", () => {
+    const opening = messageSearch.hidden;
+    const wasFiltered = Boolean(messageSearch.value.trim());
+    setMessageSearchOpen(opening);
+    if (wasFiltered) renderMessageRecall();
+    (opening ? messageSearch : messageSearchToggle).focus({ preventScroll: true });
+});
 messageSearch.addEventListener("input", renderMessageRecall);
+messageSearch.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        messages.focus({ preventScroll: true });
+    }
+});
 journal.addEventListener("click", () => {
-    messageSearch.value = "";
-    messageSearch.disabled = true;
+    setMessageSearchOpen(false);
+    messageSearchToggle.disabled = true;
     messageSearchStatus.textContent = "Loading messages…";
     messageSearchStatus.hidden = false;
     messages.replaceChildren();
