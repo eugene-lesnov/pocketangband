@@ -34,6 +34,7 @@ const hp = document.querySelector("#hp");
 const hpValue = document.querySelector("#hp-value");
 const sp = document.querySelector("#sp");
 const spValue = document.querySelector("#sp-value");
+const acValue = document.querySelector("#ac-value");
 const speed = document.querySelector("#speed");
 const monsterHealth = document.querySelector("#monster-health");
 const monsterName = document.querySelector("#monster-name");
@@ -604,6 +605,7 @@ function renderWorld(state, previousSpeed) {
     hp.classList.toggle("low", state.lowHp);
     renderResource(sp, spValue, state.sp, state.maxSp);
     sp.hidden = !state.magic;
+    acValue.textContent = state.ac;
     renderMonsterHealth(state.monsterHealth);
     for (const [index, { label, value, reduced, lowered }] of state.stats.entries()) {
         let stat = hudStats.children[index];
@@ -634,6 +636,7 @@ function renderWorld(state, previousSpeed) {
     hiddenConditionCount.textContent = `+${hiddenCount}`;
     vitals.setAttribute("aria-label", ["Open Character", `HP ${hpValue.textContent}`,
         state.magic && `SP ${spValue.textContent}`,
+        `Armor class ${state.ac}`,
         `Speed ${state.speed}`, state.depth ? `Depth ${state.depth * 50} feet` : "Town",
         ...state.stats.map(({ label, value, reduced }) => `${label} ${value}${reduced ? " (reduced)" : ""}`), food, ...labels,
         hiddenCount > 0 && `${hiddenCount} hidden ${hiddenCount === 1 ? "condition" : "conditions"}`]
@@ -837,7 +840,7 @@ function renderCharacter() {
     characterName.textContent = sheet.name;
     characterNameEdit.firstElementChild.textContent = sheet.name || "Change name";
     characterNameEdit.setAttribute("aria-label", sheet.name ? `Change name for ${sheet.name}` : "Change name");
-    characterClass.textContent = `${sheet.race} ${sheet.className} · Level ${sheet.level}`;
+    characterClass.textContent = `${sheet.race} ${sheet.className} · ${sheet.title} · Level ${sheet.level}`;
 
     const rowsFor = (section) => sheet.rows.filter((row) => row.section === section);
     const vitals = [
@@ -858,9 +861,10 @@ function renderCharacter() {
         ...vitals,
         ...combat.filter(({ label }) => label === "Armor"),
         { label: "Gold", value: progress.get("Gold") },
-        ...(reviewing ? background.filter(({ label }) => label === "Title") :
-            [{ label: hasNextLevel ? "Cur Exp / Adv Exp" : "Cur Exp",
-                value: hasNextLevel ? `${experience} / ${nextLevel}` : experience }]),
+        ...(reviewing ? [] : [{
+            label: hasNextLevel ? "Cur Exp / Adv Exp" : "Cur Exp",
+            value: hasNextLevel ? `${experience} / ${nextLevel}` : experience,
+        }]),
     ]));
     if (!reviewing) renderConditions(characterConditions);
 
@@ -888,8 +892,7 @@ function renderCharacter() {
     ]));
     appendCharacterGroup(characterProgress, "Turns used:",
         background.filter(({ label }) => turnCounters.includes(label)));
-    appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) =>
-        label !== "Title" && !turnCounters.includes(label)));
+    appendCharacterGroup(characterProgress, "Background", background.filter(({ label }) => !turnCounters.includes(label)));
     if (sheet.history) {
         if (reviewing) {
             const heading = document.createElement("h3");

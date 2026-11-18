@@ -437,11 +437,11 @@ void web_download_file(const char *path, const char *filename)
     if (path) file_delete(path);
 }
 
-EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
+EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name, const char *title,
         int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic), {
     Module['characterSheet'] = {
         name: UTF8ToString(name), race: UTF8ToString(race), className: UTF8ToString(class_name),
-        level, history: UTF8ToString(history), hp, maxHp: max_hp, sp, maxSp: max_sp,
+        title: UTF8ToString(title), level, history: UTF8ToString(history), hp, maxHp: max_hp, sp, maxSp: max_sp,
         magic: !!magic, rows: [], defenses: [],
     };
 });
@@ -724,10 +724,10 @@ static void publish_quick_actions(void)
 
 enum { LOW_LIGHT_FUEL = 50 };
 
-EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
+EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, int ac, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
         const char *last_message, int repeat_count, bool roguelike, bool commands, int turns), {
-    Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
+    Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, ac, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, roguelike: !!roguelike, turns,
         lastMessage: last_message ? { text: UTF8ToString(last_message), count: repeat_count } : null,
@@ -942,7 +942,8 @@ static void publish_world(bool commands)
 
     if (commands) publish_quick_actions();
     send_world(player->depth, player->chp, player->mhp, player->csp, player->msp,
-        player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
+        player->known_state.ac + player->known_state.to_a, player_hp_attr(player) == COLOUR_RED,
+        magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
         player->grid.x - map->offset_x, player->grid.y - map->offset_y,
         messages_num() ? message_str(0) : NULL, message_count(0),

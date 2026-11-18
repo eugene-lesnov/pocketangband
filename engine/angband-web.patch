@@ -1593,7 +1593,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_birth_roll(bool previous, int hp, int mana);
 +void web_add_birth_stat(const char *label, int base, const char *value, int cost,
 +	bool can_decrease, bool can_increase);
-+void web_set_character(const char *name, const char *race, const char *class_name,
++void web_set_character(const char *name, const char *race, const char *class_name, const char *title,
 +	int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic);
 +void web_character_row(int section, const char *label, const char *value);
 +void web_character_stat_breakdown(const char *base, int race_bonus, int class_bonus,
@@ -3240,10 +3240,10 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +void web_character_sheet(bool preview)
 +{
 +	web_set_character(player->full_name, player->race->name,
-+		player->class->name, player->lev, player->history, player->chp,
-+		player->mhp, player->csp, player->msp, player->class->magic.total_spells > 0);
++		player->class->name, show_title(), player->lev, player->history,
++		player->chp, player->mhp, player->csp, player->msp,
++		player->class->magic.total_spells > 0);
 +
-+	if (preview) web_character_row(1, "Title", show_title());
 +	for (size_t i = 1; i < N_ELEMENTS(panels); ++i) {
 +		struct panel *panel = panels[i].panel();
 +		for (size_t j = 0; j < panel->len; ++j) {
