@@ -698,10 +698,6 @@ button > .key-hint {
     grid-auto-rows: minmax(var(--pad-key-size), auto);
     grid-template-columns: minmax(0, 1fr) minmax(90px, 1fr);
 }
-.game-controls-row:has(#play-keys:not([hidden], .stopping)) :is(#play-keys, #direction-pad) {
-    min-height: calc(4 * var(--button-min-height) + 0.75rem);
-    grid-auto-rows: 1fr;
-}
 #keyboard-utilities { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 2fr); }
 #repeat-action .key-hint { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 #hero-actions[aria-expanded="true"] { border-color: var(--accent); }
