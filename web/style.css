@@ -713,12 +713,12 @@ button > .key-hint {
 #target-types [aria-pressed="true"] { color: #171612; background: var(--accent); }
 #target-types [aria-pressed="true"] .key-hint { color: inherit; }
 #terminal-keys { grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr); }
-:is(#confirm-key, #confirm-target, #confirm-name, #confirm-text) { border-color: #9c7749; }
+:is(#confirm-key, #confirm-target, #confirm-name, #confirm-text, #character-name-done) { border-color: #9c7749; }
 .keyboard-icon { vertical-align: middle; }
 #keyboard-toggle { color: var(--accent); }
 #keyboard-toggle[aria-expanded="true"] { color: #171612; background: var(--accent); }
 #terminal-keys > [hidden] { display: block !important; visibility: hidden; }
-#terminal-keys > :is(#edit-history, #birth-start-over, #target-inspect, #nearest)[hidden],
+#terminal-keys > :is(#edit-history, #birth-start-over, #target-inspect, #nearest, #character-dump)[hidden],
 #terminal-keys.birth-confirmation-controls > [hidden],
 #terminal-keys.options-controls > [hidden] {
     display: none !important;
@@ -774,6 +774,24 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 #character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }
 .character-identity h3 { margin: 0; font-size: 1.25rem; color: var(--accent); overflow-wrap: anywhere; }
 .character-identity p { margin-top: 0.125rem; font-size: 0.875rem; color: var(--muted); }
+#character-name-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: 100%;
+    padding-inline: 0.25rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent);
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-align: start;
+    overflow-wrap: anywhere;
+}
+#character-name-edit > [aria-hidden] { flex: none; font-size: 1rem; }
+#character-name-fields label { color: var(--muted); font-size: 0.875rem; }
+#character-name-fields .key-row { display: flex; justify-content: end; }
+#character-name-fields button { min-width: 4.5rem; }
 #character-summary .character-rows {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -879,17 +897,14 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
 .birth-attributes th { color: var(--muted); font-weight: 400; }
 .birth-attributes th:first-child { text-align: left; }
 .birth-attributes td:last-child { color: var(--accent); }
-main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys { grid-template-columns: 60px minmax(0, 1fr); }
-main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#keyboard-toggle[hidden]) {
-    grid-template-columns: minmax(0, 1fr);
+main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys {
+    display: flex;
 }
-main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys:has(#keyboard-toggle[hidden]) > [hidden] {
-    display: none !important;
-}
-main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !important; }
+main:has(#character-screen:not([hidden], .birth-review)) #terminal-keys > button { flex: 1; }
+main:has(#character-screen:not([hidden])) #terminal-keys > [hidden] { display: none !important; }
 .view:has(#name-screen:not([hidden])) { flex: none; }
 #name-screen, #text-screen { padding: 0.75rem 0.625rem; }
-#name-fields, #text-fields { display: grid; gap: 0.5rem; }
+#name-fields, #text-fields, #character-name-fields { display: grid; gap: 0.5rem; }
 #name-fields .key-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #name-prompt, #text-prompt { color: var(--accent); font-size: 0.875rem; overflow-wrap: anywhere; }
 #details-screen {
@@ -911,7 +926,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
 .visible-list-symbol { font-family: var(--mono); }
 .visible-list-name { white-space: pre-wrap; }
 .visible-list-location { color: var(--muted); font: 0.75rem var(--mono); white-space: nowrap; }
-#edit-value, #name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value {
+#edit-value, #name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value, #character-name-value {
     min-height: 2.75rem;
     padding: 0.65rem;
     border: 1px solid var(--border);
@@ -921,7 +936,7 @@ main:has(#character-screen:not([hidden])) #cancel-key[hidden] { display: none !i
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
-#name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value {
+#name-value, #text-value, #text-history-value, #birth-name-value, #birth-history-value, #character-name-value {
     width: 100%; min-width: 0; color: inherit;
 }
 #edit-value .caret { border-inline-start: 2px solid var(--accent); }

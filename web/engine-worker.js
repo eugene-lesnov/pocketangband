@@ -59,7 +59,8 @@ self.addEventListener("message", ({ data }) => {
         if (waiting?.mode !== "command" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 1 || data.code > 9 || data.code === 5) return;
     } else if (data.type === "submit-name") {
-        if (!["name", "birth-stats", "birth-roll"].includes(waiting?.mode) ||
+        const renaming = waiting?.mode === "character" && waiting.playing && waiting.context.nameMaxBytes !== undefined;
+        if (!(renaming || ["name", "birth-stats", "birth-roll"].includes(waiting?.mode)) ||
             data.request !== waiting.request || typeof data.value !== "string") return;
     } else if (data.type === "submit-history") {
         if (!["birth-stats", "birth-roll"].includes(waiting?.mode) ||

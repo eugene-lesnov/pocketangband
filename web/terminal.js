@@ -45,6 +45,11 @@ const nourishment = document.querySelector("#nourishment");
 const hiddenConditionCount = document.querySelector("#hidden-condition-count");
 const characterScreen = document.querySelector("#character-screen");
 const characterName = document.querySelector("#character-name");
+const characterNameEdit = document.querySelector("#character-name-edit");
+const characterNameEditor = document.querySelector("#character-name-editor");
+const characterNameFields = document.querySelector("#character-name-fields");
+const characterNameValue = document.querySelector("#character-name-value");
+const characterDump = document.querySelector("#character-dump");
 const characterClass = document.querySelector("#character-class");
 const characterSummary = document.querySelector("#character-summary");
 const characterAttributes = document.querySelector("#character-attributes");
@@ -234,6 +239,7 @@ const screenTitles = new Map([
 const modesWithoutKeyboard = new Set([
     "splash", "save-slots", "birth-stats", "birth-roll", "birth-review", "history",
     "direction", "run-direction", "quantity", "option-number", "rest", "confirm", "overview", "details", "victory", "retire",
+    "character",
 ]);
 const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
@@ -798,7 +804,8 @@ function renderCharacter() {
     const reviewing = mode === "birth-review";
     if (!sheet || (!reviewing && !world)) return;
     characterName.textContent = sheet.name;
-    characterName.hidden = !sheet.name;
+    characterNameEdit.firstElementChild.textContent = sheet.name || "Change name";
+    characterNameEdit.setAttribute("aria-label", sheet.name ? `Change name for ${sheet.name}` : "Change name");
     characterClass.textContent = `${sheet.race} ${sheet.className} · Level ${sheet.level}`;
 
     const rowsFor = (section) => sheet.rows.filter((row) => row.section === section);
@@ -946,19 +953,26 @@ function updateControls() {
     const choosing = isChoosing();
     const outcome = isOutcomeScreen();
     const resultChild = isResultsScreen() || menu?.title === "Create spoilers";
+    const liveCharacter = mode === "character" && playingGame;
+    const editableName = liveCharacter && context.nameMaxBytes !== undefined;
+    const editingName = !characterNameEditor.hidden;
     const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
-        !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild && (mode !== "character" || playingGame);
+        !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;
 
+    characterName.hidden = editableName || !context.character?.name;
+    characterNameEdit.hidden = !editableName || editingName;
+    characterNameEdit.disabled = characterNameFields.disabled = disabled;
+    characterDump.hidden = !liveCharacter;
     renderAppUpdate();
     updateMenuControls(disabled, choosing);
     const showPad = updateDirectionPad(disabled, choosing, stopVisible);
     updateMapControls(disabled, showKeyboard, stopVisible);
     const editingHistory = updateBirthControls(disabled);
-    updateTerminalControls({ disabled, outcome, resultChild, stopVisible,
-        showPad, showTargetControls, editingHistory });
+    updateTerminalControls({ disabled: disabled || editingHistory || editingName, outcome,
+        resultChild, stopVisible, showPad, showTargetControls });
     updateTargetControls(disabled, showTargetControls, showKeyboard);
     updatePromptControls(disabled, stopVisible);
     updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVisible);
@@ -1064,11 +1078,10 @@ function getCancelLabel() {
     return mode === "command" ? "Esc" : "Back";
 }
 
-function updateTerminalControls({ disabled, outcome, resultChild, stopVisible,
-    showPad, showTargetControls, editingHistory }) {
+function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, showPad, showTargetControls }) {
     const showFooter = mode !== undefined && !isTextEntry(mode) && !stopVisible && !outcome &&
         (mode !== "command" || !!openPanel);
-    setActions(terminalKeys, showFooter, disabled || editingHistory);
+    setActions(terminalKeys, showFooter, disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("single-row-controls", (playingGame || mode === "save-slots") && !showPad);
     terminalKeys.classList.toggle("results-controls", mode === "victory" || resultChild || mode === "retire");
@@ -1422,7 +1435,7 @@ function updateScreenContents() {
 
     updateDetailsScreen();
     const textEntry = isTextEntry(mode);
-    main.classList.toggle("text-viewport", birthStats || textEntry);
+    if (mode !== "character") characterNameEditor.hidden = true;
     updateTextViewport();
     birthStatsScreen.hidden = !birthStats || !!openPanel;
     nameScreen.hidden = mode !== "name";
@@ -1592,6 +1605,9 @@ function handleWorkerMessage({ data }) {
             const changedPicker = data.menu?.choice &&
                 (data.menu.selectionTitle !== menu?.selectionTitle ||
                     data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
+            const finishingNameEdit = !characterNameEditor.hidden;
+            const returningFromCharacterDump = mode === "results-file" && data.mode === "character" && data.playing;
+            characterNameEditor.hidden = true;
             if (mode === "results-file") clearResultFile();
             if (changed) {
                 const stayingOnMap = activeView === views.map &&
@@ -1669,7 +1685,9 @@ function handleWorkerMessage({ data }) {
                     selected.scrollIntoView({ block: "nearest" });
                 }
             }
-            if (changed && !isChoosing() && !characterScreen.hidden) focusCharacter();
+            if (mode === "character" && finishingNameEdit) characterNameEdit.focus({ preventScroll: true });
+            else if (returningFromCharacterDump) characterDump.focus({ preventScroll: true });
+            else if (changed && !isChoosing() && !characterScreen.hidden) focusCharacter();
             if (mode === "command" && characterTrigger) {
                 characterTrigger.focus({ preventScroll: true });
                 characterTrigger = undefined;
@@ -1855,6 +1873,34 @@ function submitName(field, maxBytes) {
     return sendInput({ type: "submit-name", value });
 }
 
+function editCharacterName(open) {
+    if (open) {
+        if (characterNameEdit.hidden || characterNameEdit.disabled || !messagePause.hidden) return;
+        characterNameValue.value = context.value;
+        characterNameValue.setCustomValidity("");
+    }
+    characterNameEditor.hidden = !open;
+    updateTextViewport();
+    updateControls();
+    (open ? characterNameValue : characterNameEdit).focus({ preventScroll: true });
+}
+
+characterNameEdit.addEventListener("click", () => editCharacterName(true));
+characterNameValue.addEventListener("input", () => characterNameValue.setCustomValidity(""));
+document.querySelector("#character-name-cancel").addEventListener("click", () => editCharacterName(false));
+characterNameEditor.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!characterNameValue.value.trim()) {
+        characterNameValue.setCustomValidity("Enter a character name.");
+        characterNameValue.reportValidity();
+        return;
+    }
+    if (submitName(characterNameValue, context.nameMaxBytes)) {
+        characterNameValue.blur();
+        updateControls();
+    }
+});
+
 function activeTextField() {
     return context.multiline ? textHistoryValue : textValue;
 }
@@ -1921,6 +1967,7 @@ document.querySelector("#birth-history-done").addEventListener("click", () => {
 });
 
 function updateTextViewport() {
+    main.classList.toggle("text-viewport", !!context.birthStats || isTextEntry(mode) || !characterNameEditor.hidden);
     if (main.classList.contains("text-viewport") && window.visualViewport) {
         main.style.setProperty("--text-viewport-height", `${window.visualViewport.height}px`);
     } else {
@@ -2949,6 +2996,13 @@ document.addEventListener("keydown", (event) => {
         return;
     }
     if (mode === undefined || saving || deletingSave || event.isComposing || event.altKey) return;
+    if (!characterNameEditor.hidden) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            if (request !== undefined && !event.repeat) editCharacterName(false);
+        }
+        return;
+    }
     if (!birthHistoryEditor.hidden) {
         if (event.key === "Escape") {
             event.preventDefault();
@@ -3021,6 +3075,11 @@ document.addEventListener("keydown", (event) => {
     }
     if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape") return;
     if (mode === "birth-review" && !["Enter", "Escape", "s", "S"].includes(event.key)) return;
+    if (mode === "character" && event.key === "c" && !characterNameEdit.hidden) {
+        event.preventDefault();
+        if (!event.repeat) editCharacterName(true);
+        return;
+    }
     if (mode === "character" && characterScreen.contains(event.target) &&
         [" ", "ArrowUp", "ArrowDown"].includes(event.key)) return;
 

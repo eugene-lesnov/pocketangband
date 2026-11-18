@@ -40,6 +40,7 @@
 #include "ui-output.h"
 #include "ui-player.h"
 #include "ui-prefs.h"
+#include "z-file.h"
 #include "z-type.h"
 #include <emscripten.h>
 
@@ -355,12 +356,26 @@ EM_JS(void, web_add_results_entry, (const char *text, const char *detail, bool h
     });
 });
 
-EM_JS(void, web_set_results_file, (const char *title, const char *path, const char *filename), {
+EM_JS(void, set_results_file, (const char *title, const char *path, const char *filename), {
     Module['inputContext'] = { resultsFile: {
         title: UTF8ToString(title), filename: UTF8ToString(filename),
         data: path ? Module['readResultsFile'](UTF8ToString(path)) : undefined,
     } };
 });
+
+void web_wait_for_back(enum web_input_mode mode)
+{
+    enum web_input_mode previous = web_set_input_mode(mode);
+    while (inkey().code != ESCAPE) {}
+    web_set_input_mode(previous);
+}
+
+void web_show_generated_file(const char *title, const char *path, const char *filename)
+{
+    set_results_file(title, path, filename);
+    if (path) file_delete(path);
+    web_wait_for_back(WEB_INPUT_RESULTS_FILE);
+}
 
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
         int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic), {

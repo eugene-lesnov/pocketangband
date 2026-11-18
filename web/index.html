@@ -150,6 +150,19 @@
             <section id="character-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
                 <div class="character-identity">
                     <h3 id="character-name"></h3>
+                    <button id="character-name-edit" type="button" aria-controls="character-name-editor"
+                        aria-keyshortcuts="C" hidden><span></span><span aria-hidden="true">✎</span></button>
+                    <form id="character-name-editor" hidden>
+                        <fieldset id="character-name-fields" disabled>
+                            <label for="character-name-value">Character name</label>
+                            <input id="character-name-value" type="text" autocomplete="off" autocapitalize="words"
+                                autocorrect="off" spellcheck="false" enterkeyhint="done" required>
+                            <div class="key-row">
+                                <button id="character-name-cancel" type="button">Cancel</button>
+                                <button id="character-name-done" type="submit">Done</button>
+                            </div>
+                        </fieldset>
+                    </form>
                     <p id="character-class"></p>
                 </div>
                 <div id="character-summary"></div>
@@ -299,6 +312,7 @@
                         </button>
                         <button id="edit-history" type="button" data-key="n" hidden>Edit history</button>
                         <button id="birth-start-over" type="button" data-key="s" hidden>Start over</button>
+                        <button id="character-dump" type="button" data-key="f" hidden>Character dump</button>
                         <button id="confirm-key" type="button" data-key="Enter">Continue</button>
                     </fieldset>
                 </div>

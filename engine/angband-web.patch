@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,102 @@
+@@ -24,6 +24,103 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1578,7 +1578,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_results_list(const char *title);
 +void web_add_results_section(const char *title);
 +void web_add_results_entry(const char *text, const char *detail, bool highlighted);
-+void web_set_results_file(const char *title, const char *path, const char *filename);
++void web_wait_for_back(enum web_input_mode mode);
++void web_show_generated_file(const char *title, const char *path, const char *filename);
 +void web_set_birth_menu(const char *title, const char *summary, bool preview);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
 +void web_set_birth_name(const char *name, size_t size);
@@ -1621,7 +1622,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +187,7 @@ ui_event inkey_m(void);
+@@ -92,6 +189,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -3240,21 +3241,91 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  
  /**
   * Write a character dump
-@@ -1238,7 +1348,14 @@ void do_cmd_change_name(void)
+@@ -1208,6 +1318,20 @@
+ 
+ 
+ 
++#ifdef __EMSCRIPTEN__
++void web_show_character_dump(void)
++{
++	char filename[PLAYER_NAME_LEN + sizeof(".txt")];
++	const char *path = "/tmp/pocketband-character.txt";
++	strnfmt(filename, sizeof(filename), "%s.txt",
++		player->full_name[0] ? player->full_name : "Angband");
++	for (char *ch = filename; *ch; ch++) {
++		if (strchr("<>:\"/\\|?*", *ch)) *ch = '_';
++	}
++	web_show_generated_file("Character dump", dump_save(path) ? path : NULL, filename);
++}
++#endif
++
+ #define INFO_SCREENS 2 /* Number of screens in character info mode */
+ 
+ 
+@@ -1238,41 +1362,63 @@ void do_cmd_change_name(void)
  		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
  
  		/* Query */
 +#ifdef __EMSCRIPTEN__
 +		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CHARACTER);
++		if (!arg_force_name) web_set_name_value(player->full_name, sizeof(player->full_name));
 +		web_character_sheet(false);
 +#endif
  		ke = inkey_ex();
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
++		if (ke.type == EVT_WEB_NAME) {
++			char name[PLAYER_NAME_LEN];
++			if (web_read_text(name, sizeof(name)) && !arg_force_name &&
++					name[strspn(name, " ")] != '\0') {
++				my_strcpy(player->full_name, name, sizeof(player->full_name));
++			}
++			continue;
++		}
 +#endif
  
  		if ((ke.type == EVT_KBRD)||(ke.type == EVT_BUTTON)) {
  			switch (ke.key.code) {
+ 				case ESCAPE: more = false; break;
++#ifndef __EMSCRIPTEN__
+ 				case 'c': {
+ 					if(arg_force_name)
+ 						msg("You are not allowed to change your name!");
+ 					else {
+ 					char namebuf[32] = "";
+ 
+ 					/* Set player name */
+ 					if (get_character_name(namebuf, sizeof namebuf))
+ 						my_strcpy(player->full_name, namebuf,
+ 								  sizeof(player->full_name));
+ 					}
+ 
+ 					break;
+ 				}
+ 
++#endif
+ 				case 'f': {
++#ifdef __EMSCRIPTEN__
++					web_show_character_dump();
++#else
+ 					char buf[1024];
+ 					char fname[80];
+ 
+ 					/* Get the filesystem-safe name and append .txt */
+ 					player_safe_name(fname, sizeof(fname), player->full_name, false);
+ 					my_strcat(fname, ".txt", sizeof(fname));
+ 
+ 					if (get_file(fname, buf, sizeof buf)) {
+ 						if (dump_save(buf))
+ 							msg("Character dump successful.");
+ 						else
+ 							msg("Character dump failed!");
+ 					}
++#endif
+ 					break;
+ 				}
+ 				
+ 				case 'h':
 diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
 --- a/src/ui-knowledge.c
 +++ b/src/ui-knowledge.c
@@ -4165,7 +4236,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  /**
   * Write formatted string `fmt` on line `y`, centred between points x1 and x2.
   */
-@@ -156,11 +164,83 @@ static void display_winner(void)
+@@ -156,11 +164,63 @@ static void display_winner(void)
  }
  
  
@@ -4179,13 +4250,6 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +	web_set_outcome(kind, player->full_name, player->race->name,
 +		player->class->name, player->lev, player->depth, player->exp,
 +		player->au, player->died_from, outcome_time);
-+}
-+
-+static void web_wait_for_back(enum web_input_mode mode)
-+{
-+	enum web_input_mode previous = web_set_input_mode(mode);
-+	while (inkey().code != ESCAPE) {}
-+	web_set_input_mode(previous);
 +}
 +
 +static void web_results_item(const struct object *object, const char *slot)
@@ -4222,14 +4286,6 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +	}
 +	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
 +}
-+
-+static void web_show_generated_file(const char *title, const char *path,
-+		const char *filename)
-+{
-+	web_set_results_file(title, path, filename);
-+	web_wait_for_back(WEB_INPUT_RESULTS_FILE);
-+	if (path) file_delete(path);
-+}
 +#endif
 +
 +
@@ -4239,17 +4295,12 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  static void death_file(const char *title, int row)
  {
 +#ifdef __EMSCRIPTEN__
-+	char filename[80];
-+	const char *path = "/tmp/pocketband-character.txt";
-+	player_safe_name(filename, sizeof(filename), player->full_name, false);
-+	if (!filename[0]) my_strcpy(filename, "Angband", sizeof(filename));
-+	my_strcat(filename, ".txt", sizeof(filename));
-+	web_show_generated_file("Character dump", dump_save(path) ? path : NULL, filename);
++	web_show_character_dump();
 +#else
  	char buf[1024];
  	char ftmp[80];
  
-@@ -185,6 +265,7 @@ static void death_file(const char *title, int row)
+@@ -185,6 +245,7 @@ static void death_file(const char *title, int row)
  		/* Flush messages */
  		event_signal(EVENT_MESSAGE_FLUSH);
  	}
@@ -4257,7 +4308,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  }
  
  /**
-@@ -192,6 +273,13 @@ static void death_file(const char *title, int row)
+@@ -192,6 +253,13 @@ static void death_file(const char *title, int row)
   */
  static void death_info(const char *title, int row)
  {
@@ -4271,7 +4322,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  	struct store *home = &stores[f_info[FEAT_HOME].shopnum - 1];
  
  	screen_save();
-@@ -275,6 +363,7 @@ static void death_info(const char *title, int row)
+@@ -275,6 +343,7 @@ static void death_info(const char *title, int row)
  	}
  
  	screen_load();
@@ -4279,7 +4330,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  }
  
  /**
-@@ -282,9 +371,19 @@ static void death_info(const char *title, int row)
+@@ -282,9 +351,19 @@ static void death_info(const char *title, int row)
   */
  static void death_messages(const char *title, int row)
  {
@@ -4299,7 +4350,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  }
  
  /**
-@@ -292,9 +391,43 @@ static void death_messages(const char *title, int row)
+@@ -292,9 +371,43 @@ static void death_messages(const char *title, int row)
   */
  static void death_scores(const char *title, int row)
  {
@@ -4343,7 +4394,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  }
  
  /**
-@@ -305,6 +438,14 @@ static void death_examine(const char *title, int row)
+@@ -305,6 +418,14 @@ static void death_examine(const char *title, int row)
  	struct object *obj;
  	const char *q, *s;
  
@@ -4358,7 +4409,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  	/* Get an item */
  	q = "Examine which item? ";
  	s = "You have nothing to examine.";
-@@ -330,17 +471,80 @@ static void death_examine(const char *title, int row)
+@@ -330,17 +451,80 @@ static void death_examine(const char *title, int row)
   */
  static void death_history(const char *title, int row)
  {
@@ -4439,7 +4490,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  /***
   * Menu command: start a new game
   */
-@@ -348,6 +552,7 @@ static void death_new_game(const char *title, int row)
+@@ -348,6 +532,7 @@ static void death_new_game(const char *title, int row)
  {
      play_again = get_check("Start a new game? ");
  }
@@ -4447,7 +4498,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  
  /**
   * Menu structures for the death menu. Note that Quit must always be the
-@@ -355,19 +560,44 @@ static void death_new_game(const char *title, int row)
+@@ -355,19 +540,44 @@ static void death_new_game(const char *title, int row)
   */
  static menu_action death_actions[] =
  {
@@ -4492,7 +4543,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  /**
   * Handle character death
   */
-@@ -377,6 +607,17 @@ void death_screen(void)
+@@ -377,6 +587,17 @@ void death_screen(void)
  	bool done = false;
  	const region area = { 51, 2, 0, N_ELEMENTS(death_actions) };
  
@@ -4510,7 +4561,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  	/* Winner */
  	if (player->total_winner)
  	{
-@@ -385,6 +626,7 @@ void death_screen(void)
+@@ -385,6 +606,7 @@ void death_screen(void)
  
  	/* Tombstone/retiring */
  	display_exit_screen();
@@ -4518,7 +4569,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  
  	/* Flush all input and output */
  	event_signal(EVENT_INPUT_FLUSH);
-@@ -395,6 +637,9 @@ void death_screen(void)
+@@ -395,6 +617,9 @@ void death_screen(void)
  			N_ELEMENTS(death_actions));
  
  	death_menu->flags = MN_CASELESS_TAGS;
@@ -4528,7 +4579,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  
  	menu_layout(death_menu, &area);
  
-@@ -408,7 +653,15 @@ void death_screen(void)
+@@ -408,7 +633,15 @@ void death_screen(void)
  		}
  		else if (e.type == EVT_SELECT)
  		{
@@ -4547,12 +4598,13 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 diff --git a/src/ui-player.h b/src/ui-player.h
 --- a/src/ui-player.h
 +++ b/src/ui-player.h
-@@ -13,4 +13,8 @@ void write_character_dump(ang_file *fff);
+@@ -13,4 +13,9 @@ void write_character_dump(ang_file *fff);
  bool dump_save(const char *path);
  void do_cmd_change_name(void);
  
 +#ifdef __EMSCRIPTEN__
 +void web_character_sheet(bool preview);
++void web_show_character_dump(void);
 +#endif
 +
  #endif /* !UI_PLAYER_H */
