@@ -2738,10 +2738,10 @@ function updatePickerOverflow() {
     const descriptionOverflow = description.scrollHeight - description.clientHeight;
     const moreRows = listOverflow - Math.max(0, list.scrollTop) > 1;
     const moreText = descriptionOverflow - Math.max(0, description.scrollTop) > 1;
-    const showHandle = picker.classList.contains("resizable") &&
+    const showToggle = picker.classList.contains("resizable") &&
         (pickerExpanded || listOverflow > 1 || descriptionOverflow > 1);
-    if (!showHandle && document.activeElement === pickerToggle) pickerHeading.focus({ preventScroll: true });
-    pickerToggle.hidden = !showHandle;
+    if (!showToggle && document.activeElement === pickerToggle) pickerHeading.focus({ preventScroll: true });
+    pickerToggle.hidden = !showToggle;
     pickerListShadow.hidden = !moreRows;
     pickerDescriptionShadow.hidden = !moreText;
 }
@@ -2752,55 +2752,11 @@ for (const area of [actionsScreen, pickerList.screen, pickerList.items, pickerLi
 }
 picker.addEventListener("scroll", updatePickerOverflow, { capture: true, passive: true });
 
-function setPickerExpanded(expanded) {
-    if (pickerToggle.hidden || pickerToggle.disabled || expanded === pickerExpanded) return;
-    pickerExpanded = expanded;
+pickerToggle.addEventListener("click", () => {
+    if (pickerToggle.hidden || pickerToggle.disabled) return;
+    pickerExpanded = !pickerExpanded;
     updateView();
     updateControls();
-}
-
-let pickerTouch;
-let suppressPickerClick = false;
-document.addEventListener("pointerdown", (event) => {
-    if (!event.isPrimary) {
-        if (pickerTouch && event.pointerType === "touch") {
-            pickerTouch = undefined;
-            suppressPickerClick = true;
-        }
-        return;
-    }
-    pickerTouch = undefined;
-    suppressPickerClick = false;
-    if (event.pointerType === "touch" && !pickerToggle.disabled && pickerToggle.contains(event.target)) {
-        pickerTouch = { id: event.pointerId, x: event.clientX, y: event.clientY, request };
-    }
-}, { capture: true });
-pickerToggle.addEventListener("pointermove", (event) => {
-    if (pickerTouch?.id === event.pointerId &&
-        Math.hypot(event.clientX - pickerTouch.x, event.clientY - pickerTouch.y) > 8) {
-        suppressPickerClick = true;
-    }
-});
-pickerToggle.addEventListener("pointercancel", (event) => {
-    if (pickerTouch?.id !== event.pointerId) return;
-    pickerTouch = undefined;
-    suppressPickerClick = true;
-});
-pickerToggle.addEventListener("pointerup", (event) => {
-    if (pickerTouch?.id !== event.pointerId) return;
-    const { x, y, request: pressedRequest } = pickerTouch;
-    pickerTouch = undefined;
-    const dx = event.clientX - x;
-    const dy = event.clientY - y;
-    suppressPickerClick ||= pressedRequest !== request || Math.hypot(dx, dy) > 8;
-    if (pressedRequest === request && Math.abs(dy) >= 32 && Math.abs(dy) >= 1.5 * Math.abs(dx)) {
-        setPickerExpanded(dy < 0);
-    }
-});
-pickerToggle.addEventListener("click", (event) => {
-    if (event.detail === 0 || !suppressPickerClick) {
-        setPickerExpanded(!pickerExpanded);
-    }
 });
 
 function renderMessageRecall() {
