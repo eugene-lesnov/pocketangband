@@ -1380,7 +1380,6 @@ function updateJournal() {
     const text = [prompt, ...lines].filter(Boolean).join("\n");
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.disabled = !world?.lastMessage;
 }
 
 function updateView(state = world, region = views.target.crop) {
