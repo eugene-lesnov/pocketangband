@@ -84,8 +84,15 @@
                 </div>
             </div>
             <div id="map-status" hidden>
-                <p><span id="depth"></span><span id="level-feeling" role="img" hidden>LF:<span id="feeling-danger"></span>-<span id="feeling-treasure"></span></span><span id="speed" hidden></span></p>
-                <p><span id="grid-light"></span><span id="grid-terrain"></span></p>
+                <p>
+                    <span><span id="depth-label" class="map-status-label" hidden>Depth: </span><span id="depth"></span></span>
+                    <span id="level-feeling" role="img" hidden><span class="map-status-label">LF:</span><span id="feeling-danger"></span>-<span id="feeling-treasure"></span></span>
+                    <span id="speed" hidden></span>
+                </p>
+                <p>
+                    <span id="grid-light"><span class="map-status-label">Light</span> <span id="grid-light-value"></span></span>
+                    <span id="grid-terrain"></span>
+                </p>
                 <p id="map-indicators" hidden></p>
             </div>
             <div id="monster-health" role="img" hidden>

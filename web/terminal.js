@@ -24,11 +24,12 @@ const hud = document.querySelector("#hud");
 const vitals = document.querySelector("#vitals");
 const mapStatus = document.querySelector("#map-status");
 const mapIndicators = document.querySelector("#map-indicators");
+const depthLabel = document.querySelector("#depth-label");
 const depth = document.querySelector("#depth");
 const levelFeeling = document.querySelector("#level-feeling");
 const feelingDanger = document.querySelector("#feeling-danger");
 const feelingTreasure = document.querySelector("#feeling-treasure");
-const gridLight = document.querySelector("#grid-light");
+const gridLightValue = document.querySelector("#grid-light-value");
 const gridTerrain = document.querySelector("#grid-terrain");
 const hp = document.querySelector("#hp");
 const hpValue = document.querySelector("#hp-value");
@@ -560,7 +561,8 @@ function renderResource(element, value, current, maximum) {
 }
 
 function renderMapStatus(state, previousSpeed) {
-    depth.textContent = state.depth ? `Depth: ${state.depth * 50}′` : "Town";
+    depthLabel.hidden = !state.depth;
+    depth.textContent = state.depth ? `${state.depth * 50}′` : "Town";
     const { feeling, light, terrain } = state.mapStatus;
     levelFeeling.hidden = !feeling;
     if (feeling) {
@@ -572,8 +574,8 @@ function renderMapStatus(state, previousSpeed) {
         const treasure = feeling.treasure === "?" ? "unknown" : feeling.treasure;
         levelFeeling.setAttribute("aria-label", `Level feeling: danger ${danger}, treasure ${treasure}`);
     }
-    gridLight.textContent = `Light ${light}`;
-    gridLight.classList.toggle("dark", light <= 0);
+    gridLightValue.textContent = light;
+    gridLightValue.classList.toggle("dark", light <= 0);
     gridTerrain.textContent = terrain;
     mapIndicators.hidden = !state.mapStatus.indicators.length;
     mapIndicators.replaceChildren(...state.mapStatus.indicators.map(({ label, color, description }) => {
