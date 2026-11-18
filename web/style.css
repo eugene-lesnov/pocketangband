@@ -949,6 +949,26 @@ main.text-entry {
     justify-content: end;
 }
 main.text-entry:not(.starting) .view { flex: 0 1 auto; min-height: 0; max-height: 100%; }
+main.inscribing:not(.starting) .view { flex: 1 1 0; }
+main.inscribing #text-screen { overflow: hidden; padding-block-start: 0; }
+main.inscribing #text-fields { height: 100%; grid-template-rows: minmax(0, 1fr) auto auto auto; }
+main.inscribing #text-intro {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-block: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+main.inscribing #text-title { font-size: 1rem; }
+.text-label { display: flex; gap: 0.5rem; align-items: baseline; justify-content: space-between; }
+#inscription-bytes { color: var(--muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#inscription-bytes.over-limit { color: #ffb3a0; }
+#inscription-help { display: grid; gap: 1rem; margin-top: 1rem; font-size: 0.875rem; line-height: 1.45; }
+#inscription-help h3 { margin: 0 0 0.375rem; font-size: inherit; }
+#inscription-help dl { display: grid; grid-template-columns: minmax(3rem, max-content) minmax(0, 1fr); gap: 0.35rem 0.875rem; }
+#inscription-help code { color: var(--accent); font-family: var(--mono); white-space: nowrap; }
+#inscription-help p { margin-top: 0.375rem; color: var(--muted); font-size: 0.8125rem; }
+.inscription-example { padding-inline-start: 0.75rem; border-inline-start: 2px solid var(--border); }
 #text-title { color: var(--accent); font-size: 0.875rem; font-weight: 600; overflow-wrap: anywhere; }
 #name-fields, #text-fields, #character-name-fields { display: grid; gap: 0.5rem; }
 #name-fields .key-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }

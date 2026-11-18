@@ -219,8 +219,14 @@
             </form>
             <form id="text-screen" class="menu-screen" aria-labelledby="view-title" hidden>
                 <fieldset id="text-fields" disabled>
-                    <p id="text-title" hidden></p>
-                    <label id="text-prompt" for="text-value"></label>
+                    <div id="text-intro" hidden>
+                        <p id="text-title" hidden></p>
+                        <div id="inscription-help" hidden></div>
+                    </div>
+                    <div class="text-label">
+                        <label id="text-prompt" for="text-value"></label>
+                        <span id="inscription-bytes" hidden></span>
+                    </div>
                     <input id="text-value" type="text" aria-describedby="text-title" autocomplete="off" autocapitalize="off" autocorrect="off"
                         spellcheck="false" enterkeyhint="done">
                     <textarea id="text-history-value" rows="4" aria-describedby="text-title" autocapitalize="sentences" hidden></textarea>

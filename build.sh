@@ -35,7 +35,7 @@ cp "$project_dir"/{build.sh,COPYING,ATTRIBUTION.md} "$source_dir/"
 cp "$project_dir"/.github/workflows/pages.yml "$source_dir/.github/workflows/"
 cp "$project_dir"/deploy/release.py "$source_dir/deploy/"
 cp "$project_dir"/engine/{angband-web.patch,main-web.c,versions.sh} "$source_dir/engine/"
-cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,frame-renderer.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
+cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,inscriptions.js,frame-renderer.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
 printf '%s\n' "$pocketband_version" > "$source_dir/VERSION"
 
 if [[ -z ${1:-} && -f "$project_dir/angband/docs/copying.rst" ]]; then

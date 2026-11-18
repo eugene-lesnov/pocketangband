@@ -1,4 +1,5 @@
 import { renderDescription, renderFrame, textColors } from "./frame-renderer.js";
+import { renderInscriptionHelp } from "./inscriptions.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
 import { graphicsModes, loadTiles, styleTerminalTile, tileAt } from "./tiles.js";
 
@@ -127,6 +128,9 @@ const textValue = document.querySelector("#text-value");
 const textHistoryValue = document.querySelector("#text-history-value");
 const textPrompt = document.querySelector("#text-prompt");
 const textTitle = document.querySelector("#text-title");
+const textIntro = document.querySelector("#text-intro");
+const inscriptionHelp = document.querySelector("#inscription-help");
+const inscriptionBytes = document.querySelector("#inscription-bytes");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
 const visibleListScreen = document.querySelector("#visible-list-screen");
@@ -1621,6 +1625,7 @@ function getViewTitle({ character, outcome }) {
     if (menuTitle !== undefined && menuTitle !== null) return menuTitle;
     if (menu && !outcome) return "Choices";
     if (mode === "details" && context.prompt) return context.prompt;
+    if (mode === "text" && context.inscription) return "Inscribe";
     if (mode === "victory") return "Victory";
     if (outcome) return outcomeTitles[context.outcome.kind];
 
@@ -2021,9 +2026,16 @@ function activeTextField() {
     return context.multiline ? textHistoryValue : textValue;
 }
 
+function updateInscriptionBytes() {
+    const bytes = new TextEncoder().encode(textValue.value).length;
+    inscriptionBytes.textContent = bytes + " / " + context.textMaxBytes + " bytes";
+    inscriptionBytes.classList.toggle("over-limit", bytes > context.textMaxBytes);
+}
+
 function renderTextEntry() {
-    const { multiline, promptCell, prompt, value } = context;
+    const { multiline, promptCell, prompt, value, inscription } = context;
     const field = activeTextField();
+    textIntro.hidden = !context.textTitle && !inscription;
     textTitle.textContent = context.textTitle ?? "";
     textTitle.hidden = !context.textTitle;
     textValue.hidden = multiline;
@@ -2032,10 +2044,22 @@ function renderTextEntry() {
     textPrompt.textContent = prompt?.trim() || (promptCell && terminalLine(promptCell.y, promptCell.x)) || "Text entry";
     field.value = value;
     field.setCustomValidity("");
+    inscriptionHelp.hidden = inscriptionBytes.hidden = !inscription;
+    if (inscription) {
+        renderInscriptionHelp(inscriptionHelp, inscription, (key) => {
+            const entry = extraCommands.find(([original]) => original === key);
+            return entry ? commandKey(entry, inscription.roguelike) : key;
+        });
+        textIntro.scrollTop = 0;
+        updateInscriptionBytes();
+    }
 }
 
 for (const field of [textValue, textHistoryValue]) {
-    field.addEventListener("input", () => field.setCustomValidity(""));
+    field.addEventListener("input", () => {
+        field.setCustomValidity("");
+        if (context.inscription) updateInscriptionBytes();
+    });
 }
 textScreen.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2086,6 +2110,7 @@ document.querySelector("#birth-history-done").addEventListener("click", () => {
 
 function updateTextViewport() {
     main.classList.toggle("text-entry", mode === "text");
+    main.classList.toggle("inscribing", mode === "text" && !!context.inscription);
     main.classList.toggle("text-viewport", !!context.birthStats || isTextEntry(mode) || !characterNameEditor.hidden);
     if (main.classList.contains("text-viewport") && window.visualViewport) {
         main.style.setProperty("--text-viewport-height", `${window.visualViewport.height}px`);

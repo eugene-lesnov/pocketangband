@@ -50,6 +50,7 @@ enum { RUN_STEP_DELAY_MS = 80 };
 static enum web_input_mode input_mode;
 static const char *input_prompt;
 static const char *text_title;
+static struct object *inscription_item;
 static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
@@ -100,11 +101,23 @@ const char *web_set_prompt(const char *prompt)
     return previous;
 }
 
-const char *web_set_text_title(const char *title)
+bool web_get_command_string(struct command *cmd, const char *title, const char *prompt, char *buf, size_t size)
 {
-    const char *previous = text_title;
+    const char *previous_title = text_title;
+    struct object *previous_item = inscription_item;
     text_title = title;
-    return previous;
+    inscription_item = NULL;
+    if (cmd->code == CMD_INSCRIBE) cmd_get_arg_item(cmd, "item", &inscription_item);
+    bool entered = get_string(prompt, buf, size);
+    inscription_item = previous_item;
+    text_title = previous_title;
+    return entered;
+}
+
+const char *web_set_text_prompt(const char *prompt)
+{
+    if (inscription_item) Term_gotoxy(0, 0);
+    return web_set_prompt(prompt);
 }
 
 EM_JS(void, clear_action_messages, (void), {
@@ -203,10 +216,37 @@ EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
 });
 
-EM_JS(void, web_set_text_value, (const char *value, size_t size, bool multiline, int x, int y), {
+EM_JS(void, add_inscription_details, (const char *type, bool wearable, bool equipped,
+        bool throwing, bool activation, bool fuel, bool readable, bool roguelike, bool pickup_always), {
+    Module['inputContext'].inscription = { type: UTF8ToString(type), wearable: !!wearable,
+        equipped: !!equipped, throwing: !!throwing, activation: !!activation, fuel: !!fuel,
+        readable: !!readable, roguelike: !!roguelike, pickupAlways: !!pickup_always };
+});
+
+EM_JS(void, set_text_value, (const char *value, size_t size, bool multiline, int x, int y), {
     Module['inputContext'] = { value: UTF8ToString(value), textMaxBytes: size - 1,
         multiline: !!multiline, promptCell: x > 0 ? { x, y } : undefined };
 });
+
+void web_set_text_value(const char *value, size_t size, bool multiline, int x, int y)
+{
+    const struct object *obj = inscription_item;
+    const char *note = obj ? quark_str(obj->note) : NULL;
+    set_text_value(note && strlen(note) >= size ? note : value, size, multiline, x, y);
+    if (!obj) return;
+    bool known = obj->known && obj->known->kind == obj->kind;
+    bool wearable = known && tval_is_wearable(obj);
+    bool equipped = wearable && object_is_equipped(player->body, obj);
+    bitflag flags[OF_SIZE] = { 0 };
+    if (known) object_flags_known(obj, flags);
+    bool activation = wearable && object_effect(obj->known) && randcalc(obj->time, 0, MAXIMISE) > 0;
+    bool fuel = known && tval_is_light(obj) && !equipped && obj->timeout > 0 &&
+        of_has(flags, OF_TAKES_FUEL) && !of_has(flags, OF_NO_FUEL);
+    add_inscription_details(tval_find_name(known ? obj->tval : TV_NULL),
+        wearable, equipped, of_has(flags, OF_THROWING), activation, fuel,
+        known && tval_is_book_k(obj->kind) && obj_can_browse(obj),
+        OPT(player, rogue_like_commands), OPT(player, pickup_always));
+}
 
 EM_JS(void, web_set_name_value, (const char *value, size_t size), {
     Module['inputContext'] = { value: UTF8ToString(value), nameMaxBytes: size - 1 };
