@@ -206,10 +206,11 @@
             </form>
             <form id="text-screen" class="menu-screen" aria-labelledby="view-title" hidden>
                 <fieldset id="text-fields" disabled>
+                    <p id="text-title" hidden></p>
                     <label id="text-prompt" for="text-value"></label>
-                    <input id="text-value" type="text" autocomplete="off" autocapitalize="off" autocorrect="off"
+                    <input id="text-value" type="text" aria-describedby="text-title" autocomplete="off" autocapitalize="off" autocorrect="off"
                         spellcheck="false" enterkeyhint="done">
-                    <textarea id="text-history-value" rows="4" autocapitalize="sentences" hidden></textarea>
+                    <textarea id="text-history-value" rows="4" aria-describedby="text-title" autocapitalize="sentences" hidden></textarea>
                     <div class="key-row">
                         <button type="button" data-key="Escape">Cancel</button>
                         <button id="confirm-text" type="submit">Done</button>

@@ -120,6 +120,7 @@ const textFields = document.querySelector("#text-fields");
 const textValue = document.querySelector("#text-value");
 const textHistoryValue = document.querySelector("#text-history-value");
 const textPrompt = document.querySelector("#text-prompt");
+const textTitle = document.querySelector("#text-title");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
 const visibleListScreen = document.querySelector("#visible-list-screen");
@@ -1992,6 +1993,8 @@ function activeTextField() {
 function renderTextEntry() {
     const { multiline, promptCell, prompt, value } = context;
     const field = activeTextField();
+    textTitle.textContent = context.textTitle ?? "";
+    textTitle.hidden = !context.textTitle;
     textValue.hidden = multiline;
     textHistoryValue.hidden = !multiline;
     textPrompt.htmlFor = field.id;
@@ -2051,15 +2054,19 @@ document.querySelector("#birth-history-done").addEventListener("click", () => {
 });
 
 function updateTextViewport() {
+    main.classList.toggle("text-entry", mode === "text");
     main.classList.toggle("text-viewport", !!context.birthStats || isTextEntry(mode) || !characterNameEditor.hidden);
     if (main.classList.contains("text-viewport") && window.visualViewport) {
         main.style.setProperty("--text-viewport-height", `${window.visualViewport.height}px`);
+        main.style.setProperty("--text-viewport-top", `${window.visualViewport.offsetTop}px`);
     } else {
         main.style.removeProperty("--text-viewport-height");
+        main.style.removeProperty("--text-viewport-top");
     }
 }
 
 window.visualViewport?.addEventListener("resize", updateTextViewport);
+window.visualViewport?.addEventListener("scroll", updateTextViewport);
 
 let buttonPress;
 const inputButton = "button[data-key], button[data-input]";

@@ -49,6 +49,7 @@ enum { RUN_STEP_DELAY_MS = 80 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
+static const char *text_title;
 static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
@@ -96,6 +97,13 @@ const char *web_set_prompt(const char *prompt)
 {
     const char *previous = input_prompt;
     input_prompt = prompt;
+    return previous;
+}
+
+const char *web_set_text_title(const char *title)
+{
+    const char *previous = text_title;
+    text_title = title;
     return previous;
 }
 
@@ -1432,7 +1440,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
 });
 
 EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int height, int playing,
-        const char *prompt, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
+        const char *prompt, const char *title, const char *warning, const char *verb, int player_x, int player_y, int gold, int world_view,
         bool new_messages, int save_event), {
     const region = width ? { x, y, width, height } : undefined;
     const modeName = UTF8ToString(mode);
@@ -1451,6 +1459,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
         if (stores?.length) stores[stores.length - 1] = menu;
     }
     if (prompt) context.prompt = UTF8ToString(prompt);
+    if (title) context.textTitle = UTF8ToString(title);
     if (warning) context.castWarning = UTF8ToString(warning);
     if (verb) context.verb = UTF8ToString(verb);
     if (playing && modeName !== "more") context.actionMessages = Module['actionMessages'];
@@ -1546,7 +1555,8 @@ static ui_event_type wait_for_input(void)
     }
     const char *verb = direction_command == CMD_FIRE ? "Fire" :
         direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
-    int event = wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt, warning,
+    int event = wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
+        mode == WEB_INPUT_TEXT ? text_title : NULL, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view, new_messages, EVT_WEB_SAVE);
     if (event == EVT_WEB_SAVE) background_save = true;

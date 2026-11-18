@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,110 @@
+@@ -24,6 +24,111 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1537,6 +1537,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
++const char *web_set_text_title(const char *title);
 +void web_clear_displayed_messages(void);
 +bool web_has_pending_messages(void);
 +void web_mark_messages_displayed(void);
@@ -2574,7 +2575,33 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  
  struct command *cmdq_peek(void)
  {
-@@ -905,7 +915,14 @@
+@@ -850,8 +860,12 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
+ 	/* Introduce */
++#ifdef __EMSCRIPTEN__
++	const char *previous_title = web_set_text_title(title);
++#else
+ 	msg("%s", title);
+ 	event_signal(EVENT_MESSAGE_FLUSH);
++#endif
+ 
+ 	/* Prompt properly */
+ 	if (initial)
+ 		my_strcpy(tmp, initial, sizeof tmp);
+ 
+@@ -859,7 +873,11 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
+-	if (get_string(prompt, tmp, sizeof tmp)) {
++	bool entered = get_string(prompt, tmp, sizeof tmp);
++#ifdef __EMSCRIPTEN__
++	web_set_text_title(previous_title);
++#endif
++	if (entered) {
+ 		cmd_set_arg_string(cmd, arg, tmp);
+ 		if (cmd_get_arg_string(cmd, arg, str) == CMD_OK)
+ 			return CMD_OK;
+ 	}
+ 
+ 	return CMD_ARG_ABORTED;
+@@ -905,7 +923,14 @@
  	}
  
  	/* We need to do extra work */
@@ -2590,7 +2617,7 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  		cmd_set_arg_direction(cmd, arg, *dir);
  		return CMD_OK;
  	}
-@@ -961,7 +978,18 @@
+@@ -961,7 +986,18 @@
  			return CMD_OK;
  	}
  
