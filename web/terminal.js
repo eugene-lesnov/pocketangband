@@ -202,7 +202,7 @@ const specialKeys = new Map([
     ["CtrlT", 20], ["Ctrl+V", 22],
 ]);
 const gameMenu = [
-    ["=", "Options"], ["?", "Help"],
+    ["=", "Options"], ["?", "Help"], ["~", "Knowledge"],
     ["Q", "Retire character and quit"],
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
 ];
@@ -230,7 +230,7 @@ const extraCommands = [
     ["u", "Use a staff", "Z"], ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"],
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
-    ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
+    [":", "Take notes"], ["/", "Identify symbol"],
     ["K", "Toggle ignoring of items", "O"],
     ["*", "Target monster or location"], ...visibleListCommands,
     ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
@@ -2401,7 +2401,7 @@ function renderActionsPanel() {
     if (openPanel === "commands") {
         const grouped = [];
         for (const [title, keys] of [
-            ["Explore", [".", "R", "l", "[", "]", "<", ">", "/", "~"]],
+            ["Explore", [".", "R", "l", "[", "]", "<", ">", "/"]],
             ["Fight", ["m", "f", "v", "h", "*", "s"]],
             ["Items", ["U", "r", "q", "u", "a", "z", "E", "A", "F", "g", "d", "K"]],
             ["Interact", ["+", "T", "D", "o", "c"]],

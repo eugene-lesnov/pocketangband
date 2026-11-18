@@ -3553,7 +3553,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
 +		menu_dynamic_add(m, note ? "Edit auto-inscription" : "Auto-inscribe", '{');
 +		if (note) menu_dynamic_add(m, "Remove auto-inscription", '}');
 +	}
-+	if (members->xattr) menu_dynamic_add(m, "Edit visuals", 'v');
++	if (!object && members->xattr) menu_dynamic_add(m, "Edit visuals", 'v');
 +	if (lighting) menu_dynamic_add(m, "Cycle lighting", 't');
 +	menu_layout(m, &SCREEN_REGION);
 +	screen_save();
