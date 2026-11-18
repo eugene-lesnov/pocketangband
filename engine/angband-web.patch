@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,104 @@
+@@ -24,6 +24,107 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1557,7 +1557,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_direction_center(bool available);
 +void web_set_target_options(bool free_aim, int count, bool can_select,
 +	bool can_inspect, bool attack);
-+enum web_map_gesture { WEB_MAP_TAP, WEB_MAP_HOLD, WEB_MAP_REPEAT };
++enum { WEB_MAP_TERM = 6 };
++enum web_map_gesture { WEB_MAP_TAP, WEB_MAP_HOLD, WEB_MAP_REPEAT, WEB_MAP_INSPECT,
++	WEB_MAP_MOUSE_TAP, WEB_MAP_MOUSE_REPEAT };
 +bool web_map_cell(int x, int y, int gesture);
 +bool web_act_on_map_cell(int x, int y, int action);
 +void web_run_direction(int direction);
@@ -1593,6 +1595,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_character_row(int section, const char *label, const char *value);
 +void web_character_stat_breakdown(const char *base, int race_bonus, int class_bonus,
 +	int equipment_bonus, const char *best);
++void web_character_defense_source(const char *name, const char *value);
 +void web_character_defense(const char *group, const wchar_t *label, int length,
 +	const char *value, const char *temporary);
 +void web_poll_interrupt(void);
@@ -1623,7 +1626,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +190,7 @@ ui_event inkey_m(void);
+@@ -92,6 +193,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -2291,18 +2294,33 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  	return new_col - col;
  }
-@@ -2511,6 +2518,10 @@ static void new_level_display_update(game_event_type type,
- 	/* Enforce illegal panel */
+@@ -2377,8 +2384,12 @@ void subwindows_set_flags(uint32_t *new_flags, size_t n_subwindows)
+ 		if (!angband_term[j]) continue;
+ 
+ 		/* Ignore non-changes */
+-		if (window_flag[j] != new_flags[j])
+-			subwindow_set_flags(j, new_flags[j]);
++		uint32_t flags = new_flags[j];
++#ifdef __EMSCRIPTEN__
++		if (j == WEB_MAP_TERM) flags = PW_OVERHEAD;
++#endif
++		if (window_flag[j] != flags)
++			subwindow_set_flags(j, flags);
+ 	}
+ }
+ 
+@@ -2512,6 +2523,10 @@ static void new_level_display_update(game_event_type type,
  	Term->offset_y = z_info->dungeon_hgt;
  	Term->offset_x = z_info->dungeon_wid;
-+
+ 
 +#ifdef __EMSCRIPTEN__
 +	web_resize_map();
 +#endif
- 
++
  	/* Choose panel */
  	verify_panel();
-@@ -2607,7 +2618,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+ 
+@@ -2607,7 +2622,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  	if (floor_num == 1) {
  		/* Get the object */
  		struct object *obj = floor_list[0];
@@ -2311,7 +2329,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  
  		if (!can_pickup)
  			p = "have no room for";
-@@ -2624,9 +2635,17 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+@@ -2624,9 +2639,17 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  		}
  
  		/* Message */
@@ -2330,7 +2348,7 @@ diff --git a/src/ui-display.c b/src/ui-display.c
  		ui_event e;
  
  		if (!can_pickup)
-@@ -2645,6 +2664,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
+@@ -2645,6 +2668,7 @@ static void see_floor_items(game_event_type type, game_event_data *data,
  
  		/* Restore screen */
  		screen_load();
@@ -3125,7 +3143,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
 diff --git a/src/ui-player.c b/src/ui-player.c
 --- a/src/ui-player.c
 +++ b/src/ui-player.c
-@@ -916,6 +916,116 @@ void display_player(int mode)
+@@ -916,6 +916,132 @@ void display_player(int mode)
  	}
  }
  
@@ -3187,6 +3205,22 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +			get_ui_entry_label(entry, N_ELEMENTS(label), false, label);
 +			web_character_defense(groups[i], label, wcslen(label),
 +				web_property_value(value, known, resistance), effect);
++			for (int slot = 0; slot <= count; ++slot) {
++				int source = values[slot];
++				if (!source || source == UI_ENTRY_UNKNOWN_VALUE ||
++						source == UI_ENTRY_VALUE_NOT_PRESENT) continue;
++				const char *property = web_property_value(source, true, resistance);
++				if (slot == count) {
++					web_character_defense_source("Innate", property);
++				} else {
++					const struct object *obj = slot_object(player, slot);
++					if (!obj) continue;
++					char name[256];
++					object_desc(name, sizeof(name), obj, ODESC_BASE, player);
++					web_character_defense_source(
++						format("%s (%s)", name, player->body.slots[slot].name), property);
++				}
++			}
 +		}
 +		release_ui_entry_iterator(iter);
 +	}
@@ -3242,7 +3276,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  
  /**
   * Write a character dump
-@@ -1208,6 +1318,20 @@
+@@ -1208,6 +1334,20 @@ bool dump_save(const char *path)
  
  
  
@@ -3263,7 +3297,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  #define INFO_SCREENS 2 /* Number of screens in character info mode */
  
  
-@@ -1238,41 +1362,63 @@ void do_cmd_change_name(void)
+@@ -1238,11 +1378,28 @@ void do_cmd_change_name(void)
  		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
  
  		/* Query */
@@ -3292,15 +3326,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  				case 'c': {
  					if(arg_force_name)
  						msg("You are not allowed to change your name!");
- 					else {
- 					char namebuf[32] = "";
- 
- 					/* Set player name */
- 					if (get_character_name(namebuf, sizeof namebuf))
- 						my_strcpy(player->full_name, namebuf,
- 								  sizeof(player->full_name));
- 					}
- 
+@@ -1258,7 +1415,11 @@ void do_cmd_change_name(void)
  					break;
  				}
  
@@ -3312,13 +3338,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  					char buf[1024];
  					char fname[80];
  
- 					/* Get the filesystem-safe name and append .txt */
- 					player_safe_name(fname, sizeof(fname), player->full_name, false);
- 					my_strcat(fname, ".txt", sizeof(fname));
- 
- 					if (get_file(fname, buf, sizeof buf)) {
- 						if (dump_save(buf))
- 							msg("Character dump successful.");
+@@ -1272,6 +1433,7 @@ void do_cmd_change_name(void)
  						else
  							msg("Character dump failed!");
  					}
@@ -3326,11 +3346,247 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  					break;
  				}
  				
- 				case 'h':
 diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
 --- a/src/ui-knowledge.c
 +++ b/src/ui-knowledge.c
-@@ -3690,6 +3690,9 @@
+@@ -721,6 +721,33 @@ static const char *recall_prompt(int oid)
+ 	return ", 'r' to recall";
+ }
+ 
++#ifdef __EMSCRIPTEN__
++static void web_knowledge_name(char *name, size_t size,
++	const member_funcs *members, int oid);
++static const char *web_knowledge_detail(const member_funcs *members, int oid);
++static int web_knowledge_action(const member_funcs *members, int oid);
++
++static void web_knowledge_rows(struct menu *menu, const char *title, int cursor,
++	const char *const *groups, int group_count, const member_funcs *members,
++	const int *entries, int entry_count)
++{
++	menu->web_no_keyboard = true;
++	web_set_menu(menu, cursor, NULL);
++	web_set_menu_title(title);
++	if (entries) {
++		for (int i = 0; i < entry_count; ++i) {
++			char name[256];
++			web_knowledge_name(name, sizeof(name), members, entries[i]);
++			web_add_menu_row(i, name, web_knowledge_detail(members, entries[i]),
++				NULL, 0, true);
++		}
++	} else {
++		for (int i = 0; i < group_count; ++i)
++			web_add_menu_row(i, groups[i], NULL, NULL, 0, true);
++	}
++}
++#endif
++
+ #define swap(a, b) (swapspace = (void*)(a)), ((a) = (b)), ((b) = swapspace)
+ 
+ /* Flag value for missing array entry */
+@@ -970,7 +997,37 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
+ 			delay = 0;
+ 		}
+ 
++#ifdef __EMSCRIPTEN__
++		enum web_input_mode previous = web_set_input_mode(WEB_INPUT_MENU);
++		if (!tile_picker && !glyph_picker) {
++			if (panel == 0) {
++				web_knowledge_rows(&group_menu, format("Knowledge - %s", title),
++					g_cur, g_names, grp_cnt, &o_funcs, NULL, 0);
++			} else {
++				web_knowledge_rows(&object_menu, g_names[g_cur], o_cur, NULL, 0,
++					&o_funcs, obj_list + g_offset[g_cur], g_o_count);
++			}
++		}
++#endif
+ 		ke = inkey_ex();
++#ifdef __EMSCRIPTEN__
++		web_set_input_mode(previous);
++		if (ke.type == EVT_WEB_MENU_ROW && !tile_picker && !glyph_picker) {
++			int index = ke.key.code;
++			if (panel == 0) {
++				if (index < 0 || index >= grp_cnt) continue;
++				g_cur = index;
++				do_swap = true;
++				continue;
++			}
++			if (index < 0 || index >= g_o_count) continue;
++			o_cur = index;
++			oid = obj_list[g_offset[g_cur] + o_cur];
++			int action = web_knowledge_action(&o_funcs, oid);
++			if (action < 0) continue;
++			ke = (ui_event){ .key = { .type = EVT_KBRD, .code = action } };
++		}
++#endif
+ 		if (!tile_picker && !glyph_picker) {
+ 			ui_event ke0 = EVENT_EMPTY;
+ 
+@@ -1069,8 +1126,16 @@ static void display_knowledge(const char *title, int *obj_list, int o_count,
+ 	}
+ 
+ 	/* Prompt */
+-	if (!grp_cnt)
++	if (!grp_cnt) {
++#ifdef __EMSCRIPTEN__
++		textblock *empty = textblock_new();
++		textblock_append(empty, "No %s known.", title);
++		textui_textblock_show(empty, SCREEN_REGION, "Knowledge");
++		textblock_free(empty);
++#else
+ 		prt(format("No %s known.", title), 15, 0);
++#endif
++	}
+ 
+ 	mem_free(g_names);
+ 	mem_free(g_offset);
+@@ -2587,6 +2652,96 @@ static void do_cmd_knowledge_traps(const char *name, int row)
+ }
+ 
+ 
++#ifdef __EMSCRIPTEN__
++static void web_knowledge_name(char *name, size_t size,
++	const member_funcs *members, int oid)
++{
++	if (members->display_member == display_artifact) {
++		get_artifact_display_name(name, size, oid);
++	} else if (members->display_member == display_object) {
++		struct object_kind *kind = &k_info[oid];
++		object_kind_name(name, size, kind, OPT(player, cheat_xtra));
++		if (kind->tried && kind->flavor && !kind->aware)
++			my_strcat(name, " {tried}", size);
++	} else {
++		const char *label;
++		if (members->display_member == display_monster)
++			label = r_info[default_item_id(oid)].name;
++		else if (members->display_member == display_ego_item)
++			label = e_info[default_item_id(oid)].name;
++		else if (members->display_member == display_rune)
++			label = rune_name(oid);
++		else if (members->display_member == display_feature)
++			label = f_info[oid].name;
++		else
++			label = trap_info[oid].desc;
++		my_strcpy(name, label, size);
++	}
++}
++
++static const char *web_knowledge_detail(const member_funcs *members, int oid)
++{
++	if (members->display_member == display_monster) {
++		int race_index = default_item_id(oid);
++		const struct monster_race *race = &r_info[race_index];
++		if (!race->rarity) return "Shape";
++		if (rf_has(race->flags, RF_UNIQUE))
++			return race->max_num ? "Alive" : "Dead";
++		return format("Kills: %d", l_list[race_index].pkills);
++	}
++	if (members->display_member == display_object) {
++		struct object_kind *kind = &k_info[oid];
++		bool ignoring = kind->aware ? kind_is_ignored_aware(kind) : kind_is_ignored_unaware(kind);
++		const char *note = get_autoinscription(kind, kind->aware);
++		if (!ignoring) return note;
++		return note ? format("Ignored · %s", note) : "Ignored";
++	}
++	if (members->display_member == display_rune)
++		return quark_str(rune_note(oid));
++	return NULL;
++}
++
++static int web_knowledge_action(const member_funcs *members, int oid)
++{
++	bool object = members->display_member == display_object;
++	bool rune = members->display_member == display_rune;
++	bool lighting = members->display_member == display_feature ||
++		members->display_member == display_trap;
++	if (!members->xattr && !object && !rune) return 'r';
++
++	char name[256];
++	web_knowledge_name(name, sizeof(name), members, oid);
++	struct menu *m = menu_dynamic_new();
++	m->title = name;
++	m->web_no_keyboard = true;
++	menu_dynamic_add(m, "Recall", 'r');
++	const char *note = NULL;
++	if (object) {
++		struct object_kind *kind = &k_info[oid];
++		if (ignore_tval(kind->tval)) {
++			bool ignoring = kind->aware ? kind_is_ignored_aware(kind) :
++				kind_is_ignored_unaware(kind);
++			menu_dynamic_add(m, ignoring ? "Unignore" : "Ignore", 's');
++		}
++		note = get_autoinscription(kind, kind->aware);
++	} else if (rune) {
++		note = quark_str(rune_note(oid));
++	}
++	if (object || rune) {
++		menu_dynamic_add(m, note ? "Edit auto-inscription" : "Auto-inscribe", '{');
++		if (note) menu_dynamic_add(m, "Remove auto-inscription", '}');
++	}
++	if (members->xattr) menu_dynamic_add(m, "Edit visuals", 'v');
++	if (lighting) menu_dynamic_add(m, "Cycle lighting", 't');
++	menu_layout(m, &SCREEN_REGION);
++	screen_save();
++	int action = menu_dynamic_select(m);
++	screen_load();
++	menu_dynamic_free(m);
++	return action;
++}
++#endif
++
+ /**
+  * ------------------------------------------------------------------------
+  * SHAPECHANGE
+@@ -2609,7 +2764,6 @@ static int count_interesting_shapes(void)
+ 	return count;
+ }
+ 
+-
+ /**
+  * Is a comparison function for an array of struct player_shape* which is
+  * compatible with sort() and puts the elements in ascending alphabetical
+@@ -3062,14 +3216,18 @@ static void shape_lore(const struct player_shape *s)
+ 
+ static void do_cmd_knowledge_shapechange(const char *name, int row)
+ {
++#ifndef __EMSCRIPTEN__
+ 	region header_region = { 0, 0, -1, 5 };
+ 	region list_region = { 0, 6, -1, -2 };
++#endif
+ 	int count = count_interesting_shapes();
+ 	struct menu* m;
+ 	struct player_shape **sarray;
+ 	const char **narray;
++#ifndef __EMSCRIPTEN__
+ 	int h, mark, mark_old;
+ 	bool displaying, redraw;
++#endif
+ 	struct player_shape *s;
+ 	int i;
+ 
+@@ -3100,6 +3258,14 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
+ 	}
+ 
+ 	menu_setpriv(m, count, narray);
++#ifdef __EMSCRIPTEN__
++	m->title = "Knowledge - shapes";
++	m->web_no_keyboard = true;
++	menu_layout(m, &SCREEN_REGION);
++	screen_save();
++	while (menu_select(m, 0, false).type == EVT_SELECT)
++		shape_lore(sarray[m->cursor]);
++#else
+ 	menu_layout(m, &list_region);
+ 	m->flags |= MN_DBL_TAP;
+ 
+@@ -3184,6 +3350,7 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
+ 		}
+ 	}
+ 
++#endif
+ 	screen_load();
+ 
+ 	mem_free(narray);
+@@ -3690,6 +3857,9 @@ void textui_browse_knowledge(void)
  
  	screen_save();
  	menu_layout(&main_knowledge_menu.m, &knowledge_region);
@@ -3340,7 +3596,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	clear_from(0);
  	menu_select(&main_knowledge_menu.m, 0, false);
-@@ -3915,10 +3918,15 @@
+@@ -3915,10 +4085,15 @@ void do_cmd_inven(void)
  	struct object *obj = NULL;
  	int ret = 3;
  
@@ -3356,7 +3612,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Start in "inventory" mode */
  	player->upkeep->command_wrk = (USE_INVEN);
-@@ -3929,8 +3937,7 @@
+@@ -3929,8 +4104,7 @@ void do_cmd_inven(void)
  		screen_save();
  
  		/* Get an item to use a context command on (Display the inventory) */
@@ -3366,7 +3622,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
-@@ -4292,7 +4299,9 @@ void do_cmd_query_symbol(void)
+@@ -4292,7 +4466,9 @@ void do_cmd_query_symbol(void)
  	bool uniq = false;
  	bool norm = false;
  
@@ -3376,7 +3632,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	uint16_t *who;
  
-@@ -4316,8 +4325,10 @@ void do_cmd_query_symbol(void)
+@@ -4316,8 +4492,10 @@ void do_cmd_query_symbol(void)
  		lookup_symbol(sym.key.code, buf, sizeof(buf));
  	}
  
@@ -3387,7 +3643,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Allocate the "who" array */
  	who = mem_zalloc(z_info->r_max * sizeof(uint16_t));
-@@ -4345,12 +4356,24 @@ void do_cmd_query_symbol(void)
+@@ -4345,12 +4523,24 @@ void do_cmd_query_symbol(void)
  
  	/* No monsters to recall */
  	if (!num) {
@@ -3412,7 +3668,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	put_str("Recall details? (y/k/n): ", 0, 40);
  
  	/* Query */
-@@ -4358,6 +4381,7 @@ void do_cmd_query_symbol(void)
+@@ -4358,6 +4548,7 @@ void do_cmd_query_symbol(void)
  
  	/* Restore */
  	prt(buf, 0, 0);
@@ -3420,7 +3676,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Interpret the response */
  	if (query.code == 'k') {
-@@ -4368,10 +4392,32 @@ void do_cmd_query_symbol(void)
+@@ -4368,10 +4559,32 @@ void do_cmd_query_symbol(void)
  		sort(who, num, sizeof(*who), cmp_level);
  	} else {
  		/* Any unsupported response is "nope, no history please" */
@@ -3453,7 +3709,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	/* Start at the end, as the array is sorted lowest to highest */
  	idx = num - 1;
  
-@@ -4436,6 +4482,7 @@ void do_cmd_query_symbol(void)
+@@ -4436,6 +4649,7 @@ void do_cmd_query_symbol(void)
  
  	/* Re-display the identity */
  	prt(buf, 0, 0);
@@ -3840,21 +4096,38 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Interact with some options
   */
-@@ -358,6 +402,13 @@ static void option_toggle_menu(const char *name, int page)
+@@ -357,7 +401,22 @@ static void option_toggle_menu(const char *name, int page)
+ 
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
- 	menu_set_filter(m, option_page[page], i);
 +#ifdef __EMSCRIPTEN__
++	int supported[OPT_MAX];
++	int count = 0;
++	for (int pos = 0; pos < i; pos++) {
++		int option = option_page[page][pos];
++		if (option != OPT_use_sound) supported[count++] = option;
++	}
++	menu_set_filter(m, supported, count);
 +	m->web_render = web_render_option_toggles;
 +	m->web_no_keyboard = true;
 +	m->web_select_once = true;
 +	if (page == OP_BIRTH && m->flags == MN_NO_TAGS)
 +		m->title = "Birth (difficulty) options (read-only)";
++#else
+ 	menu_set_filter(m, option_page[page], i);
 +#endif
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -453,7 +504,13 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -383,6 +442,7 @@ void do_cmd_options_birth(void)
+ /**
+  * Modify the "window" options
+  */
++#ifndef __EMSCRIPTEN__
+ static void do_cmd_options_win(const char *name, int row)
+ {
+ 	int i, j, d;
+@@ -453,7 +513,13 @@ static void do_cmd_options_win(const char *name, int row)
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -3868,7 +4141,15 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -717,7 +774,7 @@ static void keymap_browse_hook(int oid, void *db, const region *loc)
+@@ -519,6 +585,7 @@ static void do_cmd_options_win(const char *name, int row)
+ 
+ 	screen_load();
+ }
++#endif
+ 
+ 
+ 
+@@ -717,7 +784,7 @@ static void keymap_browse_hook(int oid, void *db, const region *loc)
  {
  	char tmp[1024];
  
@@ -3877,7 +4158,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	clear_from(13);
  
-@@ -751,6 +808,9 @@
+@@ -751,6 +818,9 @@ static void do_cmd_keymaps(const char *title, int row)
  		keymap_menu->title = title;
  		keymap_menu->selections = lower_case;
  		keymap_menu->browse_hook = keymap_browse_hook;
@@ -3887,7 +4168,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	}
  
  	menu_layout(keymap_menu, &loc);
-@@ -817,7 +877,7 @@ static menu_action visual_menu_items [] =
+@@ -817,7 +887,7 @@ static menu_action visual_menu_items [] =
  
  static void visuals_browse_hook(int oid, void *db, const region *loc)
  {
@@ -3896,7 +4177,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	clear_from(1);
  }
  
-@@ -838,6 +898,9 @@
+@@ -838,6 +908,9 @@ static void do_cmd_visuals(const char *title, int row)
  		visual_menu->title = title;
  		visual_menu->selections = lower_case;
  		visual_menu->browse_hook = visuals_browse_hook;
@@ -3906,7 +4187,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		visual_menu->header = "To edit visuals, use the knowledge menu";
  	}
  
-@@ -977,7 +1040,7 @@ static void colors_modify(const char *title, int row)
+@@ -977,7 +1050,7 @@ static void colors_modify(const char *title, int row)
  
  static void colors_browse_hook(int oid, void *db, const region *loc)
  {
@@ -3915,7 +4196,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	clear_from(1);
  }
  
-@@ -1006,6 +1069,9 @@
+@@ -1006,6 +1079,9 @@ static void do_cmd_colors(const char *title, int row)
  		color_menu->title = title;
  		color_menu->selections = lower_case;
  		color_menu->browse_hook = colors_browse_hook;
@@ -3925,7 +4206,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	}
  
  	menu_layout(color_menu, &SCREEN_REGION);
-@@ -1048,6 +1114,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+@@ -1048,6 +1124,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
  }
  
  
@@ -3946,7 +4227,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1148,7 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1068,7 +1158,7 @@ static void do_cmd_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -3955,8 +4236,11 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1081,6 +1161,9 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1079,8 +1169,12 @@ static void do_cmd_delay(const char *name, int unused)
+ /**
+  * Set sidebar mode
   */
++#ifndef __EMSCRIPTEN__
  static void do_cmd_sidebar_mode(const char *name, int unused)
  {
 +#ifdef __EMSCRIPTEN__
@@ -3965,15 +4249,17 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,6 +1193,7 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+@@ -1110,7 +1204,9 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
  	}
  
  	screen_load();
 +#endif
  }
++#endif
  
  
-@@ -1136,7 +1220,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
+ /**
+@@ -1136,7 +1232,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3982,7 +4268,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1175,7 +1259,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
+@@ -1175,7 +1271,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -3991,7 +4277,19 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	/* Process input */
  	if (res) {
-@@ -1396,6 +1480,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
+@@ -1243,9 +1339,11 @@ static void do_cmd_pref_file_hack(long row)
+ /**
+  * Write options to a file.
+  */
++#ifndef __EMSCRIPTEN__
+ static void do_dump_options(const char *title, int row) {
+ 	dump_pref_file(option_dump, "Dump window settings", 20);
+ }
++#endif
+ 
+ /**
+  * Write autoinscriptions to a file.
+@@ -1396,6 +1494,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
  	return false;
  }
  
@@ -4014,7 +4312,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display list of ego items to be ignored.
   */
-@@ -1471,6 +1571,10 @@ static void ego_menu(const char *unused, int also_unused)
+@@ -1471,6 +1585,10 @@ static void ego_menu(const char *unused, int also_unused)
  	memset(&menu, 0, sizeof(menu));
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu_setpriv(&menu, max_num, choice);
@@ -4025,7 +4323,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(&menu, &area);
  
  	/* Select an entry */
-@@ -1574,6 +1678,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
+@@ -1574,6 +1692,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
  	c_put_str(attr, name, row, col);
  }
  
@@ -4051,7 +4349,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Handle keypresses.
-@@ -1606,6 +1729,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
+@@ -1606,6 +1743,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
  		area.row += Term->hgt - 1 - area.row - menu.count;
  
  	menu_layout(&menu, &area);
@@ -4065,7 +4363,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
  				area.row + area.page_rows);
-@@ -1638,6 +1768,10 @@ static void quality_menu(const char *unused, int also_unused)
+@@ -1638,6 +1782,10 @@ static void quality_menu(const char *unused, int also_unused)
  	/* Set up the menu */
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu.title = "Quality ignore menu";
@@ -4076,7 +4374,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_setpriv(&menu, ITYPE_MAX, quality_values);
  	menu_layout(&menu, &area);
  
-@@ -1767,6 +1901,23 @@ static const menu_iter ignore_sval_menu =
+@@ -1767,6 +1915,23 @@ static const menu_iter ignore_sval_menu =
  	NULL,
  };
  
@@ -4100,7 +4398,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Collect all tvals in the big ignore_choice array
-@@ -1860,6 +2011,13 @@ static bool sval_menu(int tval, const char *desc)
+@@ -1860,6 +2025,13 @@ static bool sval_menu(int tval, const char *desc)
  	menu_setpriv(menu, n_choices, choices);
  	menu->cmd_keys = "Tt";
  	menu_layout(menu, &area);
@@ -4114,7 +4412,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
  	menu_select(menu, 0, false);
  
-@@ -1998,6 +2156,21 @@ static const menu_iter options_item_iter =
+@@ -1998,6 +2170,21 @@ static const menu_iter options_item_iter =
  	NULL
  };
  
@@ -4136,7 +4434,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Display and handle the main ignoring menu.
-@@ -2011,6 +2184,10 @@ void do_cmd_options_item(const char *title, int row)
+@@ -2011,6 +2198,10 @@ void do_cmd_options_item(const char *title, int row)
  				 N_ELEMENTS(extra_item_options) + 1, NULL);
  
  	menu.title = title;
@@ -4147,14 +4445,36 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(&menu, &SCREEN_REGION);
  
  	screen_save();
-@@ -2056,6 +2233,29 @@ static menu_action option_actions[] =
+@@ -2036,16 +2227,22 @@ static menu_action option_actions[] =
+ 	{ 0, 'a', "User interface options", option_toggle_menu },
+ 	{ 0, 'b', "Birth (difficulty) options", option_toggle_menu },
+ 	{ 0, 'x', "Cheat options", option_toggle_menu },
++#ifndef __EMSCRIPTEN__
+ 	{ 0, 'w', "Subwindow setup", do_cmd_options_win },
++#endif
+ 	{ 0, 'i', "Item ignoring setup", do_cmd_options_item },
+ 	{ 0, '{', "Auto-inscription setup", textui_browse_object_knowledge },
+ 	{ 0, 0, NULL, NULL },
+ 	{ 0, 'd', "Set base delay factor", do_cmd_delay },
+ 	{ 0, 'h', "Set hitpoint warning", do_cmd_hp_warn },
+ 	{ 0, 'm', "Set movement delay", do_cmd_lazymove_delay },
++#ifndef __EMSCRIPTEN__
+ 	{ 0, 'o', "Set sidebar mode", do_cmd_sidebar_mode },
++#endif
+ 	{ 0, 0, NULL, NULL },
++#ifndef __EMSCRIPTEN__
+ 	{ 0, 's', "Save subwindow setup to pref file", do_dump_options },
++#endif
+ 	{ 0, 't', "Save autoinscriptions to pref file", do_dump_autoinsc },
+ 	{ 0, 'u', "Save char screen options to pref file", do_dump_charscreen_opt },
+ 	{ 0, 0, NULL, NULL },
+@@ -2056,6 +2253,27 @@ static menu_action option_actions[] =
  };
  
  
 +#ifdef __EMSCRIPTEN__
 +static void web_render_options(struct menu *m)
 +{
-+	static const char *const sidebar_names[] = { "Left", "Top", "None" };
 +	menu_action *actions = menu_priv(m);
 +
 +	web_set_menu(m, m->cursor, NULL);
@@ -4167,7 +4487,6 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +			case 'd': value = format("%d ms", player->opts.delay_factor); break;
 +			case 'h': value = format("%d%%", player->opts.hitpoint_warn * 10); break;
 +			case 'm': value = format("%d ms", player->opts.lazymove_delay * 10); break;
-+			case 'o': value = sidebar_names[SIDEBAR_MODE % SIDEBAR_MAX]; break;
 +		}
 +		web_add_menu_row(pos, action->name, NULL, value, action->tag, true);
 +	}
@@ -4177,7 +4496,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display the options main menu.
   */
-@@ -2068,6 +2268,10 @@ void do_cmd_options(void)
+@@ -2068,6 +2286,10 @@ void do_cmd_options(void)
  
  		option_menu->title = "Options Menu";
  		option_menu->flags = MN_CASELESS_TAGS;

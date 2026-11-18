@@ -10,6 +10,7 @@ let backgroundSavePending = false;
 let interruptPending = false;
 let runningRequest;
 let checkpointTimer;
+let readMessageRecall;
 
 function wakeInput(action) {
     clearTimeout(checkpointTimer);
@@ -25,6 +26,11 @@ function deleteSaveError(message, request) {
 self.addEventListener("message", ({ data }) => {
     if (data.type === "ping") {
         self.postMessage({ type: "pong", waiting: waiting !== undefined });
+        return;
+    }
+    if (data.type === "message-recall") {
+        if (readMessageRecall) readMessageRecall(data.recall);
+        else self.postMessage({ type: "message-recall", recall: data.recall });
         return;
     }
     if (data.type === "background-save") {
@@ -90,8 +96,11 @@ self.addEventListener("message", ({ data }) => {
                     data.y = selected.y;
                 }
             } else {
-                const repeat = selected && !selected.actions && data.x === selected.x && data.y === selected.y;
-                data.code = data.openMenu === true ? 1 : repeat ? 2 : 0;
+                const repeat = selected?.canRoute && data.x === selected.x && data.y === selected.y;
+                if (data.openMenu === true) data.code = 1;
+                else if (data.inspect === true) data.code = 3;
+                else if (data.mouse === true) data.code = repeat ? 5 : 4;
+                else data.code = repeat ? 2 : 0;
             }
         }
         const { region } = waiting;
@@ -176,6 +185,9 @@ async function play(afterRun) {
         sendWorld(state) {
             world = state;
             currentTurns = state.turns;
+        },
+        sendMessageRecall(recall, entries) {
+            self.postMessage({ type: "message-recall", recall, entries });
         },
         takeInput() {
             return input.shift();
@@ -293,11 +305,13 @@ async function play(afterRun) {
             console.error(message);
         },
         onExit(code) {
+            readMessageRecall = undefined;
             clearTimeout(checkpointTimer);
             finish({ type: "exit", code, message: lastError,
                 afterRun: game.birthCancelled ? "save-slots" : game.afterRun });
         },
     });
+    readMessageRecall = game._web_message_recall;
 
     try {
         game.FS.mkdir(profileDirectory);

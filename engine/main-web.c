@@ -44,7 +44,7 @@
 #include "z-type.h"
 #include <emscripten.h>
 
-enum { MAP_TERM = 6, LOG_LIMIT = 40, RUN_STEP_DELAY_MS = 80 };
+enum { RUN_STEP_DELAY_MS = 80 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
@@ -418,6 +418,12 @@ EM_JS(void, web_character_defense, (const char *group, const wchar_t *label, int
     });
 });
 
+EM_JS(void, web_character_defense_source, (const char *name, const char *value), {
+    const row = Module['characterSheet'].defenses.at(-1);
+    if (!row.sources) row.sources = [];
+    row.sources.push({ name: UTF8ToString(name), value: UTF8ToString(value) });
+});
+
 EM_JS(void, set_menu, (const struct menu *menu, int cursor, const char *prompt, bool no_keyboard, bool choice), {
     Module['inputMenu'] = { id: menu, cursor, prompt: prompt ? UTF8ToString(prompt) : "",
         rows: [], actions: [], noKeyboard: !!no_keyboard, choice: !!choice };
@@ -577,7 +583,7 @@ void web_set_tiles(uint8_t id)
     use_graphics = id;
     bool tiles = id != GRAPHICS_NONE;
     angband_term[0]->higher_pict = tiles;
-    angband_term[MAP_TERM]->higher_pict = tiles;
+    angband_term[WEB_MAP_TERM]->higher_pict = tiles;
     reset_visuals(true);
 
     for (int i = 1; i < cave_monster_max(cave); i++) {
@@ -670,18 +676,11 @@ enum { LOW_LIGHT_FUEL = 50 };
 
 EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool low_hp,
         bool magic, const char *speed, const char *light, const char *food_grade, int food, int x, int y,
-        int count, const char *const *lines, const int *repeats, bool roguelike, bool commands,
-        int turns), {
-    const log = [];
-    for (let i = count - 1; i >= 0; i--) {
-        log.push({
-            text: UTF8ToString(HEAPU32[(lines >>> 2) + i]),
-            count: HEAP32[(repeats >>> 2) + i]
-        });
-    }
+        const char *last_message, int repeat_count, bool roguelike, bool commands, int turns), {
     Module['sendWorld']({ depth, hp, maxHp: max_hp, sp, maxSp: max_sp, lowHp: !!low_hp,
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
-        food, foodGrade: UTF8ToString(food_grade), x, y, log, roguelike: !!roguelike, turns,
+        food, foodGrade: UTF8ToString(food_grade), x, y, roguelike: !!roguelike, turns,
+        lastMessage: last_message ? { text: UTF8ToString(last_message), count: repeat_count } : null,
         actionMessages: Module['actionMessages'],
         conditions: Module['worldConditions'], stats: Module['worldStats'],
         mapStatus: Module['worldMapStatus'],
@@ -690,17 +689,54 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
     });
 });
 
+EM_JS(void, start_message_recall, (void), {
+    Module['messageRecall'] = [];
+});
+
+EM_JS(void, add_recalled_message, (const char *text, int count, const char *color), {
+    Module['messageRecall'].push({ text: UTF8ToString(text), count, color: UTF8ToString(color) });
+});
+
+EM_JS(void, finish_message_recall, (unsigned int request), {
+    Module['sendMessageRecall'](request, Module['messageRecall']);
+    Module['messageRecall'] = undefined;
+});
+
+EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request)
+{
+    start_message_recall();
+    for (int i = messages_num() - 1; i >= 0; --i) {
+        char color[8];
+        web_text_color(color, sizeof(color), message_color(i));
+        add_recalled_message(message_str(i), message_count(i), color);
+    }
+    finish_message_recall(request);
+}
+
 EM_JS(void, set_world_map_status, (int light, const char *terrain, const char *danger,
         const char *treasure, const uint8_t *danger_color, const uint8_t *treasure_color), {
     const color = (ptr) => `rgb(${HEAPU8[ptr + 1]} ${HEAPU8[ptr + 2]} ${HEAPU8[ptr + 3]})`;
     Module['worldMapStatus'] = {
-        light, terrain: UTF8ToString(terrain),
+        light, terrain: UTF8ToString(terrain), indicators: [],
         feeling: danger ? {
             danger: UTF8ToString(danger), treasure: UTF8ToString(treasure),
             dangerColor: color(danger_color), treasureColor: color(treasure_color),
         } : null,
     };
 });
+
+EM_JS(void, add_map_indicator, (const char *label, const char *color, const char *description), {
+    Module['worldMapStatus'].indicators.push({
+        label: UTF8ToString(label), color: UTF8ToString(color), description: UTF8ToString(description),
+    });
+});
+
+static void publish_map_indicator(const char *label, int attr, const char *description)
+{
+    char color[8];
+    web_text_color(color, sizeof(color), attr);
+    add_map_indicator(label, color, description);
+}
 
 static void publish_map_status(void)
 {
@@ -717,6 +753,23 @@ static void publish_map_status(void)
         show_feeling ? feeling.danger : NULL, show_feeling ? feeling.treasure : NULL,
         show_feeling ? angband_color_table[feeling.danger_attr] : NULL,
         show_feeling ? angband_color_table[feeling.treasure_attr] : NULL);
+
+    int moves = player->state.num_moves;
+    if (moves)
+        publish_map_indicator(format("Moves %+d", moves), COLOUR_L_TEAL, "Movement speed");
+    if (player->unignoring)
+        publish_map_indicator("Unignoring", COLOUR_WHITE, "Ignoring is temporarily disabled");
+    if (player->upkeep->new_spells) {
+        bool can_study = player_book_has_unlearned_spells(player);
+        publish_map_indicator(format("Study (%d)", player->upkeep->new_spells),
+            can_study ? COLOUR_WHITE : COLOUR_L_DARK,
+            can_study ? "New spells available" : "No carried book with spells to study");
+    }
+    if (square_isdtrap(cave, grid)) {
+        bool edge = square_dtrap_edge(cave, grid);
+        publish_map_indicator("DTrap", edge ? COLOUR_YELLOW : COLOUR_L_GREEN,
+            edge ? "Edge of trap-detected area" : "Trap-detected area");
+    }
 }
 
 EM_JS(void, start_world_status, (void), {
@@ -780,9 +833,7 @@ static void publish_stats(bool commands)
 
 static void publish_world(bool commands)
 {
-    const term *map = angband_term[MAP_TERM];
-    const char *lines[LOG_LIMIT];
-    int repeats[LOG_LIMIT];
+    const term *map = angband_term[WEB_MAP_TERM];
     char speed[32], light_name[160];
     struct object *light = equipped_item_by_slot_name(player, "light");
     int speed_offset = player->state.speed - 110;
@@ -840,16 +891,12 @@ static void publish_world(bool commands)
         }
     }
 
-    int count = MIN(messages_num(), LOG_LIMIT);
-    for (int i = 0; i < count; i++) {
-        lines[i] = message_str(i);
-        repeats[i] = message_count(i);
-    }
     if (commands) publish_quick_actions();
     send_world(player->depth, player->chp, player->mhp, player->csp, player->msp,
         player_hp_attr(player) == COLOUR_RED, magic, speed, light_name,
         food_grade, player->timed[TMD_FOOD] / 100,
-        player->grid.x - map->offset_x, player->grid.y - map->offset_y, count, lines, repeats,
+        player->grid.x - map->offset_x, player->grid.y - map->offset_y,
+        messages_num() ? message_str(0) : NULL, message_count(0),
         OPT(player, rogue_like_commands), commands, player->total_energy / 100);
 }
 
@@ -857,18 +904,18 @@ static double last_interrupt_poll;
 
 static struct loc web_map_grid(int x, int y)
 {
-    const term *map = angband_term[MAP_TERM];
+    const term *map = angband_term[WEB_MAP_TERM];
     return loc(map->offset_x + x / tile_width, map->offset_y + y / tile_height);
 }
 
 static bool web_has_overhead_map(void)
 {
-    return window_flag[MAP_TERM] == PW_OVERHEAD && textui_map_is_visible();
+    return window_flag[WEB_MAP_TERM] == PW_OVERHEAD && textui_map_is_visible();
 }
 
 void web_resize_map(void)
 {
-    term *map = angband_term[MAP_TERM];
+    term *map = angband_term[WEB_MAP_TERM];
     term *previous = Term;
     Term_activate(map);
     Term_resize(cave->width * tile_width, cave->height * tile_height);
@@ -886,7 +933,7 @@ void web_set_aim_options(bool selecting, struct loc location)
 {
     struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
     const bool overhead = web_has_overhead_map();
-    const term *map = overhead ? angband_term[MAP_TERM] : Term;
+    const term *map = overhead ? angband_term[WEB_MAP_TERM] : Term;
     const int origin_x = overhead ? 0 : COL_MAP;
     const int origin_y = overhead ? 0 : ROW_MAP;
     const bool current = location.x || target_okay();
@@ -946,7 +993,7 @@ void web_move_aim(int direction, struct loc *location)
     if (!grid.x) target_get(&grid);
     grid = loc_sum(grid, ddgrid[direction]);
     const bool overhead = web_has_overhead_map();
-    const term *map = overhead ? angband_term[MAP_TERM] : Term;
+    const term *map = overhead ? angband_term[WEB_MAP_TERM] : Term;
     int width = overhead ? map->wid / tile_width : SCREEN_WID;
     int height = overhead ? map->hgt / tile_height : SCREEN_HGT;
     if (grid.x < map->offset_x || grid.x >= map->offset_x + width ||
@@ -1093,6 +1140,10 @@ EM_JS(void, set_map_cell, (int x, int y, const char *description, bool here, boo
     Module['inputContext'] = { mapCell };
 });
 
+EM_JS(void, set_map_route_available, (bool available), {
+    Module['inputContext'].mapCell.canRoute = !!available;
+});
+
 EM_JS(void, add_map_action, (int x, int y, int direction, int code, const char *label, int key), {
     const actions = Module['inputContext'].mapCell.actions;
     let action = actions.find((entry) => entry.code === code);
@@ -1119,7 +1170,7 @@ static void describe_map_actions(int x, int y, int direction, unsigned enabled)
 
 static void describe_nearby_map_actions(unsigned underfoot)
 {
-    const term *map = angband_term[MAP_TERM];
+    const term *map = angband_term[WEB_MAP_TERM];
     struct object *objects[z_info->floor_size];
     for (int dir = DIR_SW; dir <= DIR_NE; dir++) {
         struct loc grid = next_grid(player->grid, dir);
@@ -1198,21 +1249,27 @@ bool web_map_cell(int x, int y, int gesture)
     struct loc grid = web_map_grid(x, y);
     if (!square_in_bounds(cave, grid)) return false;
     bool here = loc_eq(grid, player->grid);
+    bool inspect = gesture == WEB_MAP_INSPECT ||
+        ((gesture == WEB_MAP_MOUSE_TAP || gesture == WEB_MAP_MOUSE_REPEAT) &&
+            !OPT(player, mouse_movement));
+    bool direct_move = !inspect && gesture != WEB_MAP_HOLD;
+    bool repeat = gesture == WEB_MAP_REPEAT || gesture == WEB_MAP_MOUSE_REPEAT;
     bool adjacent = map_cell_adjacent(grid);
     struct monster *mon = obvious_map_monster(grid);
     struct object *objects[z_info->floor_size];
     int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
     struct chunk *known = player->cave;
-    if (gesture != WEB_MAP_HOLD && adjacent && square_in_bounds_fully(cave, grid) &&
+    if (direct_move && adjacent && square_in_bounds_fully(cave, grid) &&
             !player->timed[TMD_IMAGE] && !mon && !count && square_isfloor(known, grid) &&
             !square_isvisibletrap(known, grid)) {
         return queue_map_command(CMD_WALK, grid);
     }
     unsigned actions = map_actions(grid, mon, objects, count, gesture != WEB_MAP_HOLD);
     bool menu = gesture == WEB_MAP_HOLD || here || (actions && (adjacent || mon));
-    if (!menu && gesture == WEB_MAP_REPEAT && square_in_bounds_fully(cave, grid))
+    if (!menu && direct_move && repeat && square_in_bounds_fully(cave, grid))
         return queue_map_command(adjacent ? CMD_WALK : CMD_PATHFIND, grid);
     describe_map_cell(x, y, grid, menu, actions, mon, objects, count);
+    set_map_route_available(direct_move && !menu && square_in_bounds_fully(cave, grid));
     return false;
 }
 
@@ -1262,7 +1319,7 @@ void web_poll_interrupt(void)
     double now = emscripten_get_now();
     if (pace_run && player->upkeep->running) {
         if (web_has_overhead_map()) {
-            term *map = angband_term[MAP_TERM];
+            term *map = angband_term[WEB_MAP_TERM];
             handle_stuff(player);
             term *previous = Term;
             Term_activate(map);
@@ -1420,7 +1477,7 @@ static ui_event_type wait_for_input(void)
         web_character_sheet(false);
     }
     if ((mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_RUN_DIRECTION) && world_view) {
-        const term *map = angband_term[MAP_TERM];
+        const term *map = angband_term[WEB_MAP_TERM];
         width = MIN(map->wid, (cave->width - map->offset_x) * tile_width);
         height = MIN(map->hgt, (cave->height - map->offset_y) * tile_height);
     } else if (mode == WEB_INPUT_TARGET || (map_visible && aiming)) {
@@ -1498,7 +1555,7 @@ static errr web_xtra(int action, int value)
             const term_win *screen = Term->old;
             int cursor = screen->cv && !screen->cu ? screen->cy * Term->wid + screen->cx : -1;
             bool tiles = use_graphics != GRAPHICS_NONE;
-            bool map = Term == angband_term[MAP_TERM];
+            bool map = Term == angband_term[WEB_MAP_TERM];
             int x = 0, y = 0, depth = -1;
             if (map && player && character_dungeon) {
                 x = (player->grid.x - Term->offset_x) * tile_width;
@@ -1512,7 +1569,7 @@ static errr web_xtra(int action, int value)
         }
         case TERM_XTRA_DELAY:
             if (value > 0) {
-                term *map = angband_term[MAP_TERM];
+                term *map = angband_term[WEB_MAP_TERM];
                 if (Term != map && web_has_overhead_map()) {
                     term *previous = Term;
                     Term_activate(map);
@@ -1548,7 +1605,7 @@ errr init_web(int argc, char **argv)
     (void)argv;
     if (!init_graphics_modes()) return 1;
     init_terminal(&terminal, 0, 80, 24);
-    init_terminal(&map, MAP_TERM, 1, 1);
+    init_terminal(&map, WEB_MAP_TERM, 1, 1);
     map.fixed_shape = false;
     Term_activate(&terminal);
     return 0;

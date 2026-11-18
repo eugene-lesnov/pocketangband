@@ -23,6 +23,7 @@ const zoomIn = document.querySelector("#zoom-in");
 const hud = document.querySelector("#hud");
 const vitals = document.querySelector("#vitals");
 const mapStatus = document.querySelector("#map-status");
+const mapIndicators = document.querySelector("#map-indicators");
 const depth = document.querySelector("#depth");
 const levelFeeling = document.querySelector("#level-feeling");
 const feelingDanger = document.querySelector("#feeling-danger");
@@ -61,6 +62,8 @@ const characterProgress = document.querySelector("#character-progress");
 const characterProgressLabel = document.querySelector("#character-progress-label");
 const journal = document.querySelector("#journal");
 const messages = document.querySelector("#messages");
+const messageSearch = document.querySelector("#message-search");
+const messageSearchStatus = document.querySelector("#message-search-status");
 const latestMessage = document.querySelector("#latest-message");
 const messagePause = document.querySelector("#message-pause");
 const pausedMessage = document.querySelector("#paused-message");
@@ -223,6 +226,7 @@ const extraCommands = [
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
     ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
     ["~", "Knowledge"], [":", "Take notes"], ["/", "Identify symbol"],
+    ["K", "Toggle ignoring of items", "O"],
     ["*", "Target monster or location"], ...visibleListCommands,
     ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
     ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
@@ -328,8 +332,10 @@ const promptModes = new Set(["confirm", "key", "quantity", "option-number", "res
 let renderedDetails;
 let repeatName = "";
 let graphicsRestored = false;
+let messageRecallRequest = 0;
+let recalledMessages = [];
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
-    fastAim: false, tiles: 0, lastSave: "" };
+    fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
 try {
     const saved = JSON.parse(localStorage.getItem("pocketband-touch") || "{}");
     for (const key of Object.keys(preferences)) {
@@ -565,6 +571,15 @@ function renderMapStatus(state, previousSpeed) {
     gridLight.textContent = `Light ${light}`;
     gridLight.classList.toggle("dark", light <= 0);
     gridTerrain.textContent = terrain;
+    mapIndicators.hidden = !state.mapStatus.indicators.length;
+    mapIndicators.replaceChildren(...state.mapStatus.indicators.map(({ label, color, description }) => {
+        const indicator = document.createElement("span");
+        indicator.textContent = label;
+        indicator.style.color = color;
+        indicator.setAttribute("role", "img");
+        indicator.setAttribute("aria-label", `${label}, ${description}`);
+        return indicator;
+    }));
     const normal = state.speed === "Normal";
     speed.textContent = state.speed;
     speed.classList.toggle("fast", state.speed.startsWith("Fast "));
@@ -621,26 +636,13 @@ function renderWorld(state, previousSpeed) {
         hiddenCount > 0 && `${hiddenCount} hidden ${hiddenCount === 1 ? "condition" : "conditions"}`]
         .filter(Boolean).join(", "));
 
-    const lines = state.log.flatMap(({ text, count }) => {
-        const line = text.trim();
-        return !line || /^=+$/.test(line) ? [] : [formatMessage({ text: line, count })];
-    });
-    if (lines.length === messages.childElementCount &&
-        lines.every((line, index) => messages.children[index].textContent === line)) return;
-    messages.replaceChildren(...lines.map((line) => {
-        const item = document.createElement("li");
-        item.textContent = line;
-        return item;
-    }));
-    messages.scrollTop = messages.scrollHeight;
-    updateMessageFade();
     updateJournal();
 }
 
 function characterRows(rows) {
     const list = document.createElement("dl");
     list.className = "character-rows";
-    for (const { label, value, temporary } of rows) {
+    for (const { label, value, temporary, sources } of rows) {
         const row = document.createElement("div");
         const term = document.createElement("dt");
         const description = document.createElement("dd");
@@ -650,6 +652,16 @@ function characterRows(rows) {
             const effect = document.createElement("small");
             effect.textContent = `${temporary} (temporary)`;
             description.append(effect);
+        }
+        if (sources?.length) {
+            const breakdown = document.createElement("ul");
+            breakdown.className = "defense-sources";
+            for (const { name, value: property } of sources) {
+                const source = document.createElement("li");
+                source.textContent = `${name} · ${property}`;
+                breakdown.append(source);
+            }
+            description.append(breakdown);
         }
         row.append(term, description);
         list.append(row);
@@ -766,6 +778,10 @@ function renderConditions(container) {
         { label: "Light source", value: state.light },
     ];
     container.replaceChildren(characterRows(rows));
+    if (state.mapStatus.indicators.length) {
+        const indicators = state.mapStatus.indicators.map(({ label, description }) => ({ label, value: description }));
+        container.append(characterRows(indicators));
+    }
     const effects = state.conditions.filter(({ label }) => label !== state.foodGrade);
     if (!effects.length) return;
     const list = document.createElement("ul");
@@ -1328,7 +1344,7 @@ function updatePrompt() {
             text = `${action}\n${target}`;
         }
     }
-    if (mode === "command" && context.mapCell && !context.mapCell.actions)
+    if (mode === "command" && context.mapCell?.canRoute)
         text += " Tap this cell again to walk there.";
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running || (mode === "run-direction" && request === undefined)) text = "";
@@ -1360,12 +1376,13 @@ function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
     const action = (!prompt || context.newMessages) ? world?.actionMessages : undefined;
     const lines = action?.slice(-2).map(formatMessage) ?? [];
+    const last = world?.lastMessage;
     const text = [prompt, ...lines].filter(Boolean).join("\n") ||
-        messages.lastElementChild?.textContent || "No messages";
+        (last && formatMessage(last)) || "No messages";
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.classList.toggle("empty", !prompt && !messages.childElementCount);
-    journal.disabled = !messages.childElementCount;
+    journal.classList.toggle("empty", !prompt && !last);
+    journal.disabled = !last;
 }
 
 function updateView(state = world, region = views.target.crop) {
@@ -1757,6 +1774,13 @@ function handleWorkerMessage({ data }) {
                 saveStatus.hidden = true;
                 updatePrompt();
             }, 2000);
+            break;
+        case "message-recall":
+            if (!messageDialog.open || data.recall !== messageRecallRequest) break;
+            recalledMessages = (data.entries ?? (world?.lastMessage ? [world.lastMessage] : []))
+                .filter(({ text }) => text.trim() && !/^=+$/.test(text.trim()));
+            messageSearch.disabled = !recalledMessages.length;
+            renderMessageRecall();
             break;
         case "restarting":
             clearPendingInput();
@@ -2253,6 +2277,7 @@ function renderActionsPanel() {
             ["leftHanded", "Direction pad on the left", "Keep movement controls beside your left thumb."],
             ["largeText", "Larger interface text", "Increase labels and list text without changing map zoom."],
             ["fastAim", "Fast targeting", "Tap a monster to use the prepared spell or item immediately. Turn off to preview and confirm."],
+            ["tapToMove", "Tap map to move", "Turn off to inspect cells with a tap and move with the direction pad."],
         ].map(([key, label, detail]) => {
             const button = makeButton(`${label}. ${detail}`);
             const text = document.createElement("span");
@@ -2320,7 +2345,7 @@ function renderActionsPanel() {
         for (const [title, keys] of [
             ["Explore", [".", "R", "l", "[", "]", "<", ">", "/", "~"]],
             ["Fight", ["m", "f", "v", "h", "*", "s"]],
-            ["Items", ["U", "r", "q", "u", "a", "z", "E", "A", "F", "g", "d"]],
+            ["Items", ["U", "r", "q", "u", "a", "z", "E", "A", "F", "g", "d", "K"]],
             ["Interact", ["+", "T", "D", "o", "c"]],
             ["Other commands", ["G", "b", "n", ":", "Enter"]],
         ]) {
@@ -2777,26 +2802,53 @@ pickerToggle.addEventListener("click", (event) => {
     }
 });
 
+function renderMessageRecall() {
+    const query = messageSearch.value.trim();
+    const pattern = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu") : null;
+    const items = [];
+    for (const entry of recalledMessages) {
+        const line = formatMessage(entry);
+        const matches = pattern ? [...line.matchAll(pattern)] : [];
+        if (pattern && !matches.length) continue;
+        const item = document.createElement("li");
+        if (entry.color) item.style.color = entry.color;
+        let end = 0;
+        for (const match of matches) {
+            const highlighted = document.createElement("mark");
+            highlighted.textContent = match[0];
+            item.append(line.slice(end, match.index), highlighted);
+            end = match.index + match[0].length;
+        }
+        item.append(line.slice(end));
+        items.push(item);
+    }
+    messages.replaceChildren(...items);
+    messageSearchStatus.hidden = !pattern && items.length > 0;
+    messageSearchStatus.textContent = pattern ?
+        `${items.length} ${items.length === 1 ? "match" : "matches"}` : "No messages.";
+    messages.scrollTop = messages.scrollHeight;
+    updateMessageFade();
+}
+
 function updateMessageFade() {
-    if (!messageDialog.open || !messages.childElementCount) return;
-    const area = messages.getBoundingClientRect();
-    const items = [...messages.children];
-    const positions = items.map((item) => item.getBoundingClientRect().bottom);
-    const top = Math.max(area.top + messages.clientTop, positions[0]);
-    const bottom = Math.min(area.top + messages.clientTop + messages.clientHeight, positions.at(-1));
-    items.forEach((item, index) => {
-        const progress = bottom > top ? Math.max(0, Math.min(1, (positions[index] - top) / (bottom - top))) : 1;
-        item.style.opacity = String(0.6 + 0.4 * progress);
-    });
+    messages.classList.toggle("scrolled", messages.scrollTop > 1);
 }
 
 messages.addEventListener("scroll", updateMessageFade, { passive: true });
-new ResizeObserver(updateMessageFade).observe(messages);
+messageSearch.addEventListener("input", renderMessageRecall);
 journal.addEventListener("click", () => {
+    messageSearch.value = "";
+    messageSearch.disabled = true;
+    messageSearchStatus.textContent = "Loading messages…";
+    messageSearchStatus.hidden = false;
+    messages.replaceChildren();
     messageDialog.showModal();
     messages.focus({ preventScroll: true });
-    messages.scrollTop = messages.scrollHeight;
-    updateMessageFade();
+    worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest });
+});
+messageDialog.addEventListener("close", () => {
+    recalledMessages = [];
+    messages.replaceChildren();
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
@@ -2823,7 +2875,7 @@ for (const view of Object.values(views)) {
         tap = undefined;
     }
 
-    function selectCell({ x, y, request: pressedRequest }, openMenu = false) {
+    function selectCell({ x, y, request: pressedRequest, pointerType }, openMenu = false) {
         const type = view === views.map ? mode === "command" ? "map-cell" :
             mode === "aim" || mode === "run-direction" ? "aim-cell" : undefined :
             view === views.target ? mode === "target" ? "target-cell" :
@@ -2846,13 +2898,15 @@ for (const view of Object.values(views)) {
             if (!openMenu && target) sendMapAction(mapDirectionAction, target);
             return;
         }
-        sendInput({ type, x: cellX, y: cellY, openMenu, fast: mode === "aim" && preferences.fastAim });
+        sendInput({ type, x: cellX, y: cellY, openMenu, fast: mode === "aim" && preferences.fastAim,
+            mouse: pointerType === "mouse", inspect: pointerType !== "mouse" && !preferences.tapToMove });
     }
 
     view.viewport.addEventListener("pointerdown", (event) => {
         cancelTap();
         if (!event.isPrimary || event.button !== 0) return;
-        tap = { request, x: event.clientX, y: event.clientY, pointer: event.pointerId };
+        tap = { request, x: event.clientX, y: event.clientY, pointer: event.pointerId,
+            pointerType: event.pointerType };
         if (view === views.map && mode === "command" && !mapDirectionAction && event.pointerType === "touch" &&
             view.gridElement?.contains(event.target)) {
             holdTimer = setTimeout(() => {
@@ -2870,9 +2924,9 @@ for (const view of Object.values(views)) {
     view.viewport.addEventListener("pointercancel", cancelTap);
     view.viewport.addEventListener("click", (event) => {
         if (!tap || event.detail === 0) return;
-        const pressedRequest = tap.request;
+        const pressed = tap;
         cancelTap();
-        selectCell({ x: event.clientX, y: event.clientY, request: pressedRequest });
+        selectCell({ ...pressed, x: event.clientX, y: event.clientY });
     });
     if (view === views.map) {
         view.viewport.addEventListener("contextmenu", (event) => {
