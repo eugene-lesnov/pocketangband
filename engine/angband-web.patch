@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,109 @@
+@@ -24,6 +24,110 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1568,8 +1568,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_monster_sort(bool by_exp);
 +void web_set_list_block(const void *block);
 +bool web_is_list_block(const void *block);
-+void web_add_list_row(const char *text, const char *location, wchar_t symbol, int attr);
-+void web_set_list_row_cell(int dx, int dy, int race, int object);
++void web_add_list_row(const char *text, const char *location, int attr);
++void web_set_list_entry(wchar_t symbol, int symbol_attr, int race, int object);
++void web_set_list_row_cell(int dx, int dy);
 +struct textblock;
 +void web_set_details(struct textblock *tb);
 +void web_set_history(const char *text);
@@ -1628,7 +1629,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +195,7 @@ ui_event inkey_m(void);
+@@ -92,6 +196,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -2935,7 +2936,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  		if (tb != NULL)
  			textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, COLOUR_WHITE);
 +#endif
  
  		/* Force a minimum width so that the prompt doesn't get cut off. */
@@ -2945,7 +2946,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  	if (tb != NULL)
  		textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, COLOUR_WHITE);
 +#endif
  
  	for (index = 0; index < total && line_count < lines_to_display; index++) {
@@ -2959,10 +2960,10 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
 +			char full_name[sizeof(line_buffer) + sizeof(asleep)];
 +			const monster_list_entry_t *entry = &list->entries[index];
 +			strnfmt(full_name, sizeof(full_name), "%s%s", line_buffer, asleep);
-+			web_add_list_row(full_name, location, entry->race->d_char,
-+				monster_list_entry_line_color(entry));
++			web_add_list_row(full_name, location, monster_list_entry_line_color(entry));
++			web_set_list_entry(monster_x_char[entry->race->ridx], entry->attr, entry->race->ridx, 0);
 +			if (count_in_section == 1)
-+				web_set_list_row_cell(entry->dx[section], entry->dy[section], entry->race->ridx, 0);
++				web_set_list_row_cell(entry->dx[section], entry->dy[section]);
 +		}
 +#endif
  		utf8_clipto(line_buffer, name_width);
@@ -2973,7 +2974,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
  		if (tb != NULL)
  			textblock_append_c(tb, COLOUR_ORANGE, "%s", message);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(message, NULL, 0, COLOUR_ORANGE);
++		if (web_is_list_block(tb)) web_add_list_row(message, NULL, COLOUR_ORANGE);
 +#endif
  
  		return true;
@@ -3024,7 +3025,7 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
  		if (tb != NULL)
  			textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
++		if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, COLOUR_WHITE);
 +#endif
  
  		/* Force a minimum width so that the prompt doesn't get cut off. */
@@ -3034,12 +3035,12 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
  	if (tb != NULL)
  		textblock_append(tb, "%s", line_buffer);
 +#ifdef __EMSCRIPTEN__
-+	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, 0, COLOUR_WHITE);
++	if (web_is_list_block(tb)) web_add_list_row(line_buffer, NULL, COLOUR_WHITE);
 +#endif
  
  	for (entry_index = 0; entry_index < total && line_count < lines_to_display;
  		 entry_index++) {
-@@ -121,6 +130,20 @@
+@@ -121,6 +130,18 @@
  		/* Add the object count and clip the object name to fit. */
  		object_list_format_name(&list->entries[entry_index], line_buffer,
  								sizeof(line_buffer));
@@ -3047,20 +3048,18 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
 +		if (web_is_list_block(tb)) {
 +			const object_list_entry_t *entry = &list->entries[entry_index];
 +			char full_name[1024];
-+			wchar_t symbol = L'*';
 +			object_desc(full_name, sizeof(full_name), cave->objects[entry->object->oidx],
 +				ODESC_PREFIX | ODESC_FULL | ODESC_ALTNUM | (entry->count[section] << 16), player);
-+			if (!is_unknown(entry->object) && entry->object->kind)
-+				symbol = entry->object->kind->d_char;
-+			web_add_list_row(full_name, location, symbol,
-+				object_list_entry_line_attribute(entry));
-+			web_set_list_row_cell(entry->dx, entry->dy, 0, entry->object->oidx);
++			web_add_list_row(full_name, location, object_list_entry_line_attribute(entry));
++			web_set_list_entry(object_char(entry->object), object_attr(entry->object),
++				0, entry->object->oidx);
++			web_set_list_row_cell(entry->dx, entry->dy);
 +		}
 +#endif
  		utf8_clipto(line_buffer, full_width);
  
  		/* Calculate the width of the line for dynamic sizing; use a fixed max
-@@ -374,10 +397,20 @@
+@@ -374,10 +395,20 @@
  	 * safe_width so that the format function will pad the lines properly so
  	 * that the location string is aligned to the right edge of the list.
  	 */

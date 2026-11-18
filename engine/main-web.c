@@ -255,14 +255,15 @@ static void web_text_color(char *buffer, size_t size, int attr)
     strnfmt(buffer, size, "#%02x%02x%02x", rgb[0], rgb[1], rgb[2]);
 }
 
-EM_JS(void, start_list, (void), {
-    Module['inputContext'] = { list: [] };
+EM_JS(void, start_list, (int graphics_mode, const uint8_t *colors, int count), {
+    Module['inputContext'] = { list: [], graphicsMode: graphics_mode,
+        palette: HEAPU8.slice(colors, colors + 4 * count) };
 });
 
 void web_set_list_block(const void *block)
 {
     list_block = block;
-    if (block) start_list();
+    if (block) start_list(use_graphics, &angband_color_table[0][0], MAX_COLORS);
 }
 
 bool web_is_list_block(const void *block)
@@ -270,32 +271,36 @@ bool web_is_list_block(const void *block)
     return block && block == list_block;
 }
 
-EM_JS(void, add_list_row, (const char *text, const char *location, wchar_t symbol, const char *color), {
+EM_JS(void, add_list_row, (const char *text, const char *location, const char *color), {
     Module['inputContext'].list.push({ text: UTF8ToString(text).trim(),
         location: location ? UTF8ToString(location).trim() : undefined,
-        symbol: symbol ? String.fromCodePoint(symbol) : "",
         color: UTF8ToString(color) });
 });
 
-void web_add_list_row(const char *text, const char *location, wchar_t symbol, int attr)
+void web_add_list_row(const char *text, const char *location, int attr)
 {
     char color[8];
     web_text_color(color, sizeof(color), attr);
-    add_list_row(text, location, symbol, color);
+    add_list_row(text, location, color);
 }
 
-EM_JS(void, set_list_row_cell, (int x, int y, int race, int object), {
+EM_JS(void, web_set_list_entry, (wchar_t symbol, int symbol_attr, int race, int object), {
     const row = Module['inputContext'].list.at(-1);
-    row.cell = { x, y };
+    row.symbol = symbol;
+    row.symbolAttr = symbol_attr;
     row.race = race;
     row.object = object;
 });
 
-void web_set_list_row_cell(int dx, int dy, int race, int object)
+EM_JS(void, set_list_row_cell, (int x, int y), {
+    Module['inputContext'].list.at(-1).cell = { x, y };
+});
+
+void web_set_list_row_cell(int dx, int dy)
 {
     const term *map = angband_term[WEB_MAP_TERM];
     set_list_row_cell((player->grid.x + dx - map->offset_x) * tile_width,
-        (player->grid.y + dy - map->offset_y) * tile_height, race, object);
+        (player->grid.y + dy - map->offset_y) * tile_height);
 }
 
 EM_JS(void, set_detail_text, (const wchar_t *text, const uint8_t *attrs, size_t length,

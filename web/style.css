@@ -952,7 +952,7 @@ main:has(#character-screen:not([hidden])) #terminal-keys > [hidden] { display: n
 .visible-list-heading:first-child { margin-top: 0; }
 .visible-list-row {
     display: grid;
-    grid-template-columns: 1ch minmax(0, 1fr) auto;
+    grid-template-columns: 1em minmax(0, 1fr) auto;
     align-items: baseline;
     gap: 0.5rem;
     padding-block: 0.25rem;

@@ -36,7 +36,7 @@ self.addEventListener("message", ({ data }) => {
     if (data.type === "list-details") {
         if (waiting?.mode !== "details" || data.request !== waiting.request || !Number.isInteger(data.row)) return;
         const row = waiting.context.list?.[data.row];
-        if (row?.cell) {
+        if (row?.race || row?.object) {
             const detail = waiting.readListDetails(row);
             self.postMessage({ type: "list-details", request: data.request, row: data.row, detail });
         }

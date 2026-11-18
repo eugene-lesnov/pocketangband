@@ -1,6 +1,6 @@
-import { renderDescription, renderFrame } from "./frame-renderer.js";
+import { renderDescription, renderFrame, textColors } from "./frame-renderer.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
-import { graphicsModes, loadTiles } from "./tiles.js";
+import { graphicsModes, loadTiles, styleTerminalTile, tileAt } from "./tiles.js";
 
 const main = document.querySelector("main");
 const launch = document.querySelector("#launch");
@@ -1482,8 +1482,9 @@ function updateScreenContents() {
     return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome }) };
 }
 
-function showListPreview(preview) {
-    const focus = preview ? cancelKey : context.listPreview.row;
+function showListPreview(preview, focus = context.listPreview.row) {
+    if (preview?.reading && preview.detail === undefined)
+        worker.postMessage({ type: "list-details", row: preview.index, request });
     context.listPreview = preview;
     updateView();
     updateControls();
@@ -1492,13 +1493,12 @@ function showListPreview(preview) {
 
 function toggleListDetails() {
     const preview = context.listPreview;
-    preview.reading = !preview.reading;
-    if (preview.reading && preview.detail === undefined) {
-        worker.postMessage({ type: "list-details", row: preview.index, request });
+    if (preview.reading && !preview.cell) {
+        showListPreview();
+        return;
     }
-    updateView();
-    updateControls();
-    (preview.reading ? detailsScreen : targetInspect).focus({ preventScroll: true });
+    preview.reading = !preview.reading;
+    showListPreview(preview, preview.reading ? detailsScreen : targetInspect);
 }
 
 function updateDetailsScreen() {
@@ -1509,7 +1509,9 @@ function updateDetailsScreen() {
     visibleListScreen.hidden = !list || !!listPreview;
     if (visibleListScreen.hidden || renderedList === list) return;
     renderedList = list;
-    visibleListScreen.replaceChildren(...list.map(({ text, location, symbol, color, cell }, index) => {
+    const tiles = graphicsModes.get(context.graphicsMode);
+    const colors = textColors(context.palette);
+    visibleListScreen.replaceChildren(...list.map(({ text, location, symbol, symbolAttr, color, cell }, index) => {
         if (location === undefined) {
             const heading = document.createElement("p");
             heading.className = "visible-list-heading";
@@ -1517,21 +1519,25 @@ function updateDetailsScreen() {
             if (color) heading.style.color = color;
             return heading;
         }
-        const row = document.createElement(cell ? "button" : "div");
+        const row = document.createElement("button");
+        row.type = "button";
         row.className = "visible-list-row";
-        if (cell) {
-            const title = `${text} · ${location}`;
-            row.type = "button";
-            row.setAttribute("aria-label", `Show on map: ${title}`);
-            row.addEventListener("click", () => {
-                if (request !== undefined && views.map.frame && context.list === list)
-                    showListPreview({ cell, title, row, index, reading: false });
-            });
-        }
+        const title = cell ? `${text} · ${location}` : text;
+        row.setAttribute("aria-label", cell ? `Show on map: ${title}` : `Details: ${text}`);
+        row.addEventListener("click", () => {
+            if (request === undefined || context.list !== list || (cell && !views.map.frame)) return;
+            showListPreview({ cell, title, row, index, reading: !cell }, cell ? cancelKey : detailsScreen);
+        });
         const glyph = document.createElement("span");
         glyph.className = "visible-list-symbol";
         glyph.setAttribute("aria-hidden", "true");
-        glyph.textContent = symbol;
+        const tile = tiles?.atlas && tileAt(tiles, symbolAttr, symbol);
+        if (tile) {
+            styleTerminalTile(glyph, tiles, tile);
+        } else {
+            glyph.textContent = String.fromCodePoint(symbol);
+            glyph.style.color = colors[symbolAttr % colors.length];
+        }
         const name = document.createElement("span");
         name.className = "visible-list-name";
         name.textContent = text;

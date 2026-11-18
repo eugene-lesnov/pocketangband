@@ -1,6 +1,6 @@
 import { graphicsModes, renderTileMap, styleTerminalTile, tileAt } from "./tiles.js";
 
-function textColors(palette) {
+export function textColors(palette) {
     const colors = [];
     for (let offset = 0; offset < palette.length; offset += 4) {
         colors.push(`rgb(${palette[offset + 1]} ${palette[offset + 2]} ${palette[offset + 3]})`);
