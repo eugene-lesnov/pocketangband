@@ -491,12 +491,13 @@ dt { color: var(--muted); }
     align-items: center;
     height: var(--message-row-height);
     padding: 0.375rem 0.5rem;
+    border-color: #3d352a;
     text-align: start;
     font: 0.875rem/1.25 system-ui, sans-serif;
 }
 #journal:disabled { opacity: 1; }
 #journal:disabled #journal-indicator { visibility: hidden; }
-#journal.empty, #journal-indicator { color: var(--muted); }
+#journal-indicator { color: var(--muted); }
 #journal.prompt { color: var(--accent); }
 .journal-preview {
     display: flex;

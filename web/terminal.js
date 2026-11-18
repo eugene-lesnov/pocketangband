@@ -1376,13 +1376,10 @@ function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
     const action = (!prompt || context.newMessages) ? context.actionMessages : undefined;
     const lines = action?.slice(-2).map(formatMessage) ?? [];
-    const hasHistory = !!world?.lastMessage;
-    const text = [prompt, ...lines].filter(Boolean).join("\n") ||
-        (hasHistory ? "Message recall" : "No messages");
+    const text = [prompt, ...lines].filter(Boolean).join("\n");
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.classList.toggle("empty", !prompt && !lines.length);
-    journal.disabled = !hasHistory;
+    journal.disabled = !world?.lastMessage;
 }
 
 function updateView(state = world, region = views.target.crop) {
