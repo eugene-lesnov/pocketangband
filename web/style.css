@@ -702,7 +702,7 @@ button > .key-hint {
     min-height: calc(4 * var(--button-min-height) + 0.75rem);
     grid-auto-rows: 1fr;
 }
-#keyboard-utilities { grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
+#keyboard-utilities { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 2fr); }
 #repeat-action .key-hint { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 #hero-actions[aria-expanded="true"] { border-color: var(--accent); }
 #map-cell-actions {

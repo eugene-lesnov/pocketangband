@@ -2790,6 +2790,7 @@ function showKeys(panel, keys) {
 }
 
 function renderKeyboard() {
+    const onMap = mode === "command";
     const layers = [
         ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
         ["1234567890", "-=,.;:<>/?", "!@#$%&*()"],
@@ -2816,16 +2817,14 @@ function renderKeyboard() {
         keyboard.querySelector("[aria-pressed]").focus({ preventScroll: true });
     };
     if (keyboardLayer === 0) rows.at(-1).unshift(shift);
-    rows.at(-1).push(makeKey("Backspace", "⌫", "Delete character"));
+    const tab = makeKey("Tab", "Tab");
+    if (onMap && keyboardLayer === 0) rows[1].unshift(tab);
+    if (!onMap || keyboardLayer === 1) rows.at(-1).push(makeKey("Backspace", "⌫", "Delete character"));
     const space = makeKey(" ", "Space");
     space.className = "space-key";
-    const utility = [switchLayer, space, makeKey("Tab", "Tab")];
-    if (mode === "command") {
-        const escape = makeButton("Esc", "Esc (Hide keyboard)");
-        escape.onclick = () => closeInputPanel();
-        utility.push(escape);
-    }
-    if (mode === "key" || mode === "command") {
+    const utility = [switchLayer];
+    if (!onMap) utility.push(space, tab);
+    if (mode === "key" || onMap) {
         const control = makeButton("Ctrl", "Control for next letter");
         control.setAttribute("aria-pressed", String(controlKey));
         control.onclick = () => {
@@ -2834,13 +2833,13 @@ function renderKeyboard() {
         };
         utility.push(control);
     }
-    if (mode === "command") {
-        keyboardUtilities.replaceChildren(...utility);
+    if (onMap) {
+        keyboardUtilities.replaceChildren(...utility, space);
     } else {
         rows.push(utility);
     }
     showKeys(keyboard, rows);
-    keyboard.lastElementChild.classList.toggle("keyboard-utility-row", mode !== "command");
+    keyboard.lastElementChild.classList.toggle("keyboard-utility-row", !onMap);
     return switchLayer;
 }
 
