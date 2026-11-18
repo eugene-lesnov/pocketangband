@@ -595,7 +595,12 @@ main:not(.in-world) .view:has(#journal:not([hidden])) #message-pause {
     color: var(--accent);
     font: 0.875rem/1.25 system-ui, sans-serif;
 }
-#continue-message { padding-inline: 0.625rem; border-color: #9c7749; }
+#continue-message {
+    min-height: 36px;
+    padding-block-end: 0.125rem;
+    padding-inline: 0.625rem;
+    border-color: #9c7749;
+}
 
 .controls {
     display: flex;
