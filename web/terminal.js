@@ -739,6 +739,18 @@ function renderResultFile({ filename, data }) {
     downloadResult.hidden = false;
 }
 
+function downloadFile({ filename, data }) {
+    const url = URL.createObjectURL(new Blob([data], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 function appendCharacterGroup(container, title, rows) {
     if (!rows.length) return;
     const heading = document.createElement("h3");
@@ -1606,7 +1618,6 @@ function handleWorkerMessage({ data }) {
                 (data.menu.selectionTitle !== menu?.selectionTitle ||
                     data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
             const finishingNameEdit = !characterNameEditor.hidden;
-            const returningFromCharacterDump = mode === "results-file" && data.mode === "character" && data.playing;
             characterNameEditor.hidden = true;
             if (mode === "results-file") clearResultFile();
             if (changed) {
@@ -1686,7 +1697,6 @@ function handleWorkerMessage({ data }) {
                 }
             }
             if (mode === "character" && finishingNameEdit) characterNameEdit.focus({ preventScroll: true });
-            else if (returningFromCharacterDump) characterDump.focus({ preventScroll: true });
             else if (changed && !isChoosing() && !characterScreen.hidden) focusCharacter();
             if (mode === "command" && characterTrigger) {
                 characterTrigger.focus({ preventScroll: true });
@@ -1711,6 +1721,9 @@ function handleWorkerMessage({ data }) {
             }
             break;
         }
+        case "file-download":
+            downloadFile(data);
+            break;
         case "saving":
             clearTimeout(saveNoticeTimer);
             clearPendingInput();

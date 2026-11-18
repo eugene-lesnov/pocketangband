@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,103 @@
+@@ -24,6 +24,104 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1580,6 +1580,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_add_results_entry(const char *text, const char *detail, bool highlighted);
 +void web_wait_for_back(enum web_input_mode mode);
 +void web_show_generated_file(const char *title, const char *path, const char *filename);
++void web_download_file(const char *path, const char *filename);
 +void web_set_birth_menu(const char *title, const char *summary, bool preview);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
 +void web_set_birth_name(const char *name, size_t size);
@@ -1622,7 +1623,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +189,7 @@ ui_event inkey_m(void);
+@@ -92,6 +190,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -3246,7 +3247,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  
  
 +#ifdef __EMSCRIPTEN__
-+void web_show_character_dump(void)
++void web_download_character_dump(void)
 +{
 +	char filename[PLAYER_NAME_LEN + sizeof(".txt")];
 +	const char *path = "/tmp/pocketband-character.txt";
@@ -3255,7 +3256,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +	for (char *ch = filename; *ch; ch++) {
 +		if (strchr("<>:\"/\\|?*", *ch)) *ch = '_';
 +	}
-+	web_show_generated_file("Character dump", dump_save(path) ? path : NULL, filename);
++	web_download_file(dump_save(path) ? path : NULL, filename);
 +}
 +#endif
 +
@@ -3306,7 +3307,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +#endif
  				case 'f': {
 +#ifdef __EMSCRIPTEN__
-+					web_show_character_dump();
++					web_download_character_dump();
 +#else
  					char buf[1024];
  					char fname[80];
@@ -4295,7 +4296,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
  static void death_file(const char *title, int row)
  {
 +#ifdef __EMSCRIPTEN__
-+	web_show_character_dump();
++	web_download_character_dump();
 +#else
  	char buf[1024];
  	char ftmp[80];
@@ -4604,7 +4605,7 @@ diff --git a/src/ui-player.h b/src/ui-player.h
  
 +#ifdef __EMSCRIPTEN__
 +void web_character_sheet(bool preview);
-+void web_show_character_dump(void);
++void web_download_character_dump(void);
 +#endif
 +
  #endif /* !UI_PLAYER_H */

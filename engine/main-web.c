@@ -377,6 +377,16 @@ void web_show_generated_file(const char *title, const char *path, const char *fi
     web_wait_for_back(WEB_INPUT_RESULTS_FILE);
 }
 
+EM_JS(void, send_file_download, (const char *path, const char *filename), {
+    Module['downloadFile'](path ? UTF8ToString(path) : undefined, UTF8ToString(filename));
+});
+
+void web_download_file(const char *path, const char *filename)
+{
+    send_file_download(path, filename);
+    if (path) file_delete(path);
+}
+
 EM_JS(void, web_set_character, (const char *name, const char *race, const char *class_name,
         int level, const char *history, int hp, int max_hp, int sp, int max_sp, bool magic), {
     Module['characterSheet'] = {
