@@ -1358,8 +1358,6 @@ function updatePrompt() {
             text = `${action}\n${target}`;
         }
     }
-    if (mode === "command" && context.mapCell?.canRoute)
-        text += " Tap this cell again to walk there.";
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running || (mode === "run-direction" && request === undefined)) text = "";
     if (mode === "save-slots") text = "Choose a save or start a new game.";
