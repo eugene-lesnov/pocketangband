@@ -4174,7 +4174,14 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	}
  
  	/* Dump the spell --(-- */
-@@ -141,14 +152,60 @@ static bool spell_menu_handler(struct me
+@@ -131,2 +142,6 @@ static bool spell_menu_handler(struct menu *m, const ui_event *e, int oid)
+ 	if (e->type == EVT_SELECT) {
++#ifdef __EMSCRIPTEN__
++		if (d->is_valid == spell_okay_to_study && d->show_description)
++			return true;
++#endif
+ 		d->selected_spell = d->spells[oid];
+@@ -141,14 +156,60 @@ static bool spell_menu_handler(struct me
  	return false;
  }
  
@@ -4237,7 +4244,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  
  	if (d->show_description) {
  		/* Redirect output to the screen */
-@@ -158,47 +215,8 @@ static void spell_menu_browser(int oid,
+@@ -158,47 +219,8 @@ static void spell_menu_browser(int oid,
  		text_out_pad = 1;
  
  		Term_gotoxy(loc->col, loc->row + loc->page_rows);
@@ -4287,7 +4294,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  		text_out("\n\n");
  
  		/* XXX */
-@@ -206,6 +224,7 @@ static void spell_menu_browser(int oid,
+@@ -206,6 +228,7 @@ static void spell_menu_browser(int oid,
  		text_out_indent = 0;
  	}
  }
@@ -4295,7 +4302,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  
  static const menu_iter spell_menu_iter = {
  	NULL,	/* get_tag = NULL, just use lowercase selections */
-@@ -215,6 +234,55 @@ static const menu_iter spell_menu_iter =
+@@ -215,6 +238,55 @@ static const menu_iter spell_menu_iter =
  	NULL	/* no resize hook */
  };
  
@@ -4351,7 +4358,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  /**
   * Create and initialise a spell menu, given an object and a validity hook
   */
-@@ -249,7 +317,13 @@ static struct menu *spell_menu_new(const
+@@ -249,7 +321,13 @@ static struct menu *spell_menu_new(const
  	m->header = "Name                             Lv Mana Fail Info";
  	m->flags = MN_CASELESS_TAGS | MN_KEYMAP_ESC;
  	m->selections = all_letters_nohjkl;
@@ -4365,7 +4372,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	m->cmd_keys = "?";
  
  	/* Set size */
-@@ -287,6 +361,10 @@ static int spell_menu_select(struct menu
+@@ -287,6 +365,10 @@ static int spell_menu_select(struct menu
  	my_strcap(buf);
  	prt(buf, 0, 0);
  
@@ -4376,7 +4383,7 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  	menu_select(m, 0, true);
  	screen_load();
  
-@@ -306,6 +384,10 @@ static void spell_menu_browse(struct men
+@@ -306,6 +388,10 @@ static void spell_menu_browse(struct men
  	prt(format("Browsing %ss. ('?' to toggle description)", noun), 0, 0);
  
  	d->browse = true;
