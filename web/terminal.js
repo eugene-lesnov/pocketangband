@@ -102,6 +102,7 @@ const mapActionFooter = document.querySelector("#map-action-footer");
 const closeMapCellActions = document.querySelector("#close-map-cell-actions");
 const openMapLists = document.querySelector("#open-map-lists");
 const mapLists = document.querySelector("#map-lists");
+const mapKeyboardToggle = document.querySelector("#map-keyboard-toggle");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
 const nearest = document.querySelector("#nearest");
@@ -200,6 +201,7 @@ const rest = document.querySelector("#rest");
 const keyboard = document.querySelector("#keyboard");
 const keyboardUtilities = document.querySelector("#keyboard-utilities");
 const keyboardToggle = document.querySelector("#keyboard-toggle");
+mapKeyboardToggle.append(keyboardToggle.querySelector(".keyboard-icon").cloneNode(true));
 
 const specialKeys = new Map([
     ["Enter", 13], ["Backspace", 8], ["Escape", 27], ["Save", 19], ["SaveAndQuit", 24], ["Tab", 9],
@@ -965,8 +967,7 @@ function closeInputPanel(closeKeyboard = true) {
         dismissMapActions();
         return true;
     }
-    if ((["tiles", "touch-settings"].includes(openPanel) && panelTrigger === openMenu) ||
-        (openPanel === "commands" && panelTrigger === openMenu)) {
+    if (["tiles", "touch-settings", "commands"].includes(openPanel) && panelTrigger === openMenu) {
         showPanel("menu", panelTrigger);
         return true;
     }
@@ -1015,7 +1016,7 @@ function updateControls() {
     characterDump.hidden = !liveCharacter;
     renderAppUpdate();
     updateMenuControls(disabled, choosing);
-    const showPad = updateDirectionPad(disabled, choosing, stopVisible);
+    const showPad = updateDirectionPad(disabled, choosing, stopVisible, showKeyboard);
     updateMapControls(disabled, showKeyboard, stopVisible);
     const editingHistory = updateBirthControls(disabled);
     updateTerminalControls({ disabled: disabled || editingHistory || editingName, outcome,
@@ -1039,13 +1040,14 @@ function updateMenuControls(disabled, choosing) {
     activeList.rows.disabled = activeList.sections.disabled = disabled;
 }
 
-function updateDirectionPad(disabled, choosing, stopVisible) {
+function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
     const command = mode === "command";
     const selectable = isTargeting() || isDirectionPrompt();
     views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selectable);
     const usingPad = !openPanel && (command || selectable || (isMenu() && !menu));
-    const showPad = !choosing && (usingPad || (playingGame && main.classList.contains("in-world")));
+    const showPad = !choosing && !(command && showKeyboard) &&
+        (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", mode === "run-direction");
@@ -1067,7 +1069,8 @@ function updateDirectionPad(disabled, choosing, stopVisible) {
 
 function updateMapControls(disabled, showKeyboard, stopVisible) {
     const command = mode === "command";
-    const showPlayActions = command && !openPanel && !showKeyboard && !stopVisible;
+    const showMapMenu = command && !openPanel && !stopVisible;
+    const showPlayActions = showMapMenu && !showKeyboard;
     const inspectingCell = showPlayActions && !!context.mapCell?.actions;
     vitals.disabled = disabled || !(command || context.character);
     stopAction.hidden = !stopVisible;
@@ -1077,8 +1080,8 @@ function updateMapControls(disabled, showKeyboard, stopVisible) {
     walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
-    setActions(openMenu, showPlayActions, disabled);
-    setActions(openMapLists, showPlayActions && context.worldView, disabled || !!mapDirectionAction);
+    setActions(openMenu, showMapMenu, disabled);
+    setActions(openMapLists, showMapMenu && context.worldView, disabled || !!mapDirectionAction);
     if (openMapLists.hidden || openMapLists.disabled) setMapListsOpen(false);
     mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
@@ -1220,8 +1223,11 @@ function updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVis
     setActions(keyboardUtilities, mode === "command" && showKeyboard && !stopVisible, disabled);
     keyboardToggle.hidden = !canOpenKeyboard ||
         (mode === "aim" && !showKeyboard && (context.worldView || views.target.crop));
-    keyboardToggle.setAttribute("aria-expanded", String(showKeyboard));
-    keyboardToggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
+    setActions(mapKeyboardToggle, mode === "command" && canOpenKeyboard && !stopVisible, disabled);
+    for (const toggle of [keyboardToggle, mapKeyboardToggle]) {
+        toggle.setAttribute("aria-expanded", String(showKeyboard));
+        toggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
+    }
 }
 
 function renderAppUpdate() {
@@ -2127,7 +2133,7 @@ main.addEventListener("click", (event) => {
         sendInput({ type: "run-direction", code: direction });
         return;
     }
-    const controlled = mode === "key" && controlKey && keyboard.contains(button) && /^[a-z]$/i.test(key);
+    const controlled = controlKey && keyboard.contains(button) && /^[a-z]$/i.test(key);
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
         { type: "key", code: controlled ? key.charCodeAt(0) & 31 : keyCode(key) };
@@ -2414,15 +2420,9 @@ function renderActionsPanel() {
         tilesMenu.textContent = `Tiles: ${graphicsModes.get(currentGraphics).label}`;
         const commands = makeButton("Commands");
         commands.onclick = () => showPanel("commands", openMenu);
-        const keys = makeButton("Keyboard");
-        keys.prepend(keyboardToggle.querySelector(".keyboard-icon").cloneNode(true));
-        keys.onclick = () => {
-            showPanel();
-            toggleKeyboard();
-        };
         const settings = makeButton("Touch settings");
         settings.onclick = () => showPanel("touch-settings", openMenu);
-        rows.unshift(commands, keys, tilesMenu, settings);
+        rows.unshift(commands, tilesMenu, settings);
     }
     if (openPanel === "commands") {
         const grouped = [];
@@ -2820,7 +2820,12 @@ function renderKeyboard() {
     const space = makeKey(" ", "Space");
     space.className = "space-key";
     const utility = [switchLayer, space, makeKey("Tab", "Tab")];
-    if (mode === "key") {
+    if (mode === "command") {
+        const escape = makeButton("Esc", "Esc (Hide keyboard)");
+        escape.onclick = () => closeInputPanel();
+        utility.push(escape);
+    }
+    if (mode === "key" || mode === "command") {
         const control = makeButton("Ctrl", "Control for next letter");
         control.setAttribute("aria-pressed", String(controlKey));
         control.onclick = () => {
@@ -2830,14 +2835,6 @@ function renderKeyboard() {
         utility.push(control);
     }
     if (mode === "command") {
-        const commands = makeButton("Cmds", "Commands");
-        commands.setAttribute("aria-controls", "actions-screen");
-        commands.onclick = () => {
-            if (request !== undefined) showPanel("commands", commands);
-        };
-        const hide = makeButton("Hide", "Hide keyboard");
-        hide.onclick = () => toggleKeyboard();
-        utility.push(makeKey("Escape", "Esc"), commands, hide);
         keyboardUtilities.replaceChildren(...utility);
     } else {
         rows.push(utility);
@@ -2882,13 +2879,14 @@ function toggleKeyboard() {
     centerPending = true;
     draw();
     if (mode === "command") {
-        (keyboardOpen ? keyboard.querySelector("button") : openMenu)?.focus({ preventScroll: true });
+        (keyboardOpen ? keyboard.querySelector("button") : mapKeyboardToggle)?.focus({ preventScroll: true });
     } else if (mode === "target" || mode === "aim" || mode === "direction") {
         (keyboardOpen ? keyboard.querySelector("button") : keyboardToggle)?.focus({ preventScroll: true });
     }
 }
 
 keyboardToggle.addEventListener("click", toggleKeyboard);
+mapKeyboardToggle.addEventListener("click", toggleKeyboard);
 
 heroActions.addEventListener("click", () => {
     if (!mapCellActions.hidden) {
