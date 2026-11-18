@@ -33,6 +33,15 @@ self.addEventListener("message", ({ data }) => {
         else self.postMessage({ type: "message-recall", recall: data.recall });
         return;
     }
+    if (data.type === "list-details") {
+        if (waiting?.mode !== "details" || data.request !== waiting.request || !Number.isInteger(data.row)) return;
+        const row = waiting.context.list?.[data.row];
+        if (row?.cell) {
+            const detail = waiting.readListDetails(row);
+            self.postMessage({ type: "list-details", request: data.request, row: data.row, detail });
+        }
+        return;
+    }
     if (data.type === "background-save") {
         if (waiting?.mode === "command") wakeInput("background-save");
         else if (!waiting || waiting.playing) backgroundSavePending = true;
@@ -172,6 +181,12 @@ async function play(afterRun) {
     const exited = new Promise((resolve) => {
         finish = resolve;
     });
+    function readListDetails(row) {
+        game._web_list_details(row.race, row.object);
+        const detail = game.listDetail;
+        game.listDetail = undefined;
+        return detail;
+    }
     const game = await createAngband({
         skipSplash: !!afterRun,
         preferredSaveSlot,
@@ -212,7 +227,7 @@ async function play(afterRun) {
                 return "background-save";
             }
             return new Promise((resolve) => {
-                waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve };
+                waiting = { request: ++request, mode, region, playing, context, menu, wake: resolve, readListDetails };
                 if (mode === "command" && currentTurns !== savedTurns) {
                     const pendingRequest = request;
                     checkpointTimer = setTimeout(() => {

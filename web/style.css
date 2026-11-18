@@ -936,13 +936,18 @@ main:has(#character-screen:not([hidden])) #terminal-keys > [hidden] { display: n
 #name-fields, #text-fields, #character-name-fields { display: grid; gap: 0.5rem; }
 #name-fields .key-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #name-prompt, #text-prompt { color: var(--accent); font-size: 0.875rem; overflow-wrap: anywhere; }
-#details-screen {
+.detail-text {
     padding: 0.75rem 0.625rem;
     font: 0.875rem/1.45 system-ui, sans-serif;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
-#details-screen.visible-list { white-space: normal; }
+.detail-text .term-tile, .menu-description .term-tile {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.1em;
+}
+.detail-text.visible-list { white-space: normal; }
 .visible-list-heading { margin-block: 0.5rem 0.25rem; }
 .visible-list-heading:first-child { margin-top: 0; }
 .visible-list-row {
@@ -1186,7 +1191,7 @@ main.picker-expanded .controls { flex: 1; max-height: 100%; }
 #message-dialog form button { width: 100%; }
 .large-text button { font-size: 0.9375rem; }
 .large-text .menu-rows button { font-size: 1rem; }
-.large-text :is(.menu-rows small, #input-prompt, .character-rows, #details-screen, #birth-bonuses, #messages li) { font-size: 1rem; }
+.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-bonuses, #messages li) { font-size: 1rem; }
 .large-text h2 { font-size: 1rem; }
 .large-text #movement-mode button { font-size: 0.8125rem; }
 .large-text .direction-pad button { font-size: 1.25rem; }

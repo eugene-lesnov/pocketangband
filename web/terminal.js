@@ -1,4 +1,4 @@
-import { renderFrame } from "./frame-renderer.js";
+import { renderDescription, renderFrame } from "./frame-renderer.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
 import { graphicsModes, loadTiles } from "./tiles.js";
 
@@ -120,6 +120,7 @@ const textHistoryValue = document.querySelector("#text-history-value");
 const textPrompt = document.querySelector("#text-prompt");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
+const visibleListScreen = document.querySelector("#visible-list-screen");
 const splashScreen = document.querySelector("#splash-screen");
 const angbandVersion = document.querySelector("#angband-version");
 const victoryScreen = document.querySelector("#victory-screen");
@@ -330,7 +331,7 @@ let controlKey = false;
 let pickerExpanded = false;
 let inspectingChoice = false;
 const promptModes = new Set(["confirm", "key", "quantity", "option-number", "rest", "retire"]);
-let renderedDetails;
+let renderedList;
 let repeatName = "";
 let graphicsRestored = false;
 let messageRecallRequest = 0;
@@ -940,7 +941,8 @@ function isResultsScreen() {
 
 function closeInputPanel(closeKeyboard = true) {
     if (context.listPreview) {
-        showListPreview();
+        if (context.listPreview.reading) toggleListDetails();
+        else showListPreview();
         return true;
     }
     if (!mapLists.hidden) {
@@ -1190,8 +1192,9 @@ function updateTargetControls(disabled, showTargetControls, showKeyboard) {
         setKeyHint(targetMode);
         targetMode.disabled = selecting && context.freeAim && !context.targetCount;
     }
-    targetInspect.hidden = !selecting || !showTargetControls;
-    targetInspect.disabled = !context.canInspect;
+    const preview = context.listPreview;
+    targetInspect.hidden = preview ? preview.reading : !selecting || !showTargetControls;
+    targetInspect.disabled = disabled || (!preview && !context.canInspect);
 }
 
 function updatePromptControls(disabled, stopVisible) {
@@ -1472,7 +1475,7 @@ function updateScreenContents() {
     nameScreen.hidden = mode !== "name";
     textScreen.hidden = mode !== "text";
 
-    const fullScreen = textEntry || !detailsScreen.hidden || character || splash ||
+    const fullScreen = textEntry || !detailsScreen.hidden || !visibleListScreen.hidden || character || splash ||
         birthStats || victory || results;
     const inGamePanel = !!openPanel || character || mode === "history" || !!menu?.options ||
         mode === "option-number" || outcome || victory || results || !!menu?.title || mode === "retire";
@@ -1487,52 +1490,59 @@ function showListPreview(preview) {
     focus.focus({ preventScroll: true });
 }
 
-function updateDetailsScreen() {
-    const { detail, list } = context;
-    const content = list ?? detail;
-    detailsScreen.hidden = detail === undefined || !!context.listPreview;
-    if (detailsScreen.hidden || renderedDetails === content) return;
-
-    renderedDetails = content;
-    detailsScreen.classList.toggle("visible-list", !!list);
-    if (list) {
-        detailsScreen.replaceChildren(...list.map(({ text, location, symbol, color, cell }) => {
-            if (location === undefined) {
-                const heading = document.createElement("p");
-                heading.className = "visible-list-heading";
-                heading.textContent = text;
-                if (color) heading.style.color = color;
-                return heading;
-            }
-            const row = document.createElement(cell ? "button" : "div");
-            row.className = "visible-list-row";
-            if (cell) {
-                const title = `${text} · ${location}`;
-                row.type = "button";
-                row.setAttribute("aria-label", `Show on map: ${title}`);
-                row.addEventListener("click", () => {
-                    if (request !== undefined && views.map.frame && context.list === list)
-                        showListPreview({ cell, title, row });
-                });
-            }
-            const glyph = document.createElement("span");
-            glyph.className = "visible-list-symbol";
-            glyph.setAttribute("aria-hidden", "true");
-            glyph.textContent = symbol;
-            const name = document.createElement("span");
-            name.className = "visible-list-name";
-            name.textContent = text;
-            if (color) name.style.color = color;
-            const distance = document.createElement("span");
-            distance.className = "visible-list-location";
-            distance.textContent = location;
-            row.append(glyph, name, distance);
-            return row;
-        }));
-    } else {
-        detailsScreen.textContent = detail;
+function toggleListDetails() {
+    const preview = context.listPreview;
+    preview.reading = !preview.reading;
+    if (preview.reading && preview.detail === undefined) {
+        worker.postMessage({ type: "list-details", row: preview.index, request });
     }
-    detailsScreen.scrollTop = 0;
+    updateView();
+    updateControls();
+    (preview.reading ? detailsScreen : targetInspect).focus({ preventScroll: true });
+}
+
+function updateDetailsScreen() {
+    const { detail, list, listPreview } = context;
+    const content = listPreview?.reading ? listPreview.detail ?? "Loading…" : list ? undefined : detail;
+    detailsScreen.hidden = content === undefined;
+    if (!detailsScreen.hidden) renderDescription(detailsScreen, content);
+    visibleListScreen.hidden = !list || !!listPreview;
+    if (visibleListScreen.hidden || renderedList === list) return;
+    renderedList = list;
+    visibleListScreen.replaceChildren(...list.map(({ text, location, symbol, color, cell }, index) => {
+        if (location === undefined) {
+            const heading = document.createElement("p");
+            heading.className = "visible-list-heading";
+            heading.textContent = text;
+            if (color) heading.style.color = color;
+            return heading;
+        }
+        const row = document.createElement(cell ? "button" : "div");
+        row.className = "visible-list-row";
+        if (cell) {
+            const title = `${text} · ${location}`;
+            row.type = "button";
+            row.setAttribute("aria-label", `Show on map: ${title}`);
+            row.addEventListener("click", () => {
+                if (request !== undefined && views.map.frame && context.list === list)
+                    showListPreview({ cell, title, row, index, reading: false });
+            });
+        }
+        const glyph = document.createElement("span");
+        glyph.className = "visible-list-symbol";
+        glyph.setAttribute("aria-hidden", "true");
+        glyph.textContent = symbol;
+        const name = document.createElement("span");
+        name.className = "visible-list-name";
+        name.textContent = text;
+        if (color) name.style.color = color;
+        const distance = document.createElement("span");
+        distance.className = "visible-list-location";
+        distance.textContent = location;
+        row.append(glyph, name, distance);
+        return row;
+    }));
+    visibleListScreen.scrollTop = 0;
 }
 
 function renderPicker() {
@@ -1754,6 +1764,14 @@ function handleWorkerMessage({ data }) {
                             sendInput({ type: "set-tiles", code: preferences.tiles });
                     }).catch(console.error);
                 }
+            }
+            break;
+        }
+        case "list-details": {
+            const preview = context.listPreview;
+            if (data.request === request && preview && data.row === preview.index) {
+                preview.detail = data.detail ?? "Details unavailable.";
+                if (preview.reading) updateDetailsScreen();
             }
             break;
         }
@@ -2050,6 +2068,10 @@ main.addEventListener("click", (event) => {
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
     if (button === cancelKey && closeInputPanel(false)) return;
+    if (button === targetInspect && context.listPreview) {
+        toggleListDetails();
+        return;
+    }
     if (button === confirmKey && menu) {
         sendInput({ type: "menu-row", code: menuCursor });
         return;
@@ -2479,10 +2501,7 @@ function renderMenu(state, description = state?.description ?? "") {
         sections: menuSections, summary: menuSummary, items: menuItems, empty: menuEmpty } = activeList;
     menuScreen.hidden = !state;
     menuDescription.hidden = !description;
-    if (menuDescription.textContent !== description) {
-        menuDescription.textContent = description;
-        menuDescription.scrollTop = 0;
-    }
+    renderDescription(menuDescription, description);
     menuScreen.classList.toggle("options-menu", Boolean(state?.options));
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
     const outcome = !!context.outcome;
@@ -3094,6 +3113,11 @@ document.addEventListener("keydown", (event) => {
     }
     if (event.key === "Escape" && closeInputPanel(mode !== "key")) {
         event.preventDefault();
+        return;
+    }
+    if (context.listPreview && event.key === "r" && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        if (!event.repeat) toggleListDetails();
         return;
     }
     if (openPanel || context.listPreview) return;

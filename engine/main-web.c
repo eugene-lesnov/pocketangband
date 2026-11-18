@@ -16,6 +16,7 @@
 #include "obj-desc.h"
 #include "obj-gear.h"
 #include "obj-ignore.h"
+#include "obj-info.h"
 #include "obj-pile.h"
 #include "obj-tval.h"
 #include "obj-util.h"
@@ -283,26 +284,59 @@ void web_add_list_row(const char *text, const char *location, wchar_t symbol, in
     add_list_row(text, location, symbol, color);
 }
 
-EM_JS(void, set_list_row_cell, (int x, int y), {
-    Module['inputContext'].list.at(-1).cell = { x, y };
+EM_JS(void, set_list_row_cell, (int x, int y, int race, int object), {
+    const row = Module['inputContext'].list.at(-1);
+    row.cell = { x, y };
+    row.race = race;
+    row.object = object;
 });
 
-void web_set_list_row_cell(int dx, int dy)
+void web_set_list_row_cell(int dx, int dy, int race, int object)
 {
     const term *map = angband_term[WEB_MAP_TERM];
     set_list_row_cell((player->grid.x + dx - map->offset_x) * tile_width,
-        (player->grid.y + dy - map->offset_y) * tile_height);
+        (player->grid.y + dy - map->offset_y) * tile_height, race, object);
 }
 
-EM_JS(void, web_set_details, (const wchar_t *text, size_t length), {
-    let detail = "";
-    for (let i = 0; i < length; i += 4096) {
-        detail += String.fromCodePoint(...HEAPU32.subarray((text >>> 2) + i,
-            (text >>> 2) + Math.min(length, i + 4096)));
+EM_JS(void, set_detail_text, (const wchar_t *text, const uint8_t *attrs, size_t length,
+        const uint8_t *colors, int color_count, int graphics_mode, bool list_recall), {
+    const context = Module['inputContext'];
+    if (!list_recall && context?.list) {
+        context.detail = "";
+        return;
     }
-    Module['inputContext'] = { detail, list: Module['inputContext']?.list,
-        sortByExp: Module['inputContext']?.sortByExp };
+    const detail = { codepoints: HEAPU32.slice(text >>> 2, (text >>> 2) + length),
+        attributes: HEAPU8.slice(attrs, attrs + length), palette: HEAPU8.slice(colors, colors + 4 * color_count),
+        graphicsMode: graphics_mode };
+    if (list_recall) Module['listDetail'] = detail;
+    else Module['inputContext'] = { detail };
 });
+
+static void publish_details(textblock *tb, bool list_recall)
+{
+    set_detail_text(textblock_text(tb), textblock_attrs(tb), textblock_length(tb),
+        &angband_color_table[0][0], MAX_COLORS, use_graphics, list_recall);
+}
+
+void web_set_details(textblock *tb)
+{
+    publish_details(tb, false);
+}
+
+EMSCRIPTEN_KEEPALIVE void web_list_details(int race, int object)
+{
+    textblock *tb;
+    if (race > 0 && race < z_info->r_max) {
+        tb = textblock_new();
+        lore_description(tb, &r_info[race], get_lore(&r_info[race]), false);
+    } else if (object > 0 && object < cave->obj_max && cave->objects[object] && cave->objects[object]->known) {
+        tb = object_info(cave->objects[object], OINFO_NONE);
+    } else {
+        return;
+    }
+    publish_details(tb, true);
+    textblock_free(tb);
+}
 
 EM_JS(void, web_set_option_notice, (const char *message), {
     Module['inputContext'] = { detail: UTF8ToString(message) };

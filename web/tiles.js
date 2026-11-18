@@ -32,9 +32,9 @@ function backgroundPosition({ atlas, size }, tile) {
     return `${tile.x / (atlas.naturalWidth - size) * 100}% ${tile.y / (atlas.naturalHeight - size) * 100}%`;
 }
 
-export function styleTerminalTile(span, tiles, frame, index, tile) {
+export function styleTerminalTile(span, tiles, tile, frame, index) {
     const { atlas, size } = tiles;
-    const terrain = terrainTile(tiles, frame, index);
+    const terrain = frame && terrainTile(tiles, frame, index);
     const image = `url("${atlas.src}")`;
     span.classList.add("term-tile");
     span.style.backgroundImage = terrain ? `${image}, ${image}` : image;

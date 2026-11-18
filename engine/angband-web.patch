@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,108 @@
+@@ -24,6 +24,109 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1569,8 +1569,9 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_list_block(const void *block);
 +bool web_is_list_block(const void *block);
 +void web_add_list_row(const char *text, const char *location, wchar_t symbol, int attr);
-+void web_set_list_row_cell(int dx, int dy);
-+void web_set_details(const wchar_t *text, size_t length);
++void web_set_list_row_cell(int dx, int dy, int race, int object);
++struct textblock;
++void web_set_details(struct textblock *tb);
 +void web_set_history(const char *text);
 +void web_show_splash(bool startup);
 +void web_cancel_birth(void);
@@ -1627,7 +1628,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +194,7 @@ ui_event inkey_m(void);
+@@ -92,6 +195,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -2961,7 +2962,7 @@ diff --git a/src/ui-mon-list.c b/src/ui-mon-list.c
 +			web_add_list_row(full_name, location, entry->race->d_char,
 +				monster_list_entry_line_color(entry));
 +			if (count_in_section == 1)
-+				web_set_list_row_cell(entry->dx[section], entry->dy[section]);
++				web_set_list_row_cell(entry->dx[section], entry->dy[section], entry->race->ridx, 0);
 +		}
 +#endif
  		utf8_clipto(line_buffer, name_width);
@@ -3053,7 +3054,7 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
 +				symbol = entry->object->kind->d_char;
 +			web_add_list_row(full_name, location, symbol,
 +				object_list_entry_line_attribute(entry));
-+			web_set_list_row_cell(entry->dx, entry->dy);
++			web_set_list_row_cell(entry->dx, entry->dy, 0, entry->object->oidx);
 +		}
 +#endif
  		utf8_clipto(line_buffer, full_width);
@@ -3083,17 +3084,16 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
 diff --git a/src/ui-output.c b/src/ui-output.c
 --- a/src/ui-output.c
 +++ b/src/ui-output.c
-@@ -154,6 +154,19 @@ void textui_textblock_place(textblock *tb, region orig_area, const char *header)
+@@ -154,6 +154,18 @@ void textui_textblock_place(textblock *tb, region orig_area, const char *header)
   */
  struct keypress textui_textblock_show(textblock *tb, region orig_area, const char *header)
  {
 +#ifdef __EMSCRIPTEN__
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
 +	const char *previous_prompt = web_set_prompt(header);
-+	const wchar_t *text = textblock_text(tb);
 +	(void)orig_area;
 +	screen_save();
-+	web_set_details(text, wcslen(text));
++	web_set_details(tb);
 +	struct keypress ch = inkey();
 +	web_set_prompt(previous_prompt);
 +	web_set_input_mode(previous);
@@ -3103,7 +3103,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  	/* xxx on resize this should be recalculated */
  	region area = region_calculate(orig_area);
  
-@@ -220,13 +233,13 @@ struct keypress textui_textblock_show(textblock *tb, region orig_area, const cha
+@@ -220,13 +232,13 @@ struct keypress textui_textblock_show(textblock *tb, region orig_area, const cha
  				area.row + n_lines + 1, area.col);
  		ch = inkey();
  	}
@@ -5136,3 +5136,24 @@ diff --git a/src/ui-mon-lore.c b/src/ui-mon-lore.c
  
  	tb = textblock_new();
  	lore_description(tb, race, lore, false);
+diff --git a/src/z-textblock.c b/src/z-textblock.c
+--- a/src/z-textblock.c
++++ b/src/z-textblock.c
+@@ -188,4 +188,9 @@
+ }
+
++size_t textblock_length(const textblock *tb)
++{
++	return tb->strlen;
++}
++
+ /**
+  * Return a pointer to the text inputted thus far.
+diff --git a/src/z-textblock.h b/src/z-textblock.h
+--- a/src/z-textblock.h
++++ b/src/z-textblock.h
+@@ -48,3 +48,4 @@
+
++size_t textblock_length(const textblock *tb);
+ const wchar_t *textblock_text(textblock *tb);
+ const uint8_t *textblock_attrs(textblock *tb);
