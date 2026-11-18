@@ -1361,7 +1361,7 @@ function updatePrompt() {
     inputPrompt.hidden = !hud.hidden || !text;
     if (inputPrompt.textContent !== (text || "")) inputPrompt.textContent = text || "";
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
-    const showResult = world?.actionMessages?.length && !openPanel &&
+    const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
     journal.hidden = (hud.hidden && !showResult) || saveNotice;
     if (journal.hidden && messageDialog.open) messageDialog.close();
@@ -1374,15 +1374,15 @@ function formatMessage({ text, count }) {
 
 function updateJournal() {
     const prompt = !hud.hidden && inputPrompt.textContent;
-    const action = (!prompt || context.newMessages) ? world?.actionMessages : undefined;
+    const action = (!prompt || context.newMessages) ? context.actionMessages : undefined;
     const lines = action?.slice(-2).map(formatMessage) ?? [];
-    const last = world?.lastMessage;
+    const hasHistory = !!world?.lastMessage;
     const text = [prompt, ...lines].filter(Boolean).join("\n") ||
-        (last && formatMessage(last)) || "No messages";
+        (hasHistory ? "Message recall" : "No messages");
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
-    journal.classList.toggle("empty", !prompt && !last);
-    journal.disabled = !last;
+    journal.classList.toggle("empty", !prompt && !lines.length);
+    journal.disabled = !hasHistory;
 }
 
 function updateView(state = world, region = views.target.crop) {
@@ -1864,6 +1864,7 @@ function sendInput(input) {
         draw();
     }
     worker.postMessage({ ...input, request });
+    if (input.type !== "set-tiles") context.actionMessages = undefined;
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
         ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction",

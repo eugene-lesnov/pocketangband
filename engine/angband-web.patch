@@ -3596,7 +3596,21 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	clear_from(0);
  	menu_select(&main_knowledge_menu.m, 0, false);
-@@ -3915,10 +4085,15 @@ void do_cmd_inven(void)
+@@ -3708,6 +3878,11 @@ void textui_browse_knowledge(void)
+  */
+ void do_cmd_message_one(void)
+ {
+-	/* Recall one message XXX XXX XXX */
+-	c_prt(message_color(0), format( "> %s", message_str(0)), 0, 0);
++	const char *message = format("> %s", message_str(0));
++#ifdef __EMSCRIPTEN__
++	if (messages_num() && web_capture_action_message(message, message_type(0))) return;
++#endif
++
++	/* Recall one message XXX XXX XXX */
++	c_prt(message_color(0), message, 0, 0);
+ }
+@@ -3915,10 +4090,15 @@ void do_cmd_inven(void)
  	struct object *obj = NULL;
  	int ret = 3;
  
@@ -3612,7 +3626,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Start in "inventory" mode */
  	player->upkeep->command_wrk = (USE_INVEN);
-@@ -3929,8 +4104,7 @@ void do_cmd_inven(void)
+@@ -3929,8 +4109,7 @@ void do_cmd_inven(void)
  		screen_save();
  
  		/* Get an item to use a context command on (Display the inventory) */
@@ -3622,7 +3636,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
-@@ -4292,7 +4466,9 @@ void do_cmd_query_symbol(void)
+@@ -4292,7 +4471,9 @@ void do_cmd_query_symbol(void)
  	bool uniq = false;
  	bool norm = false;
  
@@ -3632,7 +3646,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	uint16_t *who;
  
-@@ -4316,8 +4492,10 @@ void do_cmd_query_symbol(void)
+@@ -4316,8 +4497,10 @@ void do_cmd_query_symbol(void)
  		lookup_symbol(sym.key.code, buf, sizeof(buf));
  	}
  
@@ -3643,7 +3657,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Allocate the "who" array */
  	who = mem_zalloc(z_info->r_max * sizeof(uint16_t));
-@@ -4345,12 +4523,24 @@ void do_cmd_query_symbol(void)
+@@ -4345,12 +4528,24 @@ void do_cmd_query_symbol(void)
  
  	/* No monsters to recall */
  	if (!num) {
@@ -3668,7 +3682,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	put_str("Recall details? (y/k/n): ", 0, 40);
  
  	/* Query */
-@@ -4358,6 +4548,7 @@ void do_cmd_query_symbol(void)
+@@ -4358,6 +4553,7 @@ void do_cmd_query_symbol(void)
  
  	/* Restore */
  	prt(buf, 0, 0);
@@ -3676,7 +3690,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Interpret the response */
  	if (query.code == 'k') {
-@@ -4368,10 +4559,32 @@ void do_cmd_query_symbol(void)
+@@ -4368,10 +4564,32 @@ void do_cmd_query_symbol(void)
  		sort(who, num, sizeof(*who), cmp_level);
  	} else {
  		/* Any unsupported response is "nope, no history please" */
@@ -3709,7 +3723,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	/* Start at the end, as the array is sorted lowest to highest */
  	idx = num - 1;
  
-@@ -4436,6 +4649,7 @@ void do_cmd_query_symbol(void)
+@@ -4436,6 +4654,7 @@ void do_cmd_query_symbol(void)
  
  	/* Re-display the identity */
  	prt(buf, 0, 0);

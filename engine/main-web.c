@@ -681,7 +681,6 @@ EM_JS(void, send_world, (int depth, int hp, int max_hp, int sp, int max_sp, bool
         magic: !!magic, speed: UTF8ToString(speed), light: UTF8ToString(light),
         food, foodGrade: UTF8ToString(food_grade), x, y, roguelike: !!roguelike, turns,
         lastMessage: last_message ? { text: UTF8ToString(last_message), count: repeat_count } : null,
-        actionMessages: Module['actionMessages'],
         conditions: Module['worldConditions'], stats: Module['worldStats'],
         mapStatus: Module['worldMapStatus'],
         monsterHealth: Module['worldMonsterHealth'],
@@ -1403,6 +1402,7 @@ EM_ASYNC_JS(int, wait_for_event, (const char *mode, int x, int y, int width, int
     if (prompt) context.prompt = UTF8ToString(prompt);
     if (warning) context.castWarning = UTF8ToString(warning);
     if (verb) context.verb = UTF8ToString(verb);
+    if (playing && modeName !== "more") context.actionMessages = Module['actionMessages'];
     if (new_messages) {
         if (modeName === "more") context.pausedMessages = Module['actionMessages'];
         else context.newMessages = true;
@@ -1511,8 +1511,13 @@ static errr queue_input(void)
         EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION,
         EVT_WEB_CHARACTER);
 
+    if (type == EVT_NONE) return 1;
+    if (type != EVT_WEB_TILES) {
+        if (input_mode == WEB_INPUT_MORE) web_mark_messages_displayed();
+        web_clear_displayed_messages();
+    }
+
     switch (type) {
-        case EVT_NONE: return 1;
         case EVT_KBRD: return Term_keypress(code, 0);
         case EVT_MOUSE: return Term_mousepress(x, y, 1);
         case EVT_WEB_AIM_CELL:
