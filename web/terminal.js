@@ -1102,7 +1102,7 @@ function getConfirmAction(selectedRow, closesScreen) {
         case "rest": return ["Enter", "Done"];
         case "save-slots": return ["Enter", selectedRow?.index > 0 ? "Continue" : "New game"];
         case "menu": return ["Enter", "Select"];
-        default: return closesScreen ? ["Escape", "Close"] : ["Enter", "Continue"];
+        default: return closesScreen ? ["Escape", "Back"] : ["Enter", "Continue"];
     }
 }
 
