@@ -1974,11 +1974,14 @@ function handleWorkerMessage({ data }) {
             }
             if (data.outcome) outcomeSaveFailed = !data.ok;
             updateControls();
-            saveStatus.textContent = data.outcome ?
-                (data.ok ? "Outcome saved." : "Outcome not saved. An earlier save may still be playable.") :
-                (data.ok ? "Game saved." : "Could not save the game.");
+            if (data.ok) {
+                saveStatus.textContent = data.outcome || data.automatic ? "" : "Game saved.";
+            } else {
+                saveStatus.textContent = data.outcome ?
+                    "Outcome not saved. An earlier save may still be playable." : "Could not save the game.";
+            }
             saveStatus.classList.toggle("error", !data.ok);
-            saveStatus.hidden = data.automatic && data.ok;
+            saveStatus.hidden = !saveStatus.textContent;
             updatePrompt();
             if (data.ok && !data.outcome && !data.automatic) saveNoticeTimer = setTimeout(() => {
                 saveStatus.hidden = true;
