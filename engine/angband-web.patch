@@ -2157,9 +2157,9 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +		web_set_menu_row_color(obj->kind->base->attr, shortfall > 0);
 +	}
 +	if (item_actions) {
-+		web_menu_action(OPT(player, rogue_like_commands) ? 'x' : 'l', "Examine");
 +		web_menu_action('p', "Buy");
 +		if (stack) web_menu_action('o', "Buy one");
++		web_menu_action(OPT(player, rogue_like_commands) ? 'x' : 'l', "Examine");
 +	} else if (!(m->flags & MN_NO_ACTION)) {
 +		if (!ctx->inspect_only) {
 +			if (m->count)
