@@ -49,8 +49,14 @@ enum { RUN_STEP_DELAY_MS = 80 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
-static const char *text_title;
-static struct object *inscription_item;
+struct web_text_entry {
+    const char *title;
+    const struct object *item;
+    const char *note;
+    bool automatic;
+};
+
+static const struct web_text_entry *text_entry;
 static const char *cast_warning;
 static cmd_code direction_command;
 static bool pace_run;
@@ -101,22 +107,53 @@ const char *web_set_prompt(const char *prompt)
     return previous;
 }
 
+static bool web_edit_text(const struct web_text_entry *entry, const char *prompt, char *buf, size_t size)
+{
+    const struct web_text_entry *previous = text_entry;
+    text_entry = entry;
+    bool entered = get_string(prompt, buf, size);
+    text_entry = previous;
+    return entered;
+}
+
 bool web_get_command_string(struct command *cmd, const char *title, const char *prompt, char *buf, size_t size)
 {
-    const char *previous_title = text_title;
-    struct object *previous_item = inscription_item;
-    text_title = title;
-    inscription_item = NULL;
-    if (cmd->code == CMD_INSCRIBE) cmd_get_arg_item(cmd, "item", &inscription_item);
-    bool entered = get_string(prompt, buf, size);
-    inscription_item = previous_item;
-    text_title = previous_title;
-    return entered;
+    struct object *obj = NULL;
+    if (cmd->code == CMD_INSCRIBE) cmd_get_arg_item(cmd, "item", &obj);
+    struct web_text_entry entry = { .title = title, .item = obj, .note = obj ? quark_str(obj->note) : NULL };
+    return web_edit_text(&entry, prompt, buf, size);
+}
+
+bool web_edit_autoinscription(struct object_kind *kind, const char *rune, const char *note,
+        char *buf, size_t size)
+{
+    char title[256];
+    struct object obj = { 0 };
+    if (kind) {
+        obj.kind = kind;
+        obj.tval = kind->tval;
+        obj.sval = kind->sval;
+        obj.number = 1;
+        obj.known = &obj;
+        if (kind->aware || !kind->flavor) {
+            of_copy(obj.flags, kind->flags);
+            obj.effect = kind->effect;
+            obj.time = kind->time;
+        }
+        object_desc(title, sizeof(title), &obj, ODESC_BASE | ODESC_CAPITAL, player);
+    } else {
+        my_strcpy(title, rune, sizeof(title));
+        my_strcap(title);
+    }
+    struct web_text_entry entry = { .title = title, .item = kind ? &obj : NULL,
+        .note = note, .automatic = true };
+    my_strcpy(buf, note ? note : "", size);
+    return web_edit_text(&entry, "Inscribe with:", buf, size);
 }
 
 const char *web_set_text_prompt(const char *prompt)
 {
-    if (inscription_item) Term_gotoxy(0, 0);
+    if (text_entry && (text_entry->item || text_entry->automatic)) Term_gotoxy(0, 0);
     return web_set_prompt(prompt);
 }
 
@@ -216,9 +253,9 @@ EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
 });
 
-EM_JS(void, add_inscription_details, (const char *type, bool wearable, bool equipped,
+EM_JS(void, add_inscription_details, (const char *scope, const char *type, bool wearable, bool equipped,
         bool throwing, bool activation, bool fuel, bool readable, bool roguelike, bool pickup_always), {
-    Module['inputContext'].inscription = { type: UTF8ToString(type), wearable: !!wearable,
+    Module['inputContext'].inscription = { scope: UTF8ToString(scope), type: UTF8ToString(type), wearable: !!wearable,
         equipped: !!equipped, throwing: !!throwing, activation: !!activation, fuel: !!fuel,
         readable: !!readable, roguelike: !!roguelike, pickupAlways: !!pickup_always };
 });
@@ -230,19 +267,20 @@ EM_JS(void, set_text_value, (const char *value, size_t size, bool multiline, int
 
 void web_set_text_value(const char *value, size_t size, bool multiline, int x, int y)
 {
-    const struct object *obj = inscription_item;
-    const char *note = obj ? quark_str(obj->note) : NULL;
+    const struct object *obj = text_entry ? text_entry->item : NULL;
+    const char *note = text_entry ? text_entry->note : NULL;
     set_text_value(note && strlen(note) >= size ? note : value, size, multiline, x, y);
-    if (!obj) return;
-    bool known = obj->known && obj->known->kind == obj->kind;
+    if (!obj && !(text_entry && text_entry->automatic)) return;
+    const char *scope = !text_entry->automatic ? "item" : obj ? "kind" : "rune";
+    bool known = obj && obj->known && obj->known->kind == obj->kind;
     bool wearable = known && tval_is_wearable(obj);
     bool equipped = wearable && object_is_equipped(player->body, obj);
     bitflag flags[OF_SIZE] = { 0 };
     if (known) object_flags_known(obj, flags);
     bool activation = wearable && object_effect(obj->known) && randcalc(obj->time, 0, MAXIMISE) > 0;
-    bool fuel = known && tval_is_light(obj) && !equipped && obj->timeout > 0 &&
+    bool fuel = known && tval_is_light(obj) && !equipped && (text_entry->automatic || obj->timeout > 0) &&
         of_has(flags, OF_TAKES_FUEL) && !of_has(flags, OF_NO_FUEL);
-    add_inscription_details(tval_find_name(known ? obj->tval : TV_NULL),
+    add_inscription_details(scope, tval_find_name(known ? obj->tval : TV_NULL),
         wearable, equipped, of_has(flags, OF_THROWING), activation, fuel,
         known && tval_is_book_k(obj->kind) && obj_can_browse(obj),
         OPT(player, rogue_like_commands), OPT(player, pickup_always));
@@ -1654,7 +1692,7 @@ static ui_event_type wait_for_input(void)
     const char *verb = direction_command == CMD_FIRE ? "Fire" :
         direction_command == CMD_THROW ? "Throw" : direction_command == CMD_CAST ? "Cast" : "Use";
     int event = wait_for_event(input_modes[mode], x, y, width, height, playing, input_prompt,
-        mode == WEB_INPUT_TEXT ? text_title : NULL, warning,
+        mode == WEB_INPUT_TEXT && text_entry ? text_entry->title : NULL, warning,
         mode == WEB_INPUT_AIM || mode == WEB_INPUT_TARGET ? verb : NULL, player_x, player_y,
         player ? player->au : 0, world_view, new_messages, EVT_WEB_SAVE);
     if (event == EVT_WEB_SAVE) background_save = true;

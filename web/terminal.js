@@ -1625,7 +1625,9 @@ function getViewTitle({ character, outcome }) {
     if (menuTitle !== undefined && menuTitle !== null) return menuTitle;
     if (menu && !outcome) return "Choices";
     if (mode === "details" && context.prompt) return context.prompt;
-    if (mode === "text" && context.inscription) return "Inscribe";
+    if (mode === "text" && context.inscription) {
+        return context.inscription.scope === "item" ? "Inscribe" : "Auto-inscribe";
+    }
     if (mode === "victory") return "Victory";
     if (outcome) return outcomeTitles[context.outcome.kind];
 

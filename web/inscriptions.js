@@ -80,8 +80,15 @@ function hintSection(title, rows) {
 }
 
 export function renderInscriptionHelp(panel, item, keyFor) {
-    const { title, rows, example } = itemHints(item, keyFor);
     panel.replaceChildren();
+    if (item.scope === "rune") {
+        panel.append(textElement("p", "Adds this text to inscriptions on items with this rune. Include a space if you want a separator."));
+        return;
+    }
+    if (item.scope === "kind") {
+        panel.append(textElement("p", "Applies to uninscribed items of this kind when you carry them."));
+    }
+    const { title, rows, example } = itemHints(item, keyFor);
     if (rows.length) panel.append(hintSection(title, rows));
 
     const limit = item.type === "chest" ? "Limit automatic pickup. Chests are counted separately." :
@@ -104,6 +111,8 @@ export function renderInscriptionHelp(panel, item, keyFor) {
     ];
     if (item.equipped) other.push(["^*", "Ask before commands while this item is equipped."]);
     const more = hintSection("Other inscriptions", other);
-    more.append(textElement("p", "To mark future items of the same kind, use Auto-inscribe in Knowledge."));
+    if (item.scope === "item") {
+        more.append(textElement("p", "To mark future items of the same kind, use Auto-inscribe in Knowledge."));
+    }
     panel.append(pickup, sample, more);
 }

@@ -1518,7 +1518,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,123 @@
+@@ -24,6 +24,125 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1538,6 +1538,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +struct menu;
 +const char *web_set_prompt(const char *prompt);
 +bool web_get_command_string(struct command *cmd, const char *title, const char *prompt, char *buf, size_t size);
++bool web_edit_autoinscription(struct object_kind *kind, const char *rune, const char *note,
++	char *buf, size_t size);
 +const char *web_set_text_prompt(const char *prompt);
 +void web_clear_displayed_messages(void);
 +bool web_has_pending_messages(void);
@@ -1642,7 +1644,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -92,6 +208,7 @@ ui_event inkey_m(void);
+@@ -92,6 +211,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -3590,7 +3592,44 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	object_delete(NULL, NULL, &known_obj);
  	object_delete(NULL, NULL, &obj);
  	textblock_free(tb);
-@@ -2142,11 +2235,16 @@ static void rune_lore(int oid)
+@@ -1993,6 +2086,18 @@ static const char *o_xtra_prompt(int oid)
+ 		return kind->note_unaware ? with_insc : no_insc;
+ }
+ 
++static bool edit_autoinscription(struct object_kind *kind, const char *rune,
++		const char *note, char *buf, size_t size)
++{
++#ifdef __EMSCRIPTEN__
++	return web_edit_autoinscription(kind, rune, note, buf, size);
++#else
++	prt("Inscribe with: ", 0, 0);
++	my_strcpy(buf, note ? note : "", size);
++	return askfor_aux(buf, size, NULL);
++#endif
++}
++
+ /**
+  * Special key actions for object inscription.
+  */
+@@ -2028,15 +2133,8 @@ static void o_xtra_act(struct keypress ch, int oid)
+ 		/* Avoid the prompt getting in the way */
+ 		screen_save();
+ 
+-		/* Prompt */
+-		prt("Inscribe with: ", 0, 0);
+-
+-		/* Default note */
+-		if (k->note_aware || k->note_unaware)
+-			strnfmt(text, sizeof(text), "%s", get_autoinscription(k, k->aware));
+-
+-		/* Get an inscription */
+-		if (askfor_aux(text, sizeof(text), NULL)) {
++		if (edit_autoinscription(k, NULL, get_autoinscription(k, k->aware),
++				text, sizeof(text))) {
+ 			/* Remove old inscription if existent */
+ 			if (k->note_aware || k->note_unaware)
+ 				remove_autoinscription(oid);
+@@ -2142,11 +2240,16 @@ static void rune_lore(int oid)
  	char *title = string_make(rune_name(oid));
  
  	my_strcap(title);
@@ -3607,7 +3646,26 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	textblock_free(tb);
  
  	string_free(title);
-@@ -2325,6 +2423,9 @@ static wchar_t *f_xchar(int oid)
+@@ -2179,16 +2282,8 @@ static void rune_xtra_act(struct keypress ch, int oid)
+ 		/* Avoid the prompt getting in the way */
+ 		screen_save();
+ 
+-		/* Prompt */
+-		prt("Inscribe with: ", 0, 0);
+-
+-		/* Default note */
+-		if (rune_note(oid))
+-			strnfmt(note_text, sizeof(note_text), "%s",
+-					quark_str(rune_note(oid)));
+-
+-		/* Get an inscription */
+-		if (askfor_aux(note_text, sizeof(note_text), NULL)) {
++		if (edit_autoinscription(NULL, rune_name(oid), quark_str(rune_note(oid)),
++				note_text, sizeof(note_text))) {
+ 			/* Remove old inscription if existent */
+ 			if (rune_note(oid))
+ 				rune_set_note(oid, NULL);
+@@ -2325,6 +2420,9 @@ static wchar_t *f_xchar(int oid)
  }
  static void feat_lore(int oid)
  {
@@ -3617,7 +3675,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	struct feature *feat = &f_info[oid];
  
  	if (feat->desc) {
-@@ -2340,6 +2441,7 @@ static void feat_lore(int oid)
+@@ -2340,6 +2438,7 @@ static void feat_lore(int oid)
  		textui_textblock_show(tb, SCREEN_REGION, NULL);
  		textblock_free(tb);
  	}
@@ -3625,7 +3683,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  }
  static const char *feat_prompt(int oid)
  {
-@@ -2510,6 +2612,9 @@ static wchar_t *t_xchar(int oid)
+@@ -2510,6 +2609,9 @@ static wchar_t *t_xchar(int oid)
  }
  static void trap_lore(int oid)
  {
@@ -3635,7 +3693,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	struct trap_kind *trap = &trap_info[oid];
  
  	if (trap->text) {
-@@ -2525,6 +2630,7 @@ static void trap_lore(int oid)
+@@ -2525,6 +2627,7 @@ static void trap_lore(int oid)
  		textui_textblock_show(tb, SCREEN_REGION, NULL);
  		textblock_free(tb);
  	}
@@ -3643,7 +3701,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  }
  
  static const char *trap_prompt(int oid)
-@@ -2587,6 +2693,133 @@ static void do_cmd_knowledge_traps(const char *name, int row)
+@@ -2587,6 +2690,133 @@ static void do_cmd_knowledge_traps(const char *name, int row)
  }
  
  
@@ -3777,7 +3835,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  /**
   * ------------------------------------------------------------------------
   * SHAPECHANGE
-@@ -2609,7 +2842,6 @@ static int count_interesting_shapes(void)
+@@ -2609,7 +2839,6 @@ static int count_interesting_shapes(void)
  	return count;
  }
  
@@ -3785,7 +3843,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  /**
   * Is a comparison function for an array of struct player_shape* which is
   * compatible with sort() and puts the elements in ascending alphabetical
-@@ -3062,14 +3294,18 @@ static void shape_lore(const struct player_shape *s)
+@@ -3062,14 +3291,18 @@ static void shape_lore(const struct player_shape *s)
  
  static void do_cmd_knowledge_shapechange(const char *name, int row)
  {
@@ -3804,7 +3862,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	struct player_shape *s;
  	int i;
  
-@@ -3077,6 +3313,17 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
+@@ -3077,6 +3310,17 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
  		return;
  	}
  
@@ -3822,7 +3880,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	m = menu_new(MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
  
  	/* Set up an easily indexable list of the interesting shapes. */
-@@ -3100,6 +3347,14 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
+@@ -3100,6 +3344,14 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
  	}
  
  	menu_setpriv(m, count, narray);
@@ -3837,7 +3895,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	menu_layout(m, &list_region);
  	m->flags |= MN_DBL_TAP;
  
-@@ -3184,6 +3439,7 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
+@@ -3184,6 +3436,7 @@ static void do_cmd_knowledge_shapechange(const char *name, int row)
  		}
  	}
  
@@ -3845,7 +3903,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	screen_load();
  
  	mem_free(narray);
-@@ -3429,11 +3685,85 @@ static void do_cmd_knowledge_equip_cmp(const char* name, int row)
+@@ -3429,11 +3682,85 @@ static void do_cmd_knowledge_equip_cmp(const char* name, int row)
  	equip_cmp_display();
  }
  
@@ -3931,7 +3989,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	while (1) {
  		if (! m->cmd_keys[i]) {
  			return false;
-@@ -3590,8 +3920,11 @@ static void reset_main_knowledge_menu(void)
+@@ -3590,8 +3917,11 @@ static void reset_main_knowledge_menu(void)
  		int kcount = 1 + ((scount > 9) ? 9 : scount);
  
  		main_knowledge_menu.storekeys = mem_alloc(kcount
@@ -3944,7 +4002,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  		main_knowledge_menu.m.cmd_keys = main_knowledge_menu.storekeys;
  		main_knowledge_menu.m.keys_hook = handle_store_shortcuts;
  	}
-@@ -3690,6 +4023,14 @@ void textui_browse_knowledge(void)
+@@ -3690,6 +4020,14 @@ void textui_browse_knowledge(void)
  
  	screen_save();
  	menu_layout(&main_knowledge_menu.m, &knowledge_region);
@@ -3959,7 +4017,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	clear_from(0);
  	menu_select(&main_knowledge_menu.m, 0, false);
-@@ -3708,8 +4049,13 @@ void textui_browse_knowledge(void)
+@@ -3708,8 +4046,13 @@ void textui_browse_knowledge(void)
   */
  void do_cmd_message_one(void)
  {
@@ -3974,7 +4032,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  }
  
  
-@@ -3915,10 +4261,15 @@ void do_cmd_inven(void)
+@@ -3915,10 +4258,15 @@ void do_cmd_inven(void)
  	struct object *obj = NULL;
  	int ret = 3;
  
@@ -3990,7 +4048,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Start in "inventory" mode */
  	player->upkeep->command_wrk = (USE_INVEN);
-@@ -3929,8 +4280,7 @@ void do_cmd_inven(void)
+@@ -3929,8 +4277,7 @@ void do_cmd_inven(void)
  		screen_save();
  
  		/* Get an item to use a context command on (Display the inventory) */
@@ -4000,7 +4058,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
-@@ -4292,7 +4642,9 @@ void do_cmd_query_symbol(void)
+@@ -4292,7 +4639,9 @@ void do_cmd_query_symbol(void)
  	bool uniq = false;
  	bool norm = false;
  
@@ -4010,7 +4068,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	uint16_t *who;
  
-@@ -4316,8 +4668,10 @@ void do_cmd_query_symbol(void)
+@@ -4316,8 +4665,10 @@ void do_cmd_query_symbol(void)
  		lookup_symbol(sym.key.code, buf, sizeof(buf));
  	}
  
@@ -4021,7 +4079,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Allocate the "who" array */
  	who = mem_zalloc(z_info->r_max * sizeof(uint16_t));
-@@ -4345,12 +4699,24 @@ void do_cmd_query_symbol(void)
+@@ -4345,12 +4696,24 @@ void do_cmd_query_symbol(void)
  
  	/* No monsters to recall */
  	if (!num) {
@@ -4046,7 +4104,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	put_str("Recall details? (y/k/n): ", 0, 40);
  
  	/* Query */
-@@ -4358,6 +4724,7 @@ void do_cmd_query_symbol(void)
+@@ -4358,6 +4721,7 @@ void do_cmd_query_symbol(void)
  
  	/* Restore */
  	prt(buf, 0, 0);
@@ -4054,7 +4112,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  
  	/* Interpret the response */
  	if (query.code == 'k') {
-@@ -4368,10 +4735,32 @@ void do_cmd_query_symbol(void)
+@@ -4368,10 +4732,32 @@ void do_cmd_query_symbol(void)
  		sort(who, num, sizeof(*who), cmp_level);
  	} else {
  		/* Any unsupported response is "nope, no history please" */
@@ -4087,7 +4145,7 @@ diff --git a/src/ui-knowledge.c b/src/ui-knowledge.c
  	/* Start at the end, as the array is sorted lowest to highest */
  	idx = num - 1;
  
-@@ -4436,6 +4825,7 @@ void do_cmd_query_symbol(void)
+@@ -4436,6 +4822,7 @@ void do_cmd_query_symbol(void)
  
  	/* Re-display the identity */
  	prt(buf, 0, 0);
