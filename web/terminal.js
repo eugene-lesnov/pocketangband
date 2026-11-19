@@ -130,7 +130,7 @@ const textPrompt = document.querySelector("#text-prompt");
 const textTitle = document.querySelector("#text-title");
 const textIntro = document.querySelector("#text-intro");
 const inscriptionHelp = document.querySelector("#inscription-help");
-const inscriptionBytes = document.querySelector("#inscription-bytes");
+const confirmText = document.querySelector("#confirm-text");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
 const visibleListScreen = document.querySelector("#visible-list-screen");
@@ -2026,10 +2026,29 @@ function activeTextField() {
     return context.multiline ? textHistoryValue : textValue;
 }
 
-function updateInscriptionBytes() {
-    const bytes = new TextEncoder().encode(textValue.value).length;
-    inscriptionBytes.textContent = bytes + " / " + context.textMaxBytes + " bytes";
-    inscriptionBytes.classList.toggle("over-limit", bytes > context.textMaxBytes);
+const inscriptionEncoder = new TextEncoder();
+let acceptedInscription;
+let inscriptionSelection;
+let composingInscription = false;
+
+function rememberInscriptionSelection() {
+    inscriptionSelection = [textValue.selectionStart, textValue.selectionEnd, textValue.selectionDirection];
+}
+
+function rejectsInscription(size) {
+    return size > context.textMaxBytes && size >= inscriptionEncoder.encode(acceptedInscription).length;
+}
+
+function acceptInscriptionEdit() {
+    const size = inscriptionEncoder.encode(textValue.value).length;
+    if (rejectsInscription(size)) {
+        textValue.value = acceptedInscription;
+        textValue.setSelectionRange(...inscriptionSelection);
+    } else {
+        acceptedInscription = textValue.value;
+        confirmText.disabled = size > context.textMaxBytes;
+        rememberInscriptionSelection();
+    }
 }
 
 function renderTextEntry() {
@@ -2044,31 +2063,56 @@ function renderTextEntry() {
     textPrompt.textContent = prompt?.trim() || (promptCell && terminalLine(promptCell.y, promptCell.x)) || "Text entry";
     field.value = value;
     field.setCustomValidity("");
-    inscriptionHelp.hidden = inscriptionBytes.hidden = !inscription;
+    inscriptionHelp.hidden = !inscription;
+    confirmText.disabled = false;
+    composingInscription = false;
     if (inscription) {
+        acceptedInscription = field.value;
+        rememberInscriptionSelection();
+        confirmText.disabled = inscriptionEncoder.encode(field.value).length > context.textMaxBytes;
         renderInscriptionHelp(inscriptionHelp, inscription, (key) => {
             const entry = extraCommands.find(([original]) => original === key);
             return entry ? commandKey(entry, inscription.roguelike) : key;
         });
         textIntro.scrollTop = 0;
-        updateInscriptionBytes();
     }
 }
 
-for (const field of [textValue, textHistoryValue]) {
-    field.addEventListener("input", () => {
-        field.setCustomValidity("");
-        if (context.inscription) updateInscriptionBytes();
-    });
-}
+textValue.addEventListener("beforeinput", (event) => {
+    if (!context.inscription || composingInscription) return;
+    rememberInscriptionSelection();
+    if (!event.cancelable || !["insertText", "insertFromPaste"].includes(event.inputType) || event.data == null) return;
+    const [start, end] = inscriptionSelection;
+    const value = textValue.value.slice(0, start) + event.data + textValue.value.slice(end);
+    if (rejectsInscription(inscriptionEncoder.encode(value).length)) {
+        event.preventDefault();
+    }
+});
+textValue.addEventListener("compositionstart", () => {
+    if (!context.inscription) return;
+    rememberInscriptionSelection();
+    composingInscription = true;
+});
+textValue.addEventListener("compositionend", () => {
+    if (!composingInscription) return;
+    composingInscription = false;
+    acceptInscriptionEdit();
+});
+textValue.addEventListener("input", () => {
+    textValue.setCustomValidity("");
+    if (context.inscription && !composingInscription) acceptInscriptionEdit();
+});
+textHistoryValue.addEventListener("input", () => textHistoryValue.setCustomValidity(""));
 textScreen.addEventListener("submit", (event) => {
     event.preventDefault();
     if (mode !== "text" || request === undefined) return;
     const field = activeTextField();
     const value = field.value;
     const unsupported = context.multiline ? /(?!\n)[\p{Cc}\p{Cs}]/u : /[\p{Cc}\p{Cs}]/u;
+    const overLimit = new TextEncoder().encode(value).length > context.textMaxBytes;
+    if (context.inscription && overLimit) return;
     const error = unsupported.test(value) ? "The text contains unsupported characters." :
-        new TextEncoder().encode(value).length > context.textMaxBytes ? "The text is too long." : "";
+        overLimit ? "The text is too long." : "";
     if (error) {
         field.setCustomValidity(error);
         field.reportValidity();

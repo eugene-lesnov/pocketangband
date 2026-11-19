@@ -956,9 +956,6 @@ main.inscribing #text-intro {
     border-bottom: 1px solid var(--border);
 }
 main.inscribing #text-title { font-size: 1rem; }
-.text-label { display: flex; gap: 0.5rem; align-items: baseline; justify-content: space-between; }
-#inscription-bytes { color: var(--muted); font-size: 0.75rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-#inscription-bytes.over-limit { color: #ffb3a0; }
 #inscription-help { display: grid; gap: 1rem; margin-top: 1rem; font-size: 0.875rem; line-height: 1.45; }
 #inscription-help h3 { margin: 0 0 0.375rem; font-size: inherit; }
 #inscription-help dl { display: grid; grid-template-columns: minmax(3rem, max-content) minmax(0, 1fr); gap: 0.35rem 0.875rem; }
