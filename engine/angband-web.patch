@@ -1586,7 +1586,7 @@ index ec19a5b..a77ce42 100644
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,130 @@
+@@ -24,6 +24,131 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1688,6 +1688,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +bool web_sync_profile(void);
 +void web_set_option_notice(const char *message);
 +void web_set_menu_sections(int current, int available);
++void web_set_inven_burden(const char *burden);
 +void web_set_store(const char *name, bool home, bool inspect_only, bool item_actions);
 +int web_store_price_one(struct store *store, struct object *stock);
 +int web_store_quantity(struct store *store, struct object *item, bool from_stock, bool single);
@@ -1717,7 +1718,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +191,10 @@ struct command_list
+@@ -67,6 +192,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1728,7 +1729,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +220,7 @@ ui_event inkey_m(void);
+@@ -92,6 +221,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1736,7 +1737,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +231,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +232,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -3396,7 +3397,46 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Object name */
  	c_put_str(attr, items[obj_num].o_name, row + obj_num,
-@@ -1002,6 +1001,67 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
+@@ -468,6 +467,16 @@ static void show_obj_list(olist_detail_t mode)
+ 	}
+ }
+ 
++static void format_inven_burden(char *buf, size_t size)
++{
++	int weight = player->upkeep->total_weight;
++	int diff = weight_remaining(player);
++
++	strnfmt(buf, size, "Burden %d.%d lb (%d.%d lb %s) ",
++		weight / 10, weight % 10, abs(diff) / 10, abs(diff) % 10,
++		diff < 0 ? "overweight" : "remaining");
++}
++
+ /**
+  * Display the inventory.  Builds a list of objects and passes them
+  * off to show_obj_list() for display.  Mode flags documented in
+@@ -476,7 +485,6 @@ static void show_obj_list(olist_detail_t mode)
+ void show_inven(int mode, item_tester tester)
+ {
+ 	int i, last_slot = -1;
+-	int diff = weight_remaining(player);
+ 
+ 	bool in_term = (mode & OLIST_WINDOW) ? true : false;
+ 
+@@ -485,12 +493,7 @@ void show_inven(int mode, item_tester tester)
+ 
+ 	/* Include burden for term windows */
+ 	if (in_term) {
+-		strnfmt(items[num_obj].label, sizeof(items[num_obj].label),
+-		        "Burden %d.%d lb (%d.%d lb %s) ",
+-		        player->upkeep->total_weight / 10,
+-				player->upkeep->total_weight % 10,
+-		        abs(diff) / 10, abs(diff) % 10,
+-		        (diff < 0 ? "overweight" : "remaining"));
++		format_inven_burden(items[num_obj].label, sizeof(items[num_obj].label));
+ 
+ 		items[num_obj].object = NULL;
+ 		num_obj++;
+@@ -1002,6 +1005,72 @@ static bool get_item_action(struct menu *menu, const ui_event *event, int oid)
  	return false;
  }
  
@@ -3416,6 +3456,11 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +	if (prompt && !(item_mode & SHOW_EMPTY)) web_set_menu_selection_title(prompt);
 +	if (item_cmd == CMD_PICKUP) web_set_pickup_menu();
 +	web_set_menu_sections(current, web_item_sections() | current);
++	if (item_mode & SHOW_EMPTY) {
++		char burden[80];
++		format_inven_burden(burden, sizeof(burden));
++		web_set_inven_burden(burden);
++	}
 +	for (int i = 0; i < menu->count; i++) {
 +		struct object *obj = choices[i].object;
 +		char name[160];
@@ -3464,7 +3509,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Show quiver missiles in full inventory
   */
-@@ -1159,6 +1219,11 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1159,6 +1228,11 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	m->context_hook = use_context_menu_list_switcher;
  	m->flags = (MN_PVT_TAGS | MN_INSCRIP_TAGS | MN_KEYMAP_ESC);
  	m->browse_hook = item_menu_browser;
@@ -3476,7 +3521,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Get inscriptions */
  	m->inscriptions = mem_zalloc(10 * sizeof(char));
-@@ -1222,6 +1287,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
+@@ -1222,6 +1296,14 @@ static struct object *item_menu(cmd_code cmd, int prompt_size, int mode)
  	mem_free(m);
  
  	/* Deal with menu switch */
@@ -3491,7 +3536,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	if (evt.type == EVT_SWITCH && !newmenu) {
  		bool left = evt.key.code == ARROW_LEFT;
  
-@@ -1371,7 +1444,7 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+@@ -1371,7 +1453,7 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
  		olist_mode |= OLIST_RECHARGE;
  
  	/* Paranoia XXX XXX XXX */
@@ -3500,7 +3545,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  
  	/* Full inventory */
  	i1 = 0;
-@@ -1457,6 +1530,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
+@@ -1457,6 +1539,14 @@ bool textui_get_item(struct object **choice, const char *pmt, const char *str,
  	throwing_num = scan_items(throwing_list, throwing_max, player,
  		USE_INVEN | USE_QUIVER | USE_FLOOR, obj_is_throwing);
  
@@ -3515,7 +3560,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  	/* Require at least one legal choice */
  	if (allow_inven || allow_equip || allow_quiver || allow_floor) {
  		/* Use throwing menu if at all possible */
-@@ -1654,7 +1735,7 @@ void display_object_recall_interactive(struct object *obj)
+@@ -1654,7 +1744,7 @@ void display_object_recall_interactive(struct object *obj)
  	char header_buf[120];
  	textblock *tb;
  

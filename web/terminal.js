@@ -2806,7 +2806,7 @@ function renderMenu(state, description = state?.description ?? "") {
     const query = state.search ? knowledgeSearch.value.trim().toLowerCase() : "";
     const results = query ? knowledgeResults(state.rows, query) : undefined;
     const rows = results?.visible ?? (state.search ? state.rows.filter(row => row.sectionOnly) : state.rows);
-    const summary = state.birth?.summary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
+    const summary = state.burden || state.birth?.summary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.textContent = results?.count ?
         `${results.count} ${results.count === 1 ? "match" : "matches"}` : summary;
     menuSummary.hidden = !menuSummary.textContent;

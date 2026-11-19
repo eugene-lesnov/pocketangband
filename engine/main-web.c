@@ -805,6 +805,10 @@ void web_set_menu_sections(int current, int available)
         SHOW_THROWING);
 }
 
+EM_JS(void, web_set_inven_burden, (const char *burden), {
+    Module['inputMenu'].burden = UTF8ToString(burden).trimEnd();
+});
+
 EM_JS(void, web_set_store, (const char *name, bool home, bool inspect_only, bool item_actions), {
     Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home,
         inspectOnly: !!inspect_only, itemActions: !!item_actions };
