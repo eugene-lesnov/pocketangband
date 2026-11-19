@@ -710,7 +710,7 @@ function renderOutcome({ kind, name, race, className, level, depth, exp, gold, c
     outcomeDate.textContent = resultDate.format(date);
 }
 
-function renderResultsList({ title, sections }) {
+function renderResultsList({ title, sections, description }) {
     const nodes = [];
     for (const { title: section, entries } of sections) {
         if (!section && !entries.length && sections.length > 1) continue;
@@ -741,6 +741,12 @@ function renderResultsList({ title, sections }) {
             list.append(item);
         }
         nodes.push(list);
+    }
+    if (description) {
+        const body = document.createElement("div");
+        body.className = "detail-text";
+        renderDescription(body, description);
+        nodes.push(body);
     }
     resultsList.replaceChildren(...nodes);
     resultsList.scrollTop = 0;
@@ -1108,6 +1114,7 @@ function targetActionLabel() {
 function getConfirmAction(selectedRow, closesScreen) {
     if (!unavailableScreen.hidden) return ["Escape", "Back"];
     if (context.browseKey) return [context.browseKey, "Browse"];
+    if (context.resultsList?.action) return [context.resultsList.action.key, context.resultsList.action.label];
     switch (mode) {
         case "birth-review": return ["Enter", "Start game"];
         case "retire": return ["@", "Retire character and quit"];
@@ -1160,7 +1167,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
     confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth ||
-        resultChild || isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls ||
+        (resultChild && !context.resultsList?.action) || isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls ||
         noAimTarget);
     confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget || context.trade?.amount === 0 ||
         (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
@@ -3561,7 +3568,8 @@ document.addEventListener("keydown", (event) => {
         }
         return;
     }
-    if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape") return;
+    if ((mode === "results-list" || mode === "results-file") && event.key !== "Escape" &&
+        event.key !== context.resultsList?.action?.key) return;
     if (mode === "birth-review" && !["Enter", "Escape", "s", "S"].includes(event.key)) return;
     if (mode === "character" && event.key === "c" && !characterNameEdit.hidden) {
         event.preventDefault();

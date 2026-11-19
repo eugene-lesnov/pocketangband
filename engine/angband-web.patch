@@ -1586,7 +1586,7 @@ index ec19a5b..a77ce42 100644
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,131 @@
+@@ -24,6 +24,132 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1659,6 +1659,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_add_results_section(const char *title);
 +void web_add_results_entry(const char *text, const char *detail, bool highlighted);
 +void web_wait_for_back(enum web_input_mode mode);
++bool web_show_results(struct textblock *description, int key, const char *label);
 +void web_show_generated_file(const char *title, const char *path, const char *filename);
 +bool web_get_export_filename(const char *suggested, char *filename, size_t size);
 +void web_download_file(const char *path, const char *filename, const char *error);
@@ -1718,7 +1719,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +192,10 @@ struct command_list
+@@ -67,6 +193,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1729,7 +1730,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +221,7 @@ ui_event inkey_m(void);
+@@ -92,6 +222,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1737,7 +1738,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +232,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +233,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -6116,7 +6117,7 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
  	enum equippable_quality qual;
  	int slot;
  	int nmlen;
-@@ -302,8 +309,170 @@ static struct indirect_sort_data sort_dat;
+@@ -302,8 +309,399 @@ static struct indirect_sort_data sort_dat;
  
  
  
@@ -6127,16 +6128,174 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
 +	[EQUIP_SOURCE_STORE] = "Stores"
 +};
 +
++struct web_comparison_property {
++	int column, category;
++	bool known, sustain;
++	char label[352];
++};
++
++enum web_comparison_list { ALL_ITEMS, REPLACEMENTS, WORN_RINGS, MANUAL_PAIR };
++enum { COMPARE_BACK = -1, COMPARE_MANUALLY = -2 };
++static const char *const web_manual_label = "Compare with…";
++
++struct web_comparison_menu {
++	struct menu menu;
++	enum web_comparison_list list;
++	int *indices;
++	const struct web_comparison_property *properties;
++	int nproperties;
++	const struct web_comparison_property *filter;
++};
++
++static int web_comparison_properties(struct web_comparison_property *properties)
++{
++	int count = 0;
++	for (int i = 0; i < (int)N_ELEMENTS(the_summary->propcats); i++) {
++		const struct prop_category *cat = &the_summary->propcats[i];
++		for (int j = 0; j < cat->n; j++) {
++			char label[320];
++			wchar_t wide[80];
++			get_ui_entry_label(cat->entries[j], N_ELEMENTS(wide), false, wide);
++			size_t end = wcslen(wide);
++			while (end && wide[end - 1] == L' ') wide[--end] = 0;
++			if (wcstombs(label, wide, sizeof(label)) == (size_t)-1) continue;
++			struct web_comparison_property *prop = &properties[count++];
++			prop->column = cat->off + j;
++			prop->category = i;
++			prop->known = is_ui_entry_for_known_rune(cat->entries[j], player);
++			prop->sustain = false;
++			my_strcpy(prop->label, label, sizeof(prop->label));
++			if (i == 4) {
++				struct web_comparison_property *sustain = &properties[count++];
++				*sustain = *prop;
++				sustain->sustain = true;
++				strnfmt(sustain->label, sizeof(sustain->label), "Sustain %s", label);
++			}
++		}
++	}
++	return count;
++}
++
++static int web_item_property(const struct equippable *item,
++		const struct web_comparison_property *property)
++{
++	return property->sustain ? item->auxvals[property->column] : item->vals[property->column];
++}
++
++static bool web_matches_property(const struct equippable *item,
++		const struct web_comparison_property *property)
++{
++	int value = web_item_property(item, property);
++	return value > 0 && value != UI_ENTRY_UNKNOWN_VALUE &&
++		value != UI_ENTRY_VALUE_NOT_PRESENT && value != UI_ENTRY_RESIST0_RES_VUL;
++}
++
++static const char *web_filter_label(const struct web_comparison_property *property)
++{
++	return property->category == 0 ? format("%s resistance", property->label) : property->label;
++}
++
++static const struct web_comparison_property *web_choose_property(
++		const struct web_comparison_property *properties, int count,
++		const struct web_comparison_property *current)
++{
++	struct menu *m = menu_dynamic_new();
++	m->title = "Filter by property";
++	m->web_no_keyboard = true;
++	menu_dynamic_add(m, "All items", count);
++	for (int i = 0; i < count; i++) {
++		for (int j = 0; j < the_summary->nitems; j++) {
++			if (!web_matches_property(&the_summary->items[j], &properties[i])) continue;
++			if (&properties[i] == current) m->cursor = m->count;
++			menu_dynamic_add(m, web_filter_label(&properties[i]), i);
++			break;
++		}
++	}
++	if (m->count == 1)
++		menu_dynamic_add_valid(m, "No known properties to filter by.", count, MN_ROW_INVALID);
++	menu_layout(m, &SCREEN_REGION);
++	int choice = menu_dynamic_select(m);
++	menu_dynamic_free(m);
++	if (choice < 0) return current;
++	return choice == count ? NULL : &properties[choice];
++}
++
++static const char *web_item_location(const struct equippable *item)
++{
++	if (item->src == EQUIP_SOURCE_WORN) {
++		int slot = object_slot(player->body, item->obj);
++		return equip_mention(player, slot);
++	}
++	return item->store_name ? item->store_name : web_item_sources[item->src];
++}
++
 +static void web_comparison_rows(struct menu *m)
 +{
++	const struct web_comparison_menu *view = (struct web_comparison_menu *)m;
 +	const char **names = menu_priv(m);
 +	web_set_menu(m, m->cursor, NULL);
 +	web_set_menu_title(m->title);
++	if (view->list == ALL_ITEMS) web_menu_action('q', "Filter by property");
++	else if (view->list != MANUAL_PAIR) web_menu_action('c', web_manual_label);
 +	for (int i = 0; i < m->filter_count; i++) {
 +		int index = m->filter_list[i];
-+		enum equippable_source source = the_summary->items[index].src;
-+		web_add_menu_row(i, names[index], the_summary->items[index].store_name, NULL, 0, true);
-+		web_set_row_group(web_item_sources[source], source == EQUIP_SOURCE_STORE);
++		const struct equippable *item = &the_summary->items[index];
++		const char *detail = item->src == EQUIP_SOURCE_WORN ? web_item_location(item) : item->store_name;
++		web_add_menu_row(i, names[index], detail, NULL, 0, true);
++		bool collapse_stores = (view->list == ALL_ITEMS && !view->filter) || view->list == MANUAL_PAIR;
++		web_set_row_group(web_item_sources[item->src], item->src == EQUIP_SOURCE_STORE && collapse_stores);
++	}
++}
++
++static int web_pick_comparison_item(struct web_comparison_menu *view,
++		enum web_comparison_list list, int anchor, int *cursor)
++{
++	struct menu *m = &view->menu;
++	char **names = menu_priv(m);
++	view->list = list;
++	for (;;) {
++		char title[400];
++		int n = 0;
++		for (int i = 0; i < the_summary->nitems; i++) {
++			const struct equippable *item = &the_summary->items[i];
++			if (i == anchor) continue;
++			if (list == ALL_ITEMS && view->filter && !web_matches_property(item, view->filter)) continue;
++			if (list == WORN_RINGS || list == REPLACEMENTS) {
++				if (item->slot != the_summary->items[anchor].slot ||
++						(item->src == EQUIP_SOURCE_WORN) != (list == WORN_RINGS)) continue;
++			}
++			view->indices[n++] = i;
++		}
++		if (!n) {
++			web_set_results_list("Equippable comparison");
++			web_add_results_entry(names[anchor], web_item_location(&the_summary->items[anchor]), false);
++			web_add_results_entry("No replacements for this slot.", NULL, false);
++			bool manual = web_show_results(NULL, the_summary->nitems > 1 ? 'c' : 0, web_manual_label);
++			return manual ? COMPARE_MANUALLY : COMPARE_BACK;
++		}
++		switch (list) {
++		case ALL_ITEMS:
++			if (view->filter)
++				strnfmt(title, sizeof(title), "Compare an item · %s", web_filter_label(view->filter));
++			else my_strcpy(title, "Compare an item", sizeof(title));
++			break;
++		case REPLACEMENTS: strnfmt(title, sizeof(title), "Replacements for %s", names[anchor]); break;
++		case WORN_RINGS: strnfmt(title, sizeof(title), "Replace which ring with %s?", names[anchor]); break;
++		case MANUAL_PAIR: strnfmt(title, sizeof(title), "Compare %s with…", names[anchor]); break;
++		}
++		m->title = title;
++		m->switch_keys = list == ALL_ITEMS ? "q" : list == MANUAL_PAIR ? NULL : "c";
++		m->cursor = *cursor;
++		menu_set_filter(m, view->indices, n);
++		ui_event event = menu_select(m, 0, false);
++		*cursor = m->cursor;
++		if (event.type == EVT_SELECT) return view->indices[*cursor];
++		if (event.type != EVT_KBRD) return COMPARE_BACK;
++		if (event.key.code == 'c') return COMPARE_MANUALLY;
++		const struct web_comparison_property *next =
++			web_choose_property(view->properties, view->nproperties, view->filter);
++		if (next != view->filter) *cursor = 0;
++		view->filter = next;
 +	}
 +}
 +
@@ -6164,15 +6323,26 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
 +		strnfmt(buf, len, "%+d", value);
 +}
 +
-+static void web_compare_pair(int first, int second, char **names)
++static void web_compare_pair(struct web_comparison_menu *view, int first, int second, bool replacement)
 +{
 +	struct equippable *left = &the_summary->items[first], *right = &the_summary->items[second];
 +	const struct object *a = left->obj->known, *b = right->obj->known;
++	char **names = menu_priv(&view->menu);
++	const struct web_comparison_property *filter = view->filter;
 +	char av[80], bv[80];
 +	int count = 0;
 +	web_set_results_list("Equippable comparison");
-+	web_add_results_entry(names[first], left->store_name ? left->store_name : web_item_sources[left->src], false);
-+	web_add_results_entry(names[second], right->store_name ? right->store_name : web_item_sources[right->src], false);
++	if (replacement) web_add_results_section("Currently equipped");
++	web_add_results_entry(names[first], web_item_location(left), false);
++	if (replacement) web_add_results_section("After replacement");
++	web_add_results_entry(names[second], web_item_location(right), false);
++	if (filter) {
++		int category = filter->sustain ? 1 : filter->category;
++		web_comparison_value(av, sizeof(av), web_item_property(left, filter), filter->known, category);
++		web_comparison_value(bv, sizeof(bv), web_item_property(right, filter), filter->known, category);
++		web_add_results_section("Selected property");
++		web_add_results_entry(filter->label, format("%s → %s", av, bv), false);
++	}
 +	web_add_results_section("Known differences");
 +	if (a && b) {
 +		int wa = object_weight_one(left->obj), wb = object_weight_one(right->obj);
@@ -6192,39 +6362,104 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
 +		if (player->obj_k->to_d)
 +			web_compare_numbers("Enchantment to damage", object_to_dam(a), object_to_dam(b), &count);
 +	}
-+	for (int i = 0; i < (int)N_ELEMENTS(the_summary->propcats); i++) {
-+		const struct prop_category *cat = &the_summary->propcats[i];
-+		for (int j = 0; j < cat->n; j++) {
-+			int k = cat->off + j;
-+			bool known = is_ui_entry_for_known_rune(cat->entries[j], player);
-+			wchar_t wide[80];
-+			char label[320];
-+			get_ui_entry_label(cat->entries[j], N_ELEMENTS(wide), false, wide);
-+			size_t end = wcslen(wide);
-+			while (end && wide[end - 1] == L' ') wide[--end] = 0;
-+			if (wcstombs(label, wide, sizeof(label)) == (size_t)-1) continue;
-+			web_comparison_value(av, sizeof(av), left->vals[k], known, i);
-+			web_comparison_value(bv, sizeof(bv), right->vals[k], known, i);
-+			web_compare_values(label, av, bv, &count);
-+			if (i == 4 && (left->auxvals[k] == 1 || right->auxvals[k] == 1)) {
-+				web_comparison_value(av, sizeof(av), left->auxvals[k], known, 1);
-+				web_comparison_value(bv, sizeof(bv), right->auxvals[k], known, 1);
-+				char sustain[352];
-+				strnfmt(sustain, sizeof(sustain), "Sustain %s", label);
-+				web_compare_values(sustain, av, bv, &count);
++	for (int i = 0; i < view->nproperties; i++) {
++		const struct web_comparison_property *prop = &view->properties[i];
++		int lv = web_item_property(left, prop), rv = web_item_property(right, prop);
++		if (prop == filter || (prop->sustain && lv != 1 && rv != 1)) continue;
++		int category = prop->sustain ? 1 : prop->category;
++		web_comparison_value(av, sizeof(av), lv, prop->known, category);
++		web_comparison_value(bv, sizeof(bv), rv, prop->known, category);
++		web_compare_values(prop->label, av, bv, &count);
++	}
++	if (!count) web_add_results_entry(filter ? "No other known differences." :
++		"No differences in the compared properties.", NULL, false);
++}
++
++static void web_manual_comparison(struct web_comparison_menu *view, int anchor)
++{
++	int cursor = 0;
++	for (;;) {
++		int other = web_pick_comparison_item(view, MANUAL_PAIR, anchor, &cursor);
++		if (other < 0) return;
++		const struct equippable *a = &the_summary->items[anchor], *b = &the_summary->items[other];
++		bool replacement = a->slot == b->slot && (a->src == EQUIP_SOURCE_WORN) != (b->src == EQUIP_SOURCE_WORN);
++		if (replacement && b->src == EQUIP_SOURCE_WORN)
++			web_compare_pair(view, other, anchor, true);
++		else
++			web_compare_pair(view, anchor, other, replacement);
++		web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++	}
++}
++
++static void web_preview_replacement(struct web_comparison_menu *view, int worn, int candidate, int anchor)
++{
++	const struct equippable *item = &the_summary->items[candidate];
++	char **names = menu_priv(&view->menu);
++	for (;;) {
++		textblock *description = NULL;
++		if (worn >= 0) {
++			web_compare_pair(view, worn, candidate, true);
++		} else {
++			web_set_results_list("Equippable comparison");
++			web_add_results_section("Currently equipped");
++			bool valid_slot = item->slot >= 0 && item->slot < player->body.count;
++			web_add_results_entry(valid_slot ? "Empty slot" : "No equipment slot",
++				valid_slot ? player->body.slots[item->slot].name : NULL, false);
++			if (valid_slot) web_add_results_section("After equipping");
++			web_add_results_entry(names[candidate], web_item_location(item), false);
++			if (view->filter) {
++				char value[80];
++				const struct web_comparison_property *prop = view->filter;
++				web_comparison_value(value, sizeof(value), web_item_property(item, prop),
++					prop->known, prop->sustain ? 1 : prop->category);
++				web_add_results_section("Selected property");
++				web_add_results_entry(prop->label, value, false);
 +			}
++			description = object_info(item->obj, OINFO_NONE);
++		}
++		bool manual = web_show_results(description, the_summary->nitems > 1 ? 'c' : 0, web_manual_label);
++		if (description) textblock_free(description);
++		if (!manual) return;
++		web_manual_comparison(view, anchor);
++	}
++}
++
++static void web_compare_selection(struct web_comparison_menu *view, int anchor)
++{
++	const struct equippable *item = &the_summary->items[anchor];
++	bool worn = item->src == EQUIP_SOURCE_WORN;
++	if (!worn) {
++		const struct object *equipped = NULL;
++		if (item->slot >= 0 && item->slot < player->body.count)
++			equipped = slot_object(player, item->slot);
++		if (!equipped || !tval_is_ring(item->obj)) {
++			int current = -1;
++			for (int i = 0; equipped && i < the_summary->nitems; i++) {
++				if (the_summary->items[i].obj == equipped) {
++					current = i;
++					break;
++				}
++			}
++			web_preview_replacement(view, current, anchor, anchor);
++			return;
 +		}
 +	}
-+	if (!count) web_add_results_entry("No differences in the compared properties.", NULL, false);
-+	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
++	int cursor = 0;
++	for (;;) {
++		int other = web_pick_comparison_item(view, worn ? REPLACEMENTS : WORN_RINGS, anchor, &cursor);
++		if (other == COMPARE_BACK) return;
++		if (other == COMPARE_MANUALLY) web_manual_comparison(view, anchor);
++		else if (worn) web_preview_replacement(view, anchor, other, anchor);
++		else web_preview_replacement(view, other, anchor, anchor);
++	}
 +}
 +
 +static void web_equip_comparison(void)
 +{
-+	if (initialize_summary(player, &the_summary) || the_summary->nitems < 2) {
++	if (initialize_summary(player, &the_summary) || the_summary->nitems == 0) {
 +		if (web_search_entry == WEB_SEARCH_COLLECT) return;
 +		web_set_results_list("Equippable comparison");
-+		web_add_results_entry("Two equippable items are needed for comparison.", NULL, false);
++		web_add_results_entry("No equippable items.", NULL, false);
 +		web_wait_for_back(WEB_INPUT_RESULTS_LIST);
 +		return;
 +	}
@@ -6243,36 +6478,31 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
 +		} else names[i] = string_make(name);
 +	}
 +	if (collecting) return;
-+	int *indices = mem_alloc(count * sizeof(*indices));
-+	struct menu m;
-+	menu_init(&m, MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
-+	menu_setpriv(&m, count, names);
-+	m.web_render = web_comparison_rows;
-+	m.web_no_keyboard = true;
-+	menu_layout(&m, &SCREEN_REGION);
-+	int first = web_search_entry >= 0 ? web_search_entry : -1;
-+	for (;;) {
-+		int n = 0;
-+		for (int i = 0; i < count; i++)
-+			if (i != first) indices[n++] = i;
-+		menu_set_filter(&m, indices, n);
-+		char title[320];
-+		if (first >= 0) strnfmt(title, sizeof(title), "Compare with %s", names[first]);
-+		m.title = first < 0 ? "Compare an item" : title;
-+		if (menu_select(&m, 0, false).type != EVT_SELECT) {
-+			if (first < 0 || web_search_entry >= 0) break;
-+			m.cursor = first;
-+			first = -1;
-+		} else if (first < 0) {
-+			first = indices[m.cursor];
-+			m.cursor = 0;
-+		} else {
-+			web_compare_pair(first, indices[m.cursor], names);
-+		}
++	struct web_comparison_property *properties = mem_alloc(
++		(the_summary->nprop + the_summary->propcats[4].n) * sizeof(*properties));
++	struct web_comparison_menu view = {
++		.properties = properties,
++		.nproperties = web_comparison_properties(properties),
++		.indices = mem_alloc(count * sizeof(*view.indices))
++	};
++	struct menu *m = &view.menu;
++	menu_init(m, MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
++	menu_setpriv(m, count, names);
++	m->web_render = web_comparison_rows;
++	m->web_no_keyboard = true;
++	menu_layout(m, &SCREEN_REGION);
++	if (web_search_entry >= 0) {
++		web_compare_selection(&view, web_search_entry);
++	} else {
++		int cursor = 0;
++		int selected;
++		while ((selected = web_pick_comparison_item(&view, ALL_ITEMS, -1, &cursor)) >= 0)
++			web_compare_selection(&view, selected);
 +	}
++	mem_free(view.indices);
++	mem_free(properties);
 +	for (int i = 0; i < count; i++) string_free(names[i]);
 +	mem_free(names);
-+	mem_free(indices);
 +}
 +#endif
 +
@@ -6287,7 +6517,7 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
  	const struct menu_display_state states[] = {
  		/* EQUIP_CMP_MENU_DONE */
  		{ "", 0, false, false },
-@@ -1628,8 +1797,11 @@ static char *set_short_name(const struct object *obj, size_t length,
+@@ -1628,8 +2026,11 @@ static char *set_short_name(const struct object *obj, size_t length,
  		nmsrc = obj->known->ego->name;
  		tail = true;
  	} else {
@@ -6301,7 +6531,7 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
  		nmsrc = buf;
  		tail = false;
  	}
-@@ -2037,6 +2209,9 @@ struct add_obj_to_summary_closure {
+@@ -2037,6 +2438,9 @@ struct add_obj_to_summary_closure {
  	const struct player *p;
  	struct equippable_summary *summary;
  	enum equippable_source src;
@@ -6311,7 +6541,7 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
  };
  
  
-@@ -2090,6 +2265,9 @@ static void add_obj_to_summary(const struct object *obj, void *closure)
+@@ -2090,6 +2494,9 @@ static void add_obj_to_summary(const struct object *obj, void *closure)
  
  	e->obj = obj;
  	e->src = c->src;
@@ -6321,7 +6551,7 @@ diff --git a/src/ui-equip-cmp.c b/src/ui-equip-cmp.c
  
  	switch (ignore_level_of(obj)) {
  	case IGNORE_GOOD:
-@@ -2645,6 +2823,9 @@ static int initialize_summary(struct player *p,
+@@ -2645,6 +3052,9 @@ static int initialize_summary(struct player *p,
  		if (stores[i].feat == FEAT_HOME) {
  			continue;
  		}

@@ -488,6 +488,7 @@ EM_JS(void, set_detail_text, (const wchar_t *text, const uint8_t *attrs, size_t 
     if (target === "card") Module['inputMenu'].card = detail;
     else if (target === "list") Module['listDetail'] = detail;
     else if (target === "trade") context.trade.description = detail;
+    else if (target === "results") context.resultsList.description = detail;
     else Module['inputContext'] = { detail };
 });
 
@@ -639,6 +640,27 @@ void web_wait_for_back(enum web_input_mode mode)
     enum web_input_mode previous = web_set_input_mode(mode);
     while (inkey().code != ESCAPE) {}
     web_set_input_mode(previous);
+}
+
+EM_JS(void, set_results_action, (int key, const char *label), {
+    Module['inputContext'].resultsList.action = { key: String.fromCharCode(key), label: UTF8ToString(label) };
+});
+
+bool web_show_results(textblock *description, int key, const char *label)
+{
+    if (description) publish_details(description, "results");
+    if (!key) {
+        web_wait_for_back(WEB_INPUT_RESULTS_LIST);
+        return false;
+    }
+    set_results_action(key, label);
+    enum web_input_mode previous = web_set_input_mode(WEB_INPUT_RESULTS_LIST);
+    keycode_t choice;
+    do {
+        choice = inkey().code;
+    } while (choice != ESCAPE && choice != key);
+    web_set_input_mode(previous);
+    return choice == key;
 }
 
 EM_JS(void, set_help_pages, (const char *help_dir, bool roguelike), {
