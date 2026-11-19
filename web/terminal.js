@@ -1523,7 +1523,9 @@ function updateScreenContents() {
     return { fullScreen, inGamePanel, intro, character, outcome };
 }
 
-function renderHelpFile(source) {
+function renderHelpFile(page) {
+    const source = context.help?.[page];
+    const commands = page === "commands";
     const content = document.createDocumentFragment();
     for (const paragraph of (source?.trim() || "Help unavailable.").split(/\n\s*\n/)) {
         const lines = paragraph.split(/\r?\n/).map(line => line.trim());
@@ -1531,6 +1533,11 @@ function renderHelpFile(source) {
             const heading = document.createElement(lines[1][0] === "=" ? "h3" : "h4");
             heading.textContent = lines[0];
             content.append(heading);
+            if (commands && heading.tagName === "H3") {
+                const hint = document.createElement("p");
+                hint.textContent = "On the map, tap the HP panel to open Character.";
+                content.append(hint);
+            }
             continue;
         }
         const definitions = lines.map(line => line.match(/^(\S{1,3}) {2,}(.+?)(?: {2,}(\S{1,3}) {2,}(.+))?$/));
@@ -1538,7 +1545,7 @@ function renderHelpFile(source) {
             const list = document.createElement("dl");
             for (const [, first, firstText, second, secondText] of definitions) {
                 for (const [key, description] of [[first, firstText], [second, secondText]]) {
-                    if (!key || description === "-") continue;
+                    if (!key || description === "-" || (commands && key === "C")) continue;
                     const row = document.createElement("div");
                     const term = document.createElement("dt");
                     const definition = document.createElement("dd");
@@ -1563,7 +1570,7 @@ function showHelpPage(page) {
     helpPage = page;
     helpIndex.hidden = !!page;
     helpContent.hidden = !page;
-    if (page) renderHelpFile(context.help?.[page]);
+    if (page) renderHelpFile(page);
     else helpContent.replaceChildren();
     helpScreen.scrollTop = 0;
     const previousButton = !page && helpButtons.find(button => button.dataset.helpPage === previous);
