@@ -20,7 +20,7 @@
         </div>
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
-                <h2 id="view-title">Terminal</h2>
+                <h2 id="view-title">PocketAngband</h2>
                 <button id="knowledge-search-toggle" type="button" aria-label="Search Knowledge"
                     aria-expanded="false" aria-controls="knowledge-search" hidden>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -40,7 +40,7 @@
                 <button id="map-keyboard-toggle" type="button" aria-controls="keyboard" aria-expanded="false"
                     aria-label="Show keyboard" disabled hidden></button>
             </div>
-            <div id="terminal-screen" class="screen" role="region" aria-label="Angband terminal" tabindex="0">
+            <div id="terminal-screen" class="screen" role="region" aria-label="Full dungeon map" tabindex="0" hidden>
                 <pre id="terminal"></pre>
             </div>
             <section id="splash-screen" class="menu-screen" aria-labelledby="view-title" hidden>
@@ -235,6 +235,15 @@
             </form>
             <div id="visible-list-screen" class="menu-screen detail-text visible-list" tabindex="0" hidden></div>
             <div id="details-screen" class="menu-screen detail-text" role="region" aria-labelledby="view-title" tabindex="0" hidden></div>
+            <div id="unavailable-screen" class="menu-screen detail-text" role="region" aria-labelledby="view-title" hidden>This Angband screen is unavailable on mobile.</div>
+            <section id="help-screen" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
+                <div id="help-index" class="menu-rows">
+                    <button type="button" data-help-page="commands" aria-keyshortcuts="A"><kbd aria-hidden="true">a</kbd><span>Available commands</span></button>
+                    <button type="button" data-help-page="symbols" aria-keyshortcuts="B"><kbd aria-hidden="true">b</kbd><span>Available symbols</span></button>
+                    <a href="https://angband.readthedocs.io/en/stable/" target="_blank" rel="noopener">Angband manual</a>
+                </div>
+                <div id="help-content" hidden></div>
+            </section>
             <section id="results-list" class="menu-screen" aria-labelledby="view-title" tabindex="0" hidden></section>
             <section id="results-file" class="menu-screen" aria-labelledby="view-title" tabindex="-1" hidden>
                 <p id="results-file-status" role="status"></p>

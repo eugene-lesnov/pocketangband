@@ -133,6 +133,11 @@ const inscriptionHelp = document.querySelector("#inscription-help");
 const confirmText = document.querySelector("#confirm-text");
 const editValue = document.querySelector("#edit-value");
 const detailsScreen = document.querySelector("#details-screen");
+const unavailableScreen = document.querySelector("#unavailable-screen");
+const helpScreen = document.querySelector("#help-screen");
+const helpIndex = document.querySelector("#help-index");
+const helpContent = document.querySelector("#help-content");
+const helpButtons = [...helpIndex.querySelectorAll("button")];
 const visibleListScreen = document.querySelector("#visible-list-screen");
 const splashScreen = document.querySelector("#splash-screen");
 const angbandVersion = document.querySelector("#angband-version");
@@ -210,7 +215,7 @@ mapKeyboardToggle.append(keyboardToggle.querySelector(".keyboard-icon").cloneNod
 const specialKeys = new Map([
     ["Enter", 13], ["Backspace", 8], ["Escape", 27], ["Save", 19], ["SaveAndQuit", 24], ["Tab", 9],
     ["ArrowDown", 0x80], ["ArrowLeft", 0x81], ["ArrowRight", 0x82], ["ArrowUp", 0x83],
-    ["CtrlT", 20], ["Ctrl+V", 22],
+    ["Ctrl+A", 1], ["Ctrl+P", 16], ["CtrlT", 20], ["Ctrl+V", 22],
 ]);
 const gameMenu = [
     ["=", "Options"], ["?", "Help"], ["~", "Knowledge"],
@@ -251,7 +256,7 @@ const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles", charac
     "touch-settings": "Touch settings" };
 const screenTitles = new Map([
     ["aim", "Aim"], ["run-direction", "Run"], ["direction", "Direction"],
-    ["overview", "Full dungeon map"], ["details", "Details"], ["history", "Character history"],
+    ["overview", "Full dungeon map"], ["details", "Details"], ["help", "Help"], ["history", "Character history"],
     ["birth-stats", "Point-based"], ["birth-roll", "Standard roller"],
     ["name", "Character name"], ["text", "Text entry"],
     ["key", "Key input"],
@@ -259,7 +264,7 @@ const screenTitles = new Map([
 const modesWithoutKeyboard = new Set([
     "splash", "save-slots", "birth-stats", "birth-roll", "birth-review", "history",
     "direction", "run-direction", "quantity", "option-number", "rest", "confirm", "overview", "details", "victory", "retire",
-    "character",
+    "character", "help",
 ]);
 const keyNames = new Map([["Escape", "Esc"], ["CtrlT", "Ctrl+T"], ["Save", "Ctrl+S"], ["SaveAndQuit", "Ctrl+X"]]);
 const restLabels = new Map([["&", "As needed"], ["*", "HP and SP"], ["!", "HP or SP"]]);
@@ -284,7 +289,7 @@ const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
         pre: document.querySelector("#terminal"),
-        title: "Terminal",
+        title: "PocketAngband",
         zoom: 2,
     },
     map: {
@@ -332,6 +337,7 @@ let checkingUpdate = false;
 let applyingUpdate = false;
 let updateProgress = 0;
 let resultURL;
+let helpPage;
 let outcomeSaveFailed = false;
 let stopped = false;
 let loadingTiles;
@@ -349,6 +355,7 @@ let renderedList;
 let repeatName = "";
 let graphicsRestored = false;
 let messageRecallRequest = 0;
+let messageRecallInput;
 let recalledMessages = [];
 const preferencesKey = "pocketangband-touch";
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
@@ -382,8 +389,8 @@ function draw() {
         if (view.viewport.hidden || (!picker.hidden && view !== views.map)) return;
         const map = view === views.map;
         if (map && (!view.viewport.clientWidth || !view.viewport.clientHeight)) return;
-        let region = view === views.target ? view.crop : undefined;
-        const source = map ? view.frame : views.terminal.frame;
+        let region = view === views.target ? view.crop : view === views.terminal ? context.overview : undefined;
+        const source = map ? view.frame : view === views.terminal ? context.overviewFrame : views.terminal.frame;
         if (!source) return;
         const aiming = mode === "aim" && request !== undefined;
         const target = aiming && context.target &&
@@ -444,10 +451,7 @@ function draw() {
         }
         if (!map) updateViewZoom(view);
         updatePrompt();
-        if (view === views.terminal) {
-            if (!view.fit && (centerPending || changed) && !menu &&
-                (isMenu() || isTextEntry(mode) || mode === "quantity" || mode === "rest")) showCursor(view);
-        } else if (!map && !view.fit && cell &&
+        if (view === views.target && !view.fit && cell &&
             (centerPending || focusChanged || regionChanged || graphicsChanged || previousGrid !== view.gridElement)) {
             centerCell(view, cell);
         }
@@ -491,20 +495,6 @@ function centerCell(view, cell) {
         (column + 0.5) * bounds.width / grid.columns - viewport.clientWidth / 2;
     viewport.scrollTop += bounds.top - screen.top - viewport.clientTop +
         (row + 0.5) * bounds.height / grid.rows - viewport.clientHeight / 2;
-}
-
-function showCursor({ viewport, pre }) {
-    const cursor = pre.querySelector(".cursor")?.getBoundingClientRect();
-    if (!cursor) return;
-    const screen = viewport.getBoundingClientRect();
-    const left = screen.left + viewport.clientLeft;
-    const top = screen.top + viewport.clientTop;
-    if (cursor.left < left || cursor.right > left + viewport.clientWidth) {
-        viewport.scrollLeft += (cursor.left + cursor.right) / 2 - left - viewport.clientWidth / 2;
-    }
-    if (cursor.top < top || cursor.bottom > top + viewport.clientHeight) {
-        viewport.scrollTop += (cursor.top + cursor.bottom) / 2 - top - viewport.clientHeight / 2;
-    }
 }
 
 function zoomIndex(view) {
@@ -766,7 +756,8 @@ function renderResultFile({ filename, data }) {
     clearResultFile();
     resultsFileStatus.textContent = data?.length ? filename : "Could not prepare the file.";
     if (!data?.length) return;
-    resultURL = URL.createObjectURL(new Blob([data], { type: "text/plain;charset=utf-8" }));
+    const type = /\.html?$/i.test(filename) ? "text/html" : "text/plain";
+    resultURL = URL.createObjectURL(new Blob([data], { type: type + ";charset=utf-8" }));
     downloadResult.href = resultURL;
     downloadResult.download = filename;
     downloadResult.hidden = false;
@@ -929,10 +920,6 @@ function focusCharacter() {
     characterScreen.focus({ preventScroll: true });
 }
 
-function isMenu() {
-    return mode === "menu" || mode === "save-slots";
-}
-
 function isTextEntry(state) {
     return state === "name" || state === "text";
 }
@@ -1009,7 +996,7 @@ function updateControls() {
     const liveCharacter = mode === "character" && playingGame;
     const editableName = liveCharacter && context.nameMaxBytes !== undefined;
     const editingName = !characterNameEditor.hidden;
-    const canOpenKeyboard = !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
+    const canOpenKeyboard = unavailableScreen.hidden && !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
         !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
     const showKeyboard = keyboardOpen && canOpenKeyboard;
     const stopVisible = running || !stopAction.hidden;
@@ -1046,11 +1033,10 @@ function updateMenuControls(disabled, choosing) {
 }
 
 function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
-    const command = mode === "command";
+    const command = mode === "command" && unavailableScreen.hidden;
     const selectable = isTargeting() || isDirectionPrompt();
-    views.terminal.viewport.classList.toggle("selectable", isMenu() && !menu);
     views.target.viewport.classList.toggle("selectable", selectable);
-    const usingPad = !openPanel && (command || selectable || (isMenu() && !menu));
+    const usingPad = !openPanel && (command || selectable);
     const showPad = !choosing && !(command && showKeyboard) &&
         (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
@@ -1073,7 +1059,7 @@ function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
 }
 
 function updateMapControls(disabled, showKeyboard, stopVisible) {
-    const command = mode === "command";
+    const command = mode === "command" && unavailableScreen.hidden;
     const showMapMenu = command && !openPanel && !stopVisible;
     const showPlayActions = showMapMenu && !showKeyboard;
     const inspectingCell = showPlayActions && !!context.mapCell?.actions;
@@ -1107,6 +1093,7 @@ function targetActionLabel() {
 }
 
 function getConfirmAction(selectedRow, closesScreen) {
+    if (!unavailableScreen.hidden) return ["Escape", "Back"];
     switch (mode) {
         case "birth-review": return ["Enter", "Start game"];
         case "retire": return ["@", "Retire character and quit"];
@@ -1134,15 +1121,17 @@ function getCancelLabel() {
 }
 
 function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, showPad, showTargetControls }) {
+    const unavailable = !unavailableScreen.hidden;
     const showFooter = mode !== undefined && !isTextEntry(mode) && !stopVisible && !outcome &&
-        (mode !== "command" || !!openPanel);
+        (mode !== "command" || !!openPanel || unavailable);
     setActions(terminalKeys, showFooter, disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
     terminalKeys.classList.toggle("single-row-controls", (playingGame || mode === "save-slots") && !showPad);
     terminalKeys.classList.toggle("results-controls", mode === "victory" || resultChild || mode === "retire");
 
     const aiming = mode === "aim";
-    const closesScreen = !context.listPreview && ["details", "character", "overview"].includes(mode);
+    const closesScreen = !context.listPreview &&
+        (["details", "character", "overview", "help"].includes(mode) || unavailable);
     const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
     const [key, label] = getConfirmAction(selectedRow, closesScreen);
     const directMenu = playingGame && mode === "menu" && !!menu && (!menu.store || menu.store.inspectOnly);
@@ -1151,10 +1140,11 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     confirmKey.textContent = label;
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
-    confirmKey.hidden = !!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth || resultChild ||
-        isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls || noAimTarget;
-    confirmKey.disabled = mode === "direction" || noAimTarget || (mode === "target" && !context.canSelect) ||
-        (!!menu && !selectedRow);
+    confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth ||
+        resultChild || isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls ||
+        noAimTarget);
+    confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget ||
+        (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
 
     cancelKey.dataset.key = mode === "confirm" ? "n" : "Escape";
     cancelKey.textContent = getCancelLabel();
@@ -1393,7 +1383,7 @@ function updatePrompt() {
     const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
     journal.hidden = !!context.listPreview || (hud.hidden && !showResult) || saveNotice;
-    if (journal.hidden && messageDialog.open) messageDialog.close();
+    if (journal.hidden && messageDialog.open && messageRecallInput === undefined) messageDialog.close();
     updateJournal();
 }
 
@@ -1425,6 +1415,7 @@ function updateView(state = world, region = views.target.crop) {
     knowledgeSearchToggle.setAttribute("aria-expanded", String(!knowledgeSearch.hidden));
     knowledgeSearchToggle.setAttribute("aria-label", knowledgeSearch.hidden ? "Search Knowledge" : "Close search");
     if (choosing) {
+        unavailableScreen.hidden = true;
         controls.setAttribute("role", "dialog");
         controls.setAttribute("aria-modal", "true");
         controls.setAttribute("aria-labelledby", "picker-heading");
@@ -1442,9 +1433,12 @@ function updateView(state = world, region = views.target.crop) {
     activeView = context.listPreview || (world && context.worldView) ? views.map :
         (isTargeting() || isDirectionPrompt()) && region ? views.target : views.terminal;
 
-    const { fullScreen, inGamePanel, intro, title } = updateScreenContents();
+    const { fullScreen, inGamePanel, intro, character, outcome } = updateScreenContents();
     const showViewport = !fullScreen && !openPanel && !menu;
-    for (const view of Object.values(views)) view.viewport.hidden = view !== activeView || !showViewport;
+    const overview = mode === "overview" && context.overview && context.overviewFrame;
+    unavailableScreen.hidden = mode === undefined || !showViewport || activeView !== views.terminal || overview;
+    for (const view of Object.values(views))
+        view.viewport.hidden = view !== activeView || !showViewport || (view === views.terminal && !overview);
 
     if (previous !== activeView && activeView === views.terminal) {
         activeView.viewport.scrollTo(0, 0);
@@ -1457,7 +1451,7 @@ function updateView(state = world, region = views.target.crop) {
     hud.hidden = !showWorld || !world;
     mapStatus.hidden = hud.hidden;
     if (hud.hidden) monsterHealth.hidden = true;
-    viewTitle.textContent = context.listPreview?.title ?? title;
+    viewTitle.textContent = context.listPreview?.title ?? getViewTitle({ character, outcome });
     zoom.hidden = activeView.viewport.hidden;
     if (previous !== activeView) {
         if (activeView === views.target) {
@@ -1492,6 +1486,7 @@ function updateScreenContents() {
     resultsFile.hidden = mode !== "results-file";
 
     updateDetailsScreen();
+    helpScreen.hidden = mode !== "help";
     const textEntry = isTextEntry(mode);
     if (mode !== "character") characterNameEditor.hidden = true;
     updateTextViewport();
@@ -1500,11 +1495,66 @@ function updateScreenContents() {
     textScreen.hidden = mode !== "text";
 
     const fullScreen = textEntry || !detailsScreen.hidden || !visibleListScreen.hidden || character || splash ||
-        birthStats || victory || results;
+        birthStats || victory || results || !helpScreen.hidden;
     const inGamePanel = !!openPanel || character || mode === "history" || !!menu?.options ||
         mode === "option-number" || outcome || victory || results || !!menu?.title || mode === "retire";
-    return { fullScreen, inGamePanel, intro, title: getViewTitle({ character, outcome }) };
+    return { fullScreen, inGamePanel, intro, character, outcome };
 }
+
+function renderHelpFile(source) {
+    const content = document.createDocumentFragment();
+    for (const paragraph of (source?.trim() || "Help unavailable.").split(/\n\s*\n/)) {
+        const lines = paragraph.split(/\r?\n/).map(line => line.trim());
+        if (lines.length === 2 && /^(=+|-+)$/.test(lines[1])) {
+            const heading = document.createElement(lines[1][0] === "=" ? "h3" : "h4");
+            heading.textContent = lines[0];
+            content.append(heading);
+            continue;
+        }
+        const definitions = lines.map(line => line.match(/^(\S{1,3}) {2,}(.+?)(?: {2,}(\S{1,3}) {2,}(.+))?$/));
+        if (definitions.every(Boolean)) {
+            const list = document.createElement("dl");
+            for (const [, first, firstText, second, secondText] of definitions) {
+                for (const [key, description] of [[first, firstText], [second, secondText]]) {
+                    if (!key || description === "-") continue;
+                    const row = document.createElement("div");
+                    const term = document.createElement("dt");
+                    const definition = document.createElement("dd");
+                    term.textContent = key;
+                    definition.textContent = description;
+                    row.append(term, definition);
+                    list.append(row);
+                }
+            }
+            content.append(list);
+        } else {
+            const text = document.createElement("p");
+            text.textContent = lines.join(" ");
+            content.append(text);
+        }
+    }
+    helpContent.replaceChildren(content);
+}
+
+function showHelpPage(page) {
+    const previous = helpPage;
+    helpPage = page;
+    helpIndex.hidden = !!page;
+    helpContent.hidden = !page;
+    if (page) renderHelpFile(context.help?.[page]);
+    else helpContent.replaceChildren();
+    helpScreen.scrollTop = 0;
+    const previousButton = !page && helpButtons.find(button => button.dataset.helpPage === previous);
+    (previousButton || helpScreen).focus({ preventScroll: true });
+}
+
+function backFromHelp() {
+    if (helpPage) showHelpPage();
+    else sendInput({ type: "key", code: keyCode("Escape") });
+}
+
+for (const button of helpButtons)
+    button.addEventListener("click", () => showHelpPage(button.dataset.helpPage));
 
 function showListPreview(preview, focus = context.listPreview.row) {
     if (preview?.reading && preview.detail === undefined)
@@ -1616,6 +1666,7 @@ function renderPicker() {
 }
 
 function getViewTitle({ character, outcome }) {
+    if (!unavailableScreen.hidden) return "Command unavailable";
     const panelTitle = panelTitles[openPanel];
     if (panelTitle !== undefined) return panelTitle;
     if (mode === "save-slots") return "Save slots";
@@ -1648,6 +1699,7 @@ function stop(message, failed) {
     if (deleteSaveDialog.open) deleteSaveDialog.close();
     playingGame = inspectingChoice = false;
     request = mode = undefined;
+    if (messageDialog.open) messageDialog.close();
     world = menu = undefined;
     context = {};
     mapDirectionAction = undefined;
@@ -1675,6 +1727,13 @@ function handleWorkerMessage({ data }) {
             break;
         }
         case "waiting": {
+            if (data.mode === "message-recall") {
+                clearPendingInput();
+                closeMessagePause();
+                request = data.request;
+                openMessageRecall(data.request);
+                break;
+            }
             if (data.mode === "more") {
                 clearTimeout(stopTimer);
                 request = data.request;
@@ -1726,6 +1785,7 @@ function handleWorkerMessage({ data }) {
             playingGame = data.playing;
             request = data.request;
             context = data.context;
+            if (mode === "overview") context.overviewFrame = views.terminal.frame;
             if (mode === "save-slots" || data.menu?.birth?.title === "Choose race") {
                 birthNameSource = undefined;
             }
@@ -1774,6 +1834,7 @@ function handleWorkerMessage({ data }) {
             if (changed && mode === "victory") victoryScreen.focus({ preventScroll: true });
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
+            if (changed && mode === "help") showHelpPage();
             if (menu?.search) {
                 const selected = pageList.rows.querySelector('[aria-current="true"]');
                 (menu.cursor < 0 ? knowledgeSearch : selected)?.focus({ preventScroll: true });
@@ -1875,6 +1936,7 @@ function handleWorkerMessage({ data }) {
             closeMessagePause();
             playingGame = inspectingChoice = false;
             request = mode = world = menu = undefined;
+            if (messageDialog.open) messageDialog.close();
             context = {};
             mapDirectionAction = undefined;
             openPanel = panelTrigger = characterTrigger = undefined;
@@ -2186,6 +2248,10 @@ main.addEventListener("click", (event) => {
     if (!button || button.matches(":disabled, [aria-disabled=true]") || (event.detail !== 0 &&
         (buttonPress?.button !== button || buttonPress.request !== request))) return;
 
+    if (mode === "help" && button === confirmKey) {
+        backFromHelp();
+        return;
+    }
     if (button === cancelKey && closeInputPanel(false)) return;
     if (button === targetInspect && context.listPreview) {
         toggleListDetails();
@@ -2870,10 +2936,6 @@ function renderKeyboard() {
     ];
     const rows = layers[keyboardLayer].map((line) =>
         [...line].map((key) => makeKey(keyboardLayer === 0 && shifted ? key.toUpperCase() : key)));
-    if (mode === "terminal") rows.unshift([
-        makeKey("ArrowLeft", "←", "Left"), makeKey("ArrowUp", "↑", "Up"),
-        makeKey("ArrowDown", "↓", "Down"), makeKey("ArrowRight", "→", "Right"),
-    ]);
     const nextLayer = (keyboardLayer + 1) % layers.length;
     const switchLayer = makeButton(["ABC", "123", "#+="][nextLayer],
         ["Letters", "Numbers", "More symbols"][nextLayer]);
@@ -3080,7 +3142,9 @@ messageSearch.addEventListener("keydown", (event) => {
         messages.focus({ preventScroll: true });
     }
 });
-journal.addEventListener("click", () => {
+function openMessageRecall(inputRequest) {
+    messageRecallInput = inputRequest;
+    if (messageDialog.open) return;
     setMessageSearchOpen(false);
     messageSearchToggle.disabled = true;
     messageSearchStatus.textContent = "Loading messages…";
@@ -3089,10 +3153,16 @@ journal.addEventListener("click", () => {
     messageDialog.showModal();
     messages.focus({ preventScroll: true });
     worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest });
-});
+}
+
+journal.addEventListener("click", () => openMessageRecall());
 messageDialog.addEventListener("close", () => {
     recalledMessages = [];
     messages.replaceChildren();
+    const inputRequest = messageRecallInput;
+    messageRecallInput = undefined;
+    if (inputRequest !== undefined && inputRequest === request)
+        sendInput({ type: "key", code: keyCode("Escape") });
 });
 function interruptAction(button) {
     if (pendingInput === undefined || button.disabled) return;
@@ -3110,7 +3180,7 @@ movementMode.addEventListener("click", (event) => {
     updateControls();
 });
 
-for (const view of Object.values(views)) {
+for (const view of [views.map, views.target]) {
     let tap;
     let holdTimer;
 
@@ -3122,9 +3192,8 @@ for (const view of Object.values(views)) {
     function selectCell({ x, y, request: pressedRequest, pointerType }, openMenu = false) {
         const type = view === views.map ? mode === "command" ? "map-cell" :
             mode === "aim" || mode === "run-direction" ? "aim-cell" : undefined :
-            view === views.target ? mode === "target" ? "target-cell" :
-            mode === "aim" || mode === "direction" || mode === "run-direction" ? "aim-cell" : undefined :
-            isMenu() && !menu ? "tap" : undefined;
+            mode === "target" ? "target-cell" :
+            mode === "aim" || mode === "direction" || mode === "run-direction" ? "aim-cell" : undefined;
         const source = view === views.map ? view.frame : views.terminal.frame;
         if (request === undefined || pressedRequest !== request || activeView !== view ||
             !type || !view.grid || !view.gridElement.contains(document.elementFromPoint(x, y)) ||
@@ -3350,6 +3419,22 @@ document.addEventListener("keydown", (event) => {
         }
         return;
     }
+    if (mode === "help") {
+        const key = event.key.toLowerCase();
+        if (event.ctrlKey || event.metaKey || !["escape", "?", "a", "b"].includes(key)) return;
+        event.preventDefault();
+        if (event.repeat) return;
+        if (key === "a" || key === "b") showHelpPage(key === "a" ? "commands" : "symbols");
+        else backFromHelp();
+        return;
+    }
+    if (!unavailableScreen.hidden) {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            if (!event.repeat) sendInput({ type: "key", code: keyCode("Escape") });
+        }
+        return;
+    }
     if (event.key === "Escape" && pendingInput !== undefined && (running || !stopAction.hidden)) {
         interruptAction(stopAction);
         event.preventDefault();
@@ -3375,7 +3460,9 @@ document.addEventListener("keydown", (event) => {
         let shortcut;
         if (key === "s") shortcut = "Save";
         else if (!event.metaKey) {
-            if (key === "x") shortcut = "SaveAndQuit";
+            if (key === "a") shortcut = "Ctrl+A";
+            else if (key === "x") shortcut = "SaveAndQuit";
+            else if (key === "p") shortcut = "Ctrl+P";
             else if (world?.roguelike && key === "v") shortcut = "Ctrl+V";
             else if (world?.roguelike && key === "t") shortcut = "CtrlT";
         }

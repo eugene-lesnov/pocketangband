@@ -80,6 +80,8 @@ static const char *const input_modes[] = {
     [WEB_INPUT_REST] = "rest",
     [WEB_INPUT_OVERVIEW] = "overview",
     [WEB_INPUT_DETAILS] = "details",
+    [WEB_INPUT_HELP] = "help",
+    [WEB_INPUT_MESSAGE_RECALL] = "message-recall",
     [WEB_INPUT_HISTORY] = "history",
     [WEB_INPUT_BIRTH_STATS] = "birth-stats",
     [WEB_INPUT_BIRTH_ROLL] = "birth-roll",
@@ -415,6 +417,10 @@ void web_set_details(textblock *tb)
     publish_details(tb, false, false);
 }
 
+EM_JS(void, web_set_overview, (int width, int height), {
+    Module['inputContext'] = { overview: { x: 1, y: 1, width, height } };
+});
+
 void web_set_menu_card(textblock *tb)
 {
     publish_details(tb, false, true);
@@ -512,11 +518,37 @@ void web_wait_for_back(enum web_input_mode mode)
     web_set_input_mode(previous);
 }
 
+EM_JS(void, set_help_pages, (const char *help_dir, bool roguelike), {
+    const directory = UTF8ToString(help_dir);
+    const decoder = new TextDecoder();
+    const read = (name) => {
+        const data = Module['readResultsFile'](directory + "/" + name);
+        return data ? decoder.decode(data) : "";
+    };
+    Module['inputContext'] = { help: {
+        commands: read(roguelike ? "r_comm.txt" : "commands.txt"),
+        symbols: read("symbols.txt"),
+    } };
+});
+
+void web_show_help(bool roguelike)
+{
+    set_help_pages(ANGBAND_DIR_HELP, roguelike);
+    web_wait_for_back(WEB_INPUT_HELP);
+}
+
 void web_show_generated_file(const char *title, const char *path, const char *filename)
 {
     set_results_file(title, path, filename);
     if (path) file_delete(path);
     web_wait_for_back(WEB_INPUT_RESULTS_FILE);
+}
+
+bool web_get_export_filename(const char *suggested, char *filename, size_t size)
+{
+    my_strcpy(filename, suggested, size);
+    return get_string("File name: ", filename, size) &&
+        filename[0] && filename[0] != ' ';
 }
 
 EM_JS(void, send_file_download, (const char *path, const char *filename), {

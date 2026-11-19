@@ -977,6 +977,20 @@ main.inscribing #text-title { font-size: 1rem; }
     height: 1em;
     vertical-align: -0.1em;
 }
+#help-screen { padding: 0.75rem 0.625rem; line-height: 1.45; overflow-wrap: anywhere; }
+#help-index { padding: 0; gap: 0.5rem; }
+#help-index a { min-height: 44px; align-content: center; padding-inline: 0.5rem; }
+#help-content { display: grid; gap: 0.75rem; }
+#help-content h3, #help-content h4 { font-size: 1rem; }
+#help-content dl { display: grid; gap: 0.25rem; }
+#help-content dl > div {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+#help-content dt { font-family: var(--mono); color: var(--accent); }
 .detail-text.visible-list { white-space: normal; }
 .visible-list-heading { margin-block: 0.5rem 0.25rem; }
 .visible-list-heading:first-child { margin-top: 0; }
