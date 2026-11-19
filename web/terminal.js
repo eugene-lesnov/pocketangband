@@ -2917,7 +2917,7 @@ function renderMenu(state, description = state?.description ?? "") {
         else if (bounds.bottom > screen.bottom) scrollArea.scrollTop += bounds.bottom - screen.bottom;
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
-        const button = state.birth?.preview && state.cursor !== previous.cursor ? current :
+        const button = focused.dataset.input === "menu-row" && state.cursor !== previous.cursor ? current :
             [...menuRows.querySelectorAll("button[data-input]"), ...endings].find((row) =>
                 row.dataset.value === focusedCode && row.dataset.input === focused.dataset.input);
         if (button?.matches(":enabled")) button.focus({ preventScroll: true });

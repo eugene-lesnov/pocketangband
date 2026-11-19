@@ -1832,12 +1832,19 @@ static void init_terminal(term *terminal, int index, int width, int height)
     angband_term[index] = terminal;
 }
 
+static bool web_confirm_debug(void)
+{
+    return get_check("Use debug commands?\n"
+        "These commands are unsupported and may crash the game or corrupt your savefile.");
+}
+
 errr init_web(int argc, char **argv)
 {
     static term terminal, map;
     (void)argc;
     (void)argv;
     if (!init_graphics_modes()) return 1;
+    confirm_debug_hook = web_confirm_debug;
     init_terminal(&terminal, 0, 80, 24);
     init_terminal(&map, WEB_MAP_TERM, 1, 1);
     map.fixed_shape = false;
