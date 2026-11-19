@@ -752,22 +752,26 @@ function clearResultFile() {
     downloadResult.hidden = true;
 }
 
+function createDownloadURL(filename, data) {
+    const type = /\.html?$/i.test(filename) ? "text/html" : "text/plain";
+    return URL.createObjectURL(new Blob([data], { type: type + ";charset=utf-8" }));
+}
+
 function renderResultFile({ filename, data }) {
     clearResultFile();
     resultsFileStatus.textContent = data?.length ? filename : "Could not prepare the file.";
     if (!data?.length) return;
-    const type = /\.html?$/i.test(filename) ? "text/html" : "text/plain";
-    resultURL = URL.createObjectURL(new Blob([data], { type: type + ";charset=utf-8" }));
+    resultURL = createDownloadURL(filename, data);
     downloadResult.href = resultURL;
     downloadResult.download = filename;
     downloadResult.hidden = false;
 }
 
 function downloadFile({ filename, data }) {
-    const url = URL.createObjectURL(new Blob([data], { type: "text/plain;charset=utf-8" }));
+    const url = createDownloadURL(filename, data);
     const link = document.createElement("a");
     link.href = url;
-    link.download = filename;
+    link.download = filename.replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, "_");
     link.hidden = true;
     document.body.append(link);
     link.click();
@@ -1382,9 +1386,10 @@ function updatePrompt() {
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
-    journal.hidden = !!context.listPreview || (hud.hidden && !showResult) || saveNotice;
+    const journalText = updateJournal();
+    journal.hidden = !!context.listPreview || (hud.hidden && !showResult) || saveNotice ||
+        (menu?.title === "Screen dump" && !journalText);
     if (journal.hidden && messageDialog.open && messageRecallInput === undefined) messageDialog.close();
-    updateJournal();
 }
 
 function formatMessage({ text, count }) {
@@ -1398,6 +1403,7 @@ function updateJournal() {
     const text = [prompt, ...lines].filter(Boolean).join("\n");
     if (latestMessage.textContent !== text) latestMessage.textContent = text;
     journal.classList.toggle("prompt", !!prompt);
+    return text;
 }
 
 function updateView(state = world, region = views.target.crop) {

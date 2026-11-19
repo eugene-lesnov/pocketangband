@@ -170,7 +170,7 @@ async function deleteProfileFiles(idbfs, paths) {
 
 async function play(afterRun) {
     let world;
-    let fileDownloadFailed = false;
+    let fileDownloadError;
     let currentTurns = 0;
     let savedTurns = -1;
     let attemptedTurns = 0;
@@ -238,9 +238,9 @@ async function play(afterRun) {
                     }, Math.max(0, 15_000 - (Date.now() - saveAttempt)));
                 }
                 const data = context.resultsFile?.data;
-                if (fileDownloadFailed) {
-                    context.prompt = "Character dump failed!";
-                    fileDownloadFailed = false;
+                if (fileDownloadError) {
+                    context.prompt = fileDownloadError;
+                    fileDownloadError = undefined;
                 }
                 self.postMessage({ type: "waiting", request, mode, region, playing, world, context, menu },
                     data ? [data.buffer] : []);
@@ -258,10 +258,10 @@ async function play(afterRun) {
                 return undefined;
             }
         },
-        downloadFile(path, filename) {
+        downloadFile(path, filename, error) {
             const data = path ? game.readResultsFile(path) : undefined;
             if (data?.length) self.postMessage({ type: "file-download", filename, data }, [data.buffer]);
-            else fileDownloadFailed = true;
+            else fileDownloadError = error;
         },
         async deleteSaveFile(path, panic) {
             const fs = game.FS;

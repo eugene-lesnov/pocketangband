@@ -551,13 +551,13 @@ bool web_get_export_filename(const char *suggested, char *filename, size_t size)
         filename[0] && filename[0] != ' ';
 }
 
-EM_JS(void, send_file_download, (const char *path, const char *filename), {
-    Module['downloadFile'](path ? UTF8ToString(path) : undefined, UTF8ToString(filename));
+EM_JS(void, send_file_download, (const char *path, const char *filename, const char *error), {
+    Module['downloadFile'](path ? UTF8ToString(path) : undefined, UTF8ToString(filename), UTF8ToString(error));
 });
 
-void web_download_file(const char *path, const char *filename)
+void web_download_file(const char *path, const char *filename, const char *error)
 {
-    send_file_download(path, filename);
+    send_file_download(path, filename, error);
     if (path) file_delete(path);
 }
 

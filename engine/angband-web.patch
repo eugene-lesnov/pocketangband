@@ -1547,7 +1547,7 @@ diff --git a/src/ui-input.c b/src/ui-input.c
  			bool keymap_ok = true;
  			switch (ke.key.code) {
 diff --git a/src/ui-input.h b/src/ui-input.h
-index 956ef26..c3e817d 100644
+index 956ef26..e357557 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
 @@ -24,6 +24,128 @@
@@ -1624,7 +1624,7 @@ index 956ef26..c3e817d 100644
 +void web_wait_for_back(enum web_input_mode mode);
 +void web_show_generated_file(const char *title, const char *path, const char *filename);
 +bool web_get_export_filename(const char *suggested, char *filename, size_t size);
-+void web_download_file(const char *path, const char *filename);
++void web_download_file(const char *path, const char *filename, const char *error);
 +void web_set_birth_menu(const char *title, const char *summary, bool preview);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
 +void web_set_birth_name(const char *name, size_t size);
@@ -2749,7 +2749,7 @@ diff --git a/src/cmd-core.c b/src/cmd-core.c
  		return CMD_OK;
  	}
 diff --git a/src/ui-command.c b/src/ui-command.c
-index 182a73a..10f91f9 100644
+index 182a73a..b24cf5d 100644
 --- a/src/ui-command.c
 +++ b/src/ui-command.c
 @@ -177,7 +177,15 @@ void textui_cmd_retire(void)
@@ -2784,13 +2784,12 @@ index 182a73a..10f91f9 100644
  
  	/* Rest... */
  	if (out_val[0] == '&') {
-@@ -491,18 +506,32 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+@@ -491,24 +506,34 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
  
  	ang_file *fff;
  	char file_name[1024];
 +#ifdef __EMSCRIPTEN__
 +	const char *tmp_val = "/tmp/pocketangband-screen-dump";
-+	char filename[160];
 +#else
  	char tmp_val[256];
 +#endif
@@ -2799,13 +2798,12 @@ index 182a73a..10f91f9 100644
  	dump_func dump_visuals [] = { dump_monsters, dump_features, dump_objects,
  								  dump_flavors, dump_colors };
  
++#ifndef __EMSCRIPTEN__
  	/* Ask for a file */
-+#ifdef __EMSCRIPTEN__
-+	if (!web_get_export_filename(mode == 0 ? "dump.html" : "dump.txt",
-+			filename, sizeof(filename))) return;
-+#else
- 	if (!get_file(mode == 0 ? "dump.html" : "dump.txt",
- 				  tmp_val, sizeof(tmp_val))) return;
+-	if (!get_file(mode == 0 ? "dump.html" : "dump.txt",
+-				  tmp_val, sizeof(tmp_val))) return;
++	if (!get_file(mode == 0 ? "dump.html" : "dump.txt", tmp_val,
++			sizeof(tmp_val))) return;
 +#endif
  
  	/* Save current preferences */
@@ -2817,12 +2815,30 @@ index 182a73a..10f91f9 100644
  	fff = file_open(file_name, MODE_WRITE, FTYPE_TEXT);
  
  	/* Check for failure */
-@@ -529,8 +558,12 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+ 	if (!fff) {
+ 		msg("Screen dump failed.");
+-		event_signal(EVENT_MESSAGE_FLUSH);
++		flush_messages_for_transition();
+ 		return;
+ 	}
+ 
+@@ -529,8 +554,23 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
  	file_delete(file_name);
  	do_cmd_redraw();
  
 +#ifdef __EMSCRIPTEN__
-+	web_show_generated_file("Screen dump", file_exists(tmp_val) ? tmp_val : NULL, filename);
++	time_t now = time(NULL);
++	struct tm *local = localtime(&now);
++	char timestamp[sizeof("YYYY-MM-DD_HH-MM-SS")];
++	char filename[sizeof(player->full_name) + 40];
++	if (!local || !strftime(timestamp, sizeof(timestamp), "%Y-%m-%d_%H-%M-%S", local)) {
++		my_strcpy(timestamp, "dump", sizeof(timestamp));
++	}
++	strnfmt(filename, sizeof(filename), "%s_%s_L%d.%s", timestamp,
++		player->full_name[0] ? player->full_name : "Angband", player->lev,
++		mode == 0 ? "html" : "txt");
++	web_download_file(file_exists(tmp_val) ? tmp_val : NULL, filename,
++		"Screen dump failed.");
 +#else
  	msg("%s screen dump saved.", mode ? "Forum text" : "HTML");
  	event_signal(EVENT_MESSAGE_FLUSH);
@@ -2830,6 +2846,34 @@ index 182a73a..10f91f9 100644
  }
  
  
+@@ -539,6 +579,21 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+  */
+ void do_cmd_save_screen(void)
+ {
++#ifdef __EMSCRIPTEN__
++	const char *formats[] = { "HTML", "Forum text" };
++	struct menu menu;
++	menu_init(&menu, MN_SKIN_SCROLL, menu_find_iter(MN_ITER_STRINGS));
++	menu_setpriv(&menu, N_ELEMENTS(formats), formats);
++	menu.title = "Screen dump";
++	menu.selections = "hf";
++	menu.flags = MN_CASELESS_TAGS;
++	menu.web_choice = true;
++	menu.web_no_keyboard = true;
++	menu_layout(&menu, &SCREEN_REGION);
++	if (menu_select(&menu, 0, true).type == EVT_SELECT) {
++		do_cmd_save_screen_html(menu.cursor, NULL);
++	}
++#else
+ 	char ch = get_char("Dump as (H)TML or (F)orum text? ", "hf", 2, ' ');
+ 	int mode = 0;
+ 	term *ml_term;
+@@ -558,4 +613,5 @@ void do_cmd_save_screen(void)
+ 		if (!get_check("Include monster list? ")) ml_term = NULL;
+ 	}
+ 	do_cmd_save_screen_html(mode, ml_term);
++#endif
+ }
 diff --git a/src/ui-context.c b/src/ui-context.c
 index 372be5a..5528305 100644
 --- a/src/ui-context.c
@@ -3449,6 +3493,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  	screen_save_depth--;
  }
 diff --git a/src/ui-player.c b/src/ui-player.c
+index b6235b1..a4902bf 100644
 --- a/src/ui-player.c
 +++ b/src/ui-player.c
 @@ -916,6 +916,132 @@ void display_player(int mode)
@@ -3584,7 +3629,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  
  /**
   * Write a character dump
-@@ -1208,6 +1334,20 @@ bool dump_save(const char *path)
+@@ -1208,6 +1334,17 @@ bool dump_save(const char *path)
  
  
  
@@ -3595,17 +3640,14 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +	const char *path = "/tmp/pocketangband-character.txt";
 +	strnfmt(filename, sizeof(filename), "%s.txt",
 +		player->full_name[0] ? player->full_name : "Angband");
-+	for (char *ch = filename; *ch; ch++) {
-+		if (strchr("<>:\"/\\|?*", *ch)) *ch = '_';
-+	}
-+	web_download_file(dump_save(path) ? path : NULL, filename);
++	web_download_file(dump_save(path) ? path : NULL, filename, "Character dump failed!");
 +}
 +#endif
 +
  #define INFO_SCREENS 2 /* Number of screens in character info mode */
  
  
-@@ -1238,11 +1378,28 @@ void do_cmd_change_name(void)
+@@ -1238,11 +1375,28 @@ void do_cmd_change_name(void)
  		Term_putstr(2, 23, -1, COLOUR_WHITE, p);
  
  		/* Query */
@@ -3634,7 +3676,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  				case 'c': {
  					if(arg_force_name)
  						msg("You are not allowed to change your name!");
-@@ -1258,7 +1415,11 @@ void do_cmd_change_name(void)
+@@ -1258,7 +1412,11 @@ void do_cmd_change_name(void)
  					break;
  				}
  
@@ -3646,7 +3688,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
  					char buf[1024];
  					char fname[80];
  
-@@ -1272,6 +1433,7 @@ void do_cmd_change_name(void)
+@@ -1272,6 +1430,7 @@ void do_cmd_change_name(void)
  						else
  							msg("Character dump failed!");
  					}
