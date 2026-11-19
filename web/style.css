@@ -1053,6 +1053,7 @@ button.visible-list-row {
 .menu-sections, #menu-actions { display: flex; gap: 0.25rem; }
 .menu-sections { flex-wrap: wrap; padding: 0.25rem; }
 .menu-sections button, #menu-actions button { flex: 1 1 0; padding-inline: 0.35rem; }
+#option-save-status { min-height: 1lh; padding-inline: 0.35rem; color: #cbe7a4; font-size: 0.8125rem; }
 .menu-sections button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .menu-rows { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem; }
 .menu-rows button {

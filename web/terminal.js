@@ -174,6 +174,7 @@ const pageList = createMenuList("menu-screen", "menu-description");
 const pickerList = createMenuList("picker-list", "picker-description");
 let activeList = pageList;
 const menuActions = document.querySelector("#menu-actions");
+const optionSaveStatus = document.querySelector("#option-save-status");
 const picker = document.querySelector("#picker");
 const pickerHeading = document.querySelector("#picker-heading");
 const pickerListShadow = document.querySelector("#picker-list-shadow");
@@ -2778,6 +2779,9 @@ function renderMenu(state, description = state?.description ?? "") {
     menuDescription.hidden = !description;
     renderDescription(menuDescription, description);
     menuScreen.classList.toggle("options-menu", Boolean(state?.options));
+    optionSaveStatus.hidden = !state?.options || !state.actions.length;
+    const saveMessage = state?.defaultsSaved ? "Saved as defaults." : "";
+    if (optionSaveStatus.textContent !== saveMessage) optionSaveStatus.textContent = saveMessage;
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
     const outcome = !!context.outcome;
     menuScreen.classList.toggle("outcome-menu", outcome);

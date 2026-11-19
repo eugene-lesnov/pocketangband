@@ -787,8 +787,9 @@ EM_JS(int, web_set_save_slots, (const char *const *names, int count, int cursor)
     return preferred > 0 ? preferred : cursor;
 });
 
-EM_JS(void, web_set_options_title, (const char *title), {
+EM_JS(void, web_set_options_title, (const char *title, bool defaults_saved), {
     Module['inputMenu'].options = UTF8ToString(title);
+    Module['inputMenu'].defaultsSaved = !!defaults_saved;
 });
 
 EM_JS(void, set_menu_sections, (int current, int available, int equipment,

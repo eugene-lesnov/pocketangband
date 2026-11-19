@@ -1683,7 +1683,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_menu_title(const char *title);
 +void web_set_pickup_menu(void);
 +int web_set_save_slots(const char *const *names, int count, int cursor);
-+void web_set_options_title(const char *title);
++void web_set_options_title(const char *title, bool defaults_saved);
 +void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
 +bool web_sync_profile(void);
 +void web_set_option_notice(const char *message);
@@ -5032,14 +5032,17 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
  
  	screen_load();
 diff --git a/src/ui-options.c b/src/ui-options.c
-index 42ec005..49d1c1a 100644
+index 42ec005..66211bc 100644
 --- a/src/ui-options.c
 +++ b/src/ui-options.c
-@@ -138,6 +138,18 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
+@@ -138,6 +138,21 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
  		option_name(oid)), row, col + 45);
  }
  
 +#ifdef __EMSCRIPTEN__
++static bool web_defaults_saved;
++static bool web_saved_options[OPT_MAX];
++
 +static void web_option_notice(const char *message)
 +{
 +	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
@@ -5054,7 +5057,7 @@ index 42ec005..49d1c1a 100644
  /**
   * Handle keypresses for an option entry.
   */
-@@ -164,14 +176,22 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -164,14 +179,25 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
  		} else if (event->key.code == 't' || event->key.code == 'T') {
  			option_set(option_name(oid), !player->opts.opt[oid]);
  		} else if (event->key.code == 's' || event->key.code == 'S') {
@@ -5066,8 +5069,11 @@ index 42ec005..49d1c1a 100644
 -			if (options_save_custom(&player->opts, page)) {
 +			bool saved = options_save_custom(&player->opts, page);
 +#ifdef __EMSCRIPTEN__
-+			saved = saved && web_sync_profile();
-+			web_option_notice(saved ? "Saved as defaults." : "Could not save defaults.");
++			web_defaults_saved = saved && web_sync_profile();
++			if (web_defaults_saved)
++				memcpy(web_saved_options, player->opts.opt, sizeof(web_saved_options));
++			else
++				web_option_notice("Could not save defaults.");
 +#else
 +			if (saved) {
  				get_com("Successfully saved.  Press any key to continue.", &dummy);
@@ -5078,7 +5084,7 @@ index 42ec005..49d1c1a 100644
  			screen_load();
  		/*
  		 * For birth options, only allow restore from custom defaults
-@@ -184,9 +204,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -184,9 +210,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
  				screen_load();
  				menu_refresh(m, false);
  			} else {
@@ -5092,7 +5098,7 @@ index 42ec005..49d1c1a 100644
  				screen_load();
  			}
  		/*
-@@ -318,6 +342,26 @@ static const menu_iter option_toggle_iter = {
+@@ -318,6 +348,28 @@ static const menu_iter option_toggle_iter = {
  };
  
  
@@ -5103,7 +5109,9 @@ index 42ec005..49d1c1a 100644
 +	bool enabled = m->flags != MN_NO_TAGS;
 +
 +	web_set_menu(m, m->cursor, NULL);
-+	web_set_options_title(m->title);
++	if (web_defaults_saved && memcmp(options, web_saved_options, sizeof(web_saved_options)))
++		web_defaults_saved = false;
++	web_set_options_title(m->title, web_defaults_saved);
 +	for (int pos = 0; pos < m->filter_count; pos++) {
 +		int oid = m->filter_list[pos];
 +		web_add_option_toggle(pos, option_desc(oid), options[oid], enabled);
@@ -5119,13 +5127,14 @@ index 42ec005..49d1c1a 100644
  /**
   * Interact with some options
   */
-@@ -357,7 +401,22 @@ static void option_toggle_menu(const char *name, int page)
+@@ -357,7 +409,23 @@ static void option_toggle_menu(const char *name, int page)
  
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
 +#ifdef __EMSCRIPTEN__
 +	int supported[OPT_MAX];
 +	int count = 0;
++	web_defaults_saved = false;
 +	for (int pos = 0; pos < i; pos++) {
 +		int option = option_page[page][pos];
 +		if (option != OPT_use_sound) supported[count++] = option;
@@ -5142,7 +5151,7 @@ index 42ec005..49d1c1a 100644
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -383,6 +442,7 @@ void do_cmd_options_birth(void)
+@@ -383,6 +451,7 @@ void do_cmd_options_birth(void)
  /**
   * Modify the "window" options
   */
@@ -5150,7 +5159,7 @@ index 42ec005..49d1c1a 100644
  static void do_cmd_options_win(const char *name, int row)
  {
  	int i, j, d;
-@@ -453,7 +513,13 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -453,7 +522,13 @@ static void do_cmd_options_win(const char *name, int row)
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -5164,7 +5173,7 @@ index 42ec005..49d1c1a 100644
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -519,6 +585,7 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -519,6 +594,7 @@ static void do_cmd_options_win(const char *name, int row)
  
  	screen_load();
  }
@@ -5172,7 +5181,7 @@ index 42ec005..49d1c1a 100644
  
  
  
-@@ -527,6 +594,7 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -527,6 +603,7 @@ static void do_cmd_options_win(const char *name, int row)
   * Interact with keymaps
   * ------------------------------------------------------------------------ */
  
@@ -5180,7 +5189,7 @@ index 42ec005..49d1c1a 100644
  /**
   * Current (or recent) keymap action
   */
-@@ -758,6 +826,7 @@ static void do_cmd_keymaps(const char *title, int row)
+@@ -758,6 +835,7 @@ static void do_cmd_keymaps(const char *title, int row)
  
  	screen_load();
  }
@@ -5188,7 +5197,7 @@ index 42ec005..49d1c1a 100644
  
  
  
-@@ -817,7 +886,7 @@ static menu_action visual_menu_items [] =
+@@ -817,7 +895,7 @@ static menu_action visual_menu_items [] =
  
  static void visuals_browse_hook(int oid, void *db, const region *loc)
  {
@@ -5197,7 +5206,7 @@ index 42ec005..49d1c1a 100644
  	clear_from(1);
  }
  
-@@ -838,6 +907,9 @@ static void do_cmd_visuals(const char *title, int row)
+@@ -838,6 +916,9 @@ static void do_cmd_visuals(const char *title, int row)
  		visual_menu->title = title;
  		visual_menu->selections = lower_case;
  		visual_menu->browse_hook = visuals_browse_hook;
@@ -5207,7 +5216,7 @@ index 42ec005..49d1c1a 100644
  		visual_menu->header = "To edit visuals, use the knowledge menu";
  	}
  
-@@ -853,6 +925,7 @@ static void do_cmd_visuals(const char *title, int row)
+@@ -853,6 +934,7 @@ static void do_cmd_visuals(const char *title, int row)
   * Interact with colours
   * ------------------------------------------------------------------------ */
  
@@ -5215,7 +5224,7 @@ index 42ec005..49d1c1a 100644
  static void colors_pref_load(const char *title, int row)
  {
  	/* Ask for and load a user pref file */
-@@ -1013,6 +1086,7 @@ static void do_cmd_colors(const char *title, int row)
+@@ -1013,6 +1095,7 @@ static void do_cmd_colors(const char *title, int row)
  
  	screen_load();
  }
@@ -5223,7 +5232,7 @@ index 42ec005..49d1c1a 100644
  
  
  /**
-@@ -1048,6 +1122,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+@@ -1048,6 +1131,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
  }
  
  
@@ -5244,7 +5253,7 @@ index 42ec005..49d1c1a 100644
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1156,7 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1068,7 +1165,7 @@ static void do_cmd_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -5253,7 +5262,7 @@ index 42ec005..49d1c1a 100644
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1079,8 +1167,12 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1079,8 +1176,12 @@ static void do_cmd_delay(const char *name, int unused)
  /**
   * Set sidebar mode
   */
@@ -5266,7 +5275,7 @@ index 42ec005..49d1c1a 100644
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,7 +1202,9 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+@@ -1110,7 +1211,9 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
  	}
  
  	screen_load();
@@ -5276,7 +5285,7 @@ index 42ec005..49d1c1a 100644
  
  
  /**
-@@ -1136,7 +1230,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
+@@ -1136,7 +1239,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -5285,7 +5294,7 @@ index 42ec005..49d1c1a 100644
  
  	/* Process input */
  	if (res) {
-@@ -1175,7 +1269,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
+@@ -1175,7 +1278,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask the user for a string */
@@ -5294,7 +5303,7 @@ index 42ec005..49d1c1a 100644
  
  	/* Process input */
  	if (res) {
-@@ -1243,9 +1337,11 @@ static void do_cmd_pref_file_hack(long row)
+@@ -1243,9 +1346,11 @@ static void do_cmd_pref_file_hack(long row)
  /**
   * Write options to a file.
   */
@@ -5306,7 +5315,7 @@ index 42ec005..49d1c1a 100644
  
  /**
   * Write autoinscriptions to a file.
-@@ -1396,6 +1492,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
+@@ -1396,6 +1501,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
  	return false;
  }
  
@@ -5329,7 +5338,7 @@ index 42ec005..49d1c1a 100644
  /**
   * Display list of ego items to be ignored.
   */
-@@ -1471,6 +1583,10 @@ static void ego_menu(const char *unused, int also_unused)
+@@ -1471,6 +1592,10 @@ static void ego_menu(const char *unused, int also_unused)
  	memset(&menu, 0, sizeof(menu));
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu_setpriv(&menu, max_num, choice);
@@ -5340,7 +5349,7 @@ index 42ec005..49d1c1a 100644
  	menu_layout(&menu, &area);
  
  	/* Select an entry */
-@@ -1574,6 +1690,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
+@@ -1574,6 +1699,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
  	c_put_str(attr, name, row, col);
  }
  
@@ -5366,7 +5375,7 @@ index 42ec005..49d1c1a 100644
  
  /**
   * Handle keypresses.
-@@ -1606,6 +1741,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
+@@ -1606,6 +1750,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
  		area.row += Term->hgt - 1 - area.row - menu.count;
  
  	menu_layout(&menu, &area);
@@ -5380,7 +5389,7 @@ index 42ec005..49d1c1a 100644
  
  	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
  				area.row + area.page_rows);
-@@ -1638,6 +1780,10 @@ static void quality_menu(const char *unused, int also_unused)
+@@ -1638,6 +1789,10 @@ static void quality_menu(const char *unused, int also_unused)
  	/* Set up the menu */
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu.title = "Quality ignore menu";
@@ -5391,7 +5400,7 @@ index 42ec005..49d1c1a 100644
  	menu_setpriv(&menu, ITYPE_MAX, quality_values);
  	menu_layout(&menu, &area);
  
-@@ -1767,6 +1913,23 @@ static const menu_iter ignore_sval_menu =
+@@ -1767,6 +1922,23 @@ static const menu_iter ignore_sval_menu =
  	NULL,
  };
  
@@ -5415,7 +5424,7 @@ index 42ec005..49d1c1a 100644
  
  /**
   * Collect all tvals in the big ignore_choice array
-@@ -1860,6 +2023,13 @@ static bool sval_menu(int tval, const char *desc)
+@@ -1860,6 +2032,13 @@ static bool sval_menu(int tval, const char *desc)
  	menu_setpriv(menu, n_choices, choices);
  	menu->cmd_keys = "Tt";
  	menu_layout(menu, &area);
@@ -5429,7 +5438,7 @@ index 42ec005..49d1c1a 100644
  	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
  	menu_select(menu, 0, false);
  
-@@ -1998,6 +2168,21 @@ static const menu_iter options_item_iter =
+@@ -1998,6 +2177,21 @@ static const menu_iter options_item_iter =
  	NULL
  };
  
@@ -5451,7 +5460,7 @@ index 42ec005..49d1c1a 100644
  
  /**
   * Display and handle the main ignoring menu.
-@@ -2011,6 +2196,10 @@ void do_cmd_options_item(const char *title, int row)
+@@ -2011,6 +2205,10 @@ void do_cmd_options_item(const char *title, int row)
  				 N_ELEMENTS(extra_item_options) + 1, NULL);
  
  	menu.title = title;
@@ -5462,7 +5471,7 @@ index 42ec005..49d1c1a 100644
  	menu_layout(&menu, &SCREEN_REGION);
  
  	screen_save();
-@@ -2036,26 +2225,55 @@ static menu_action option_actions[] =
+@@ -2036,26 +2234,55 @@ static menu_action option_actions[] =
  	{ 0, 'a', "User interface options", option_toggle_menu },
  	{ 0, 'b', "Birth (difficulty) options", option_toggle_menu },
  	{ 0, 'x', "Cheat options", option_toggle_menu },
@@ -5500,7 +5509,7 @@ index 42ec005..49d1c1a 100644
 +	menu_action *actions = menu_priv(m);
 +
 +	web_set_menu(m, m->cursor, NULL);
-+	web_set_options_title("Options");
++	web_set_options_title("Options", false);
 +	for (int pos = 0; pos < m->count; pos++) {
 +		menu_action *action = &actions[pos];
 +		const char *value = NULL;
@@ -5518,7 +5527,7 @@ index 42ec005..49d1c1a 100644
  /**
   * Display the options main menu.
   */
-@@ -2068,6 +2286,10 @@ void do_cmd_options(void)
+@@ -2068,6 +2295,10 @@ void do_cmd_options(void)
  
  		option_menu->title = "Options Menu";
  		option_menu->flags = MN_CASELESS_TAGS;
@@ -5529,7 +5538,7 @@ index 42ec005..49d1c1a 100644
  	}
  
  	screen_save();
-@@ -2081,8 +2303,10 @@ void do_cmd_options(void)
+@@ -2081,8 +2312,10 @@ void do_cmd_options(void)
  
  void cleanup_options(void)
  {
