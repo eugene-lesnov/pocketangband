@@ -17,6 +17,7 @@
 #include "obj-gear.h"
 #include "obj-ignore.h"
 #include "obj-info.h"
+#include "obj-knowledge.h"
 #include "obj-pile.h"
 #include "obj-tval.h"
 #include "obj-util.h"
@@ -27,6 +28,7 @@
 #include "player-timed.h"
 #include "player-util.h"
 #include "project.h"
+#include "store.h"
 #include "target.h"
 #include "trap.h"
 #include "ui-command.h"
@@ -251,8 +253,93 @@ void web_set_aim_command(struct command *cmd)
     set_aim_command(name, mana);
 }
 
-EM_JS(void, web_set_edit_value, (const char *value, int cursor, bool initial), {
+struct web_store_trade {
+    struct store *store;
+    struct object *item;
+    const char *verb;
+    bool from_stock;
+    int maximum;
+    int shortfall;
+};
+
+static const struct web_store_trade *current_trade;
+
+static int stock_price(struct store *store, struct object *stock, int amount)
+{
+    if (!tval_can_have_charges(stock) || amount == stock->number)
+        return price_item(store, stock, false, amount);
+
+    struct object part = { 0 };
+    object_copy_amt(&part, stock, amount);
+    int price = price_item(store, &part, false, amount);
+    object_wipe(&part);
+    return price;
+}
+
+int web_store_price_one(struct store *store, struct object *stock)
+{
+    return stock_price(store, stock, 1);
+}
+
+static int stock_limit(struct web_store_trade *trade, bool single)
+{
+    struct object *stock = trade->item;
+    struct store *store = trade->store;
+    int high = MIN(single ? 1 : stock->number, inven_carry_num(player, stock));
+    if (store->feat == FEAT_HOME) return high;
+
+    int unit_price = web_store_price_one(store, stock);
+    trade->shortfall = MAX(0, unit_price - player->au);
+    if (trade->shortfall || (!object_flavor_is_aware(stock) && pack_is_full())) return 0;
+    if (high < 2) return high;
+    if (!tval_can_have_charges(stock))
+        return unit_price ? MIN(high, player->au / unit_price) : high;
+
+    int low = 1;
+    while (low < high) {
+        int mid = low + (high - low + 1) / 2;
+        if (stock_price(store, stock, mid) <= player->au) low = mid;
+        else high = mid - 1;
+    }
+    return low;
+}
+
+static int trade_amount(const char *value, int maximum)
+{
+    if (streq(value, "*")) return maximum;
+    if (!value[0] || value[strspn(value, "0123456789")]) return 0;
+    int amount = atoi(value);
+    return amount <= maximum ? amount : 0;
+}
+
+int web_store_quantity(struct store *store, struct object *item, bool from_stock, bool single)
+{
+    bool home = store->feat == FEAT_HOME;
+    const char *verb = from_stock ? (home ? "Take" : "Buy") :
+        home ? "Stash" : OPT(player, birth_no_selling) ? "Give" : "Sell";
+    struct web_store_trade trade = { store, item, verb, from_stock, item->number, 0 };
+    if (from_stock) trade.maximum = stock_limit(&trade, single);
+    int owned = from_stock && (home || object_flavor_is_aware(item)) ? find_inven(item) : 0;
+    char prompt[80], value[8] = "1";
+    strnfmt(prompt, sizeof(prompt), "%s how many%s? (max %d)", verb,
+        owned ? format(" (you have %d)", owned) : "", trade.maximum);
+
+    enum web_input_mode previous = web_set_input_mode(WEB_INPUT_QUANTITY);
+    current_trade = &trade;
+    bool entered = get_string(prompt, value, sizeof(value));
+    current_trade = NULL;
+    web_set_input_mode(previous);
+    return entered ? trade_amount(value, trade.maximum) : 0;
+}
+
+EM_JS(void, set_edit_value, (const char *value, int cursor, bool initial), {
     Module['inputContext'] = { value: UTF8ToString(value), cursor, initial: !!initial };
+});
+
+EM_JS(void, set_trade_quote, (const char *verb, const char *item, int maximum, int amount,
+        int price, int gold, int shortfall, bool usable), {
+    Module['inputContext'].trade = { verb: UTF8ToString(verb), item: UTF8ToString(item), maximum, amount,
+        price, gold, shortfall, usable: !!usable };
 });
 
 EM_JS(void, add_inscription_details, (const char *scope, const char *type, bool wearable, bool equipped,
@@ -299,10 +386,6 @@ EM_JS(bool, web_read_text, (char *buf, size_t size), {
             lengthBytesUTF8(value) >= size) return false;
     stringToUTF8(value, buf, size);
     return true;
-});
-
-EM_JS(void, web_set_confirmation_price, (int32_t price), {
-    if (price >= 0) Module['inputContext'] = { price };
 });
 
 EM_JS(void, web_set_direction_center, (bool available), {
@@ -392,29 +475,56 @@ void web_set_list_row_cell(int dx, int dy)
 }
 
 EM_JS(void, set_detail_text, (const wchar_t *text, const uint8_t *attrs, size_t length,
-        const uint8_t *colors, int color_count, int graphics_mode, bool list_recall, bool menu_card), {
+        const uint8_t *colors, int color_count, int graphics_mode, const char *destination), {
     const context = Module['inputContext'];
-    if (!list_recall && !menu_card && context?.list) {
+    const target = UTF8ToString(destination);
+    if (target === "screen" && context?.list) {
         context.detail = "";
         return;
     }
     const detail = { codepoints: HEAPU32.slice(text >>> 2, (text >>> 2) + length),
         attributes: HEAPU8.slice(attrs, attrs + length), palette: HEAPU8.slice(colors, colors + 4 * color_count),
         graphicsMode: graphics_mode };
-    if (menu_card) Module['inputMenu'].card = detail;
-    else if (list_recall) Module['listDetail'] = detail;
+    if (target === "card") Module['inputMenu'].card = detail;
+    else if (target === "list") Module['listDetail'] = detail;
+    else if (target === "trade") context.trade.description = detail;
     else Module['inputContext'] = { detail };
 });
 
-static void publish_details(textblock *tb, bool list_recall, bool menu_card)
+static void publish_details(textblock *tb, const char *destination)
 {
     set_detail_text(textblock_text(tb), textblock_attrs(tb), textblock_length(tb),
-        &angband_color_table[0][0], MAX_COLORS, use_graphics, list_recall, menu_card);
+        &angband_color_table[0][0], MAX_COLORS, use_graphics, destination);
+}
+
+void web_set_edit_value(const char *value, int cursor, bool initial)
+{
+    set_edit_value(value, cursor, initial);
+    const struct web_store_trade *trade = current_trade;
+    if (!trade) return;
+
+    bool home = trade->store->feat == FEAT_HOME;
+    bool buying = trade->from_stock && !home;
+    int amount = trade_amount(value, trade->maximum);
+    struct object part = { 0 };
+    char name[512];
+    object_copy_amt(&part, trade->item, amount ? amount : 1);
+    object_desc(name, sizeof(name), &part, ODESC_PREFIX | ODESC_FULL | (buying ? ODESC_STORE : 0), player);
+    int price = home ? -1 : price_item(trade->store, &part, !trade->from_stock, part.number);
+    bool usable = !buying || !tval_is_book_k(part.kind) || obj_can_browse(&part);
+    set_trade_quote(trade->verb, name, trade->maximum, amount, price,
+        player->au, trade->shortfall, usable);
+    object_wipe(&part);
+    if (initial && !buying) {
+        textblock *tb = object_info(trade->item, OINFO_NONE);
+        publish_details(tb, "trade");
+        textblock_free(tb);
+    }
 }
 
 void web_set_details(textblock *tb)
 {
-    publish_details(tb, false, false);
+    publish_details(tb, "screen");
 }
 
 EM_JS(void, web_set_overview, (int width, int height), {
@@ -423,7 +533,7 @@ EM_JS(void, web_set_overview, (int width, int height), {
 
 void web_set_menu_card(textblock *tb)
 {
-    publish_details(tb, false, true);
+    publish_details(tb, "card");
 }
 
 EMSCRIPTEN_KEEPALIVE void web_list_details(int race, int object)
@@ -437,7 +547,7 @@ EMSCRIPTEN_KEEPALIVE void web_list_details(int race, int object)
     } else {
         return;
     }
-    publish_details(tb, true, false);
+    publish_details(tb, "list");
     textblock_free(tb);
 }
 
@@ -682,8 +792,9 @@ void web_set_menu_sections(int current, int available)
         SHOW_THROWING);
 }
 
-EM_JS(void, web_set_store, (const char *name, bool home, bool inspect_only), {
-    Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home, inspectOnly: !!inspect_only };
+EM_JS(void, web_set_store, (const char *name, bool home, bool inspect_only, bool item_actions), {
+    Module['inputMenu'].store = { name: UTF8ToString(name), home: !!home,
+        inspectOnly: !!inspect_only, itemActions: !!item_actions };
 });
 
 EM_JS(void, enter_store_menu, (void), {

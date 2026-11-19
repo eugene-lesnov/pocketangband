@@ -132,6 +132,9 @@ const textIntro = document.querySelector("#text-intro");
 const inscriptionHelp = document.querySelector("#inscription-help");
 const confirmText = document.querySelector("#confirm-text");
 const editValue = document.querySelector("#edit-value");
+const tradeQuantityLabel = document.querySelector("#trade-quantity-label");
+const tradeSummary = document.querySelector("#trade-summary");
+const tradeDetails = document.querySelector("#trade-details");
 const detailsScreen = document.querySelector("#details-screen");
 const unavailableScreen = document.querySelector("#unavailable-screen");
 const helpScreen = document.querySelector("#help-screen");
@@ -928,8 +931,13 @@ function isTextEntry(state) {
     return state === "name" || state === "text";
 }
 
+function isShopStockChoice(state) {
+    return Boolean(state?.choice && state.store && !state.store.home && !state.store.inspectOnly);
+}
+
 function isChoosing() {
-    return openPanel ? openPanel !== "character" : !!menu?.choice || promptModes.has(mode) || inspectingChoice;
+    return openPanel ? openPanel !== "character" :
+        (!!menu?.choice && !isShopStockChoice(menu)) || promptModes.has(mode) || inspectingChoice;
 }
 
 function isTargeting() {
@@ -1107,7 +1115,12 @@ function getConfirmAction(selectedRow, closesScreen) {
         case "birth-roll": return ["Enter", "Accept"];
         case "target": return ["t", targetActionLabel()];
         case "aim": return ["5", targetActionLabel()];
-        case "quantity":
+        case "quantity": {
+            const trade = context.trade;
+            if (!trade) return ["Enter", "Done"];
+            const label = trade.amount && trade.price >= 0 ? `${trade.verb} · ${trade.price} au` : trade.verb;
+            return ["Enter", label];
+        }
         case "option-number":
         case "rest": return ["Enter", "Done"];
         case "save-slots": return ["Enter", selectedRow?.index > 0 ? "Continue" : "New game"];
@@ -1138,7 +1151,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
         (["details", "character", "overview", "help"].includes(mode) || unavailable);
     const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
     const [key, label] = getConfirmAction(selectedRow, closesScreen);
-    const directMenu = playingGame && mode === "menu" && !!menu && (!menu.store || menu.store.inspectOnly);
+    const directMenu = playingGame && mode === "menu" && !!menu;
     terminalKeys.classList.toggle("aim-controls", aiming);
     confirmKey.dataset.key = key;
     confirmKey.textContent = label;
@@ -1147,7 +1160,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth ||
         resultChild || isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls ||
         noAimTarget);
-    confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget ||
+    confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget || context.trade?.amount === 0 ||
         (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
 
     cancelKey.dataset.key = mode === "confirm" ? "n" : "Escape";
@@ -1212,7 +1225,7 @@ function updateTargetControls(disabled, showTargetControls, showKeyboard) {
 
 function updatePromptControls(disabled, stopVisible) {
     nameFields.disabled = textFields.disabled = disabled;
-    setActions(quantity, mode === "quantity", disabled);
+    setActions(quantity, mode === "quantity" && (!context.trade || context.trade.maximum > 1), disabled);
     setActions(optionDigits, mode === "option-number", disabled);
     setActions(rest, mode === "rest" && !stopVisible, disabled);
 }
@@ -1386,8 +1399,9 @@ function updatePrompt() {
     const saveNotice = !saveStatus.hidden && !saveStatus.classList.contains("error");
     const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
+    const showJournal = !hud.hidden || showResult || mainView.classList.contains("shop-view");
     const journalText = updateJournal();
-    journal.hidden = !!context.listPreview || (hud.hidden && !showResult) || saveNotice ||
+    journal.hidden = !!context.listPreview || !showJournal || saveNotice ||
         (menu?.title === "Screen dump" && !journalText);
     if (journal.hidden && messageDialog.open && messageRecallInput === undefined) messageDialog.close();
 }
@@ -1454,6 +1468,7 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("in-world", showWorld);
     main.classList.toggle("in-game-panel", inGamePanel);
     main.classList.toggle("intro", intro);
+    mainView.classList.toggle("shop-view", !!menu?.store && !menu.store.home && !menu.store.inspectOnly);
     hud.hidden = !showWorld || !world;
     mapStatus.hidden = hud.hidden;
     if (hud.hidden) monsterHealth.hidden = true;
@@ -1632,7 +1647,9 @@ function updateDetailsScreen() {
 }
 
 function renderPicker() {
-    const title = panelTitles[openPanel] || menu?.selectionTitle || menu?.title || menu?.prompt ||
+    const trade = context.trade;
+    const tradeTitle = trade && `${trade.verb} ${trade.item}?${trade.usable ? "" : " (Can't use!)"}`;
+    const title = panelTitles[openPanel] || tradeTitle || menu?.selectionTitle || menu?.title || menu?.prompt ||
         context.prompt?.trim() || (mode === "quantity" ? terminalLine(0) : "") ||
         (menu ? "Choices" : screenTitles.get(mode));
     const resizable = !!menu || !!openPanel || inspectingChoice;
@@ -1648,7 +1665,23 @@ function renderPicker() {
         pickerToggle.setAttribute("aria-label", `${title} ${action}`);
     }
     renderMenu(openPanel ? undefined : menu, inspectingChoice ? context.detail : undefined);
-    editValue.hidden = context.value === undefined && context.price === undefined;
+    tradeDetails.hidden = !trade?.description?.codepoints.length;
+    renderDescription(tradeDetails.lastElementChild, trade?.description ?? "");
+    tradeQuantityLabel.hidden = !trade || trade.maximum <= 1;
+    tradeQuantityLabel.textContent = tradeQuantityLabel.hidden ? "" : context.prompt;
+    tradeSummary.hidden = !trade || (trade.amount > 0 && trade.price < 0);
+    if (!tradeSummary.hidden) {
+        if (trade.shortfall) tradeSummary.textContent = `Need ${trade.shortfall} more au.`;
+        else if (!trade.maximum) tradeSummary.textContent = "You cannot carry that many items.";
+        else if (!trade.amount) tradeSummary.textContent = `Enter a quantity from 1 to ${trade.maximum}.`;
+        else {
+            const balanceLabel = trade.verb === "Buy" ? "Gold Remaining after purchase" :
+                trade.verb === "Sell" ? "Gold Remaining after sale" : "Gold Remaining";
+            const balance = trade.gold + (trade.verb === "Buy" ? -trade.price : trade.price);
+            tradeSummary.textContent = `${balanceLabel}: ${balance} au`;
+        }
+    }
+    editValue.hidden = (trade && trade.maximum <= 1) || context.value === undefined;
     if (context.value !== undefined) {
         const value = mode === "rest" ? restLabels.get(context.value.trim()) ?? context.value :
             mode === "quantity" && context.value === "*" ? "All" : context.value;
@@ -1666,8 +1699,6 @@ function renderPicker() {
             editValue.replaceChildren(chars.slice(0, context.cursor).join(""), caret,
                 chars.slice(context.cursor).join(""));
         }
-    } else if (context.price !== undefined) {
-        editValue.textContent = `Price: ${context.price} au`;
     }
 }
 
@@ -1755,8 +1786,15 @@ function handleWorkerMessage({ data }) {
             const playFocus = runningFromPad ? (runMode ? runModeButton : walkMode) : heroActions;
             clearPendingInput();
             const wasChoosing = isChoosing();
-            inspectingChoice = wasChoosing && data.mode === "details" && data.context.detail !== undefined &&
-                !data.context.list;
+            const returningToStock = data.menu?.store && !data.menu.choice &&
+                (context.trade || isShopStockChoice(menu));
+            if (data.context.trade) {
+                data.context.trade.description ??= context.trade?.description;
+            } else {
+                tradeDetails.open = false;
+            }
+            inspectingChoice = data.mode === "details" && data.context.detail !== undefined && !data.context.list &&
+                (wasChoosing || isShopStockChoice(menu) || !!menu?.store?.itemActions);
             const closingKnowledgeSearch = menu?.search && data.menu?.title === "Knowledge" && !data.menu.search;
             const changed = !!menu?.search !== !!data.menu?.search || data.mode !== mode || data.menu?.choice !== menu?.choice ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
@@ -1833,6 +1871,9 @@ function handleWorkerMessage({ data }) {
             }
             if (pauseTrigger && document.activeElement === document.body) {
                 pauseTrigger.focus({ preventScroll: true });
+            }
+            if (returningToStock) {
+                pageList.rows.querySelector('[aria-current="true"]')?.focus({ preventScroll: true });
             }
             if (changed && isChoosing() && !menu) {
                 pickerHeading.focus({ preventScroll: true });
@@ -1993,6 +2034,10 @@ function clearPendingInput() {
 
 function sendInput(input) {
     if (request === undefined || saving || deletingSave || stopped || applyingUpdate || !messagePause.hidden) return false;
+    if (context.trade && input.type === "key") {
+        if (input.code === keyCode("Enter") && !context.trade.amount) return false;
+        if (context.trade.maximum <= 1 && ![keyCode("Enter"), keyCode("Escape")].includes(input.code)) return false;
+    }
     if (context.birthStats) {
         if (input.type === "key" && input.code === keyCode("Enter")) {
             return submitName(birthNameValue, context.birthStats.nameMaxBytes);
@@ -2303,10 +2348,11 @@ main.addEventListener("click", (event) => {
         return;
     }
     const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
-    if (input.type === "menu-row" && ((menu?.store && !menu.store.inspectOnly && !menu.choice) || previewBirthChoice)) {
+    const selectingStock = menu?.store && !menu.store.inspectOnly && (!menu.choice || isShopStockChoice(menu));
+    if (input.type === "menu-row" && (selectingStock || previewBirthChoice)) {
         if (request === undefined) return;
         menuCursor = input.code;
-        for (const row of activeList.rows.children) {
+        for (const row of activeList.rows.querySelectorAll('[data-input="menu-row"]')) {
             if (row === button) row.setAttribute("aria-current", "true");
             else row.removeAttribute("aria-current");
         }
@@ -2314,10 +2360,8 @@ main.addEventListener("click", (event) => {
             birthSelection = input.code;
             renderBirthPreview();
             button.scrollIntoView({ block: "nearest" });
-        } else {
-            updateControls();
+            return;
         }
-        return;
     }
     if (menu?.search && input.type === "menu-row") knowledgeScroll = pageList.scrollArea.scrollTop;
     if (input.type === "store-action") input.row = menuCursor;
@@ -2746,7 +2790,7 @@ function renderMenu(state, description = state?.description ?? "") {
     const active = state.sections?.find((section) => section.active)?.id;
     const previousActive = previous?.sections?.find((section) => section.active)?.id;
     const differentList = !previous || state.id !== previous.id || active !== previousActive ||
-        state.selectionTitle !== previous.selectionTitle || state.title !== previous.title ||
+        (!state.store && state.selectionTitle !== previous.selectionTitle) || state.title !== previous.title ||
         state.options !== previous.options || state.prompt !== previous.prompt;
     const previousScroll = activeList.scrollArea.scrollTop;
     const showGold = state.store && !state.store.home;
@@ -2902,7 +2946,15 @@ function renderMenu(state, description = state?.description ?? "") {
     menuActions.replaceChildren(...state.actions.map((action) => {
         const button = state.store ? makeInput("store-action", action.key, action.label) :
             makeKey(String.fromCharCode(action.key), action.label);
-        setKeyHint(button, keyFromCode(action.key));
+        const key = keyFromCode(action.key);
+        setKeyHint(button, key);
+        if (state.store && !state.store.home && !state.store.itemActions && (key === "p" || key === "l" || key === "x")) {
+            button.title = `${key} — ${key === "p" ? "Purchase" : "Examine"} which item?`;
+            button.setAttribute("aria-description", button.title);
+        }
+        if (state.store?.itemActions && (key === "p" || key === "o")) {
+            button.disabled = !!state.rows[menuCursor]?.unaffordable;
+        }
         return button;
     }));
     if (focusedAction && !differentList) {

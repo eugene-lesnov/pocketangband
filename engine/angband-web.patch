@@ -1584,10 +1584,9 @@ index ec19a5b..a77ce42 100644
  			bool keymap_ok = true;
  			switch (ke.key.code) {
 diff --git a/src/ui-input.h b/src/ui-input.h
-index 956ef26..6f9769b 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,128 @@
+@@ -24,6 +24,130 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1605,6 +1604,7 @@ index 956ef26..6f9769b 100644
 +
 +enum web_input_mode web_set_input_mode(enum web_input_mode mode);
 +struct menu;
++struct store;
 +const char *web_set_prompt(const char *prompt);
 +bool web_get_command_string(struct command *cmd, const char *title, const char *prompt, char *buf, size_t size);
 +bool web_edit_autoinscription(struct object_kind *kind, const char *rune, const char *note,
@@ -1688,7 +1688,9 @@ index 956ef26..6f9769b 100644
 +bool web_sync_profile(void);
 +void web_set_option_notice(const char *message);
 +void web_set_menu_sections(int current, int available);
-+void web_set_store(const char *name, bool home, bool inspect_only);
++void web_set_store(const char *name, bool home, bool inspect_only, bool item_actions);
++int web_store_price_one(struct store *store, struct object *stock);
++int web_store_quantity(struct store *store, struct object *item, bool from_stock, bool single);
 +enum { WEB_SEARCH_CLOSED = -2, WEB_SEARCH_COLLECT = -1 };
 +extern int web_search_entry;
 +void web_begin_search(void);
@@ -1702,7 +1704,6 @@ index 956ef26..6f9769b 100644
 +void web_set_row_symbol(int attr, wchar_t symbol);
 +void web_enter_store_menu(void);
 +void web_leave_store_menu(void);
-+void web_set_confirmation_price(int32_t price);
 +void web_add_menu_row(int index, const char *name, const char *detail,
 +	const char *price, char key, bool enabled);
 +void web_set_menu_row_color(int attr, bool unaffordable);
@@ -1716,7 +1717,7 @@ index 956ef26..6f9769b 100644
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +189,10 @@ struct command_list
+@@ -67,6 +191,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1727,7 +1728,7 @@ index 956ef26..6f9769b 100644
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +218,7 @@ ui_event inkey_m(void);
+@@ -92,6 +220,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1735,7 +1736,7 @@ index 956ef26..6f9769b 100644
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +229,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +231,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -1880,81 +1881,179 @@ diff --git a/src/store.c b/src/store.c
  	int price;
  
  	struct store *store = store_at(cave, player->grid);
+@@ -1833,6 +1833,10 @@ void do_cmd_retrieve(struct command *cmd)
+ 	picked_item->known = known_obj;
+ 	distribute_charges(obj->known, picked_item->known, amt, true);
+ 
++	char name[512];
++	object_desc(name, sizeof(name), picked_item, ODESC_PREFIX | ODESC_FULL, player);
++	msg("You take %s from your home.", name);
++
+ 	/* Give it to the player */
+ 	inven_carry(player, picked_item, true, true);
+ 
+@@ -1960,7 +1964,7 @@ void do_cmd_sell(struct command *cmd)
+ 
+ 	/* Describe the result (in message buffer) */
+ 	if (OPT(player, birth_no_selling)) {
+-		msg("You had %s (%c).", o_name, label);
++		msg("You gave %s (%c) to the shopkeeper.", o_name, label);
+ 	} else {
+ 		msg("You sold %s (%c) for %d gold.", o_name, label, price);
+ 
+@@ -2057,7 +2061,7 @@ void do_cmd_stash(struct command *cmd)
+ 		ODESC_PREFIX | ODESC_FULL, player);
+ 
+ 	/* Message */
+-	msg("You drop %s (%c).", o_name, label);
++	msg("You stash %s (%c) in your home.", o_name, label);
+ 
+ 	/* Handle stuff */
+ 	handle_stuff(player);
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
-@@ -458,21 +458,40 @@ static void store_redraw(struct store_context *ctx)
+@@ -101,6 +101,9 @@ enum
+ #define STORE_GOLD_CHANGE      0x01
+ #define STORE_FRAME_CHANGE     0x02
+ #define STORE_SHOW_HELP        0x04
++#ifdef __EMSCRIPTEN__
++#define STORE_ITEM_ACTIONS     0x08
++#endif
+ 
+ /* Compound flag for the initial display of a store */
+ #define STORE_INIT_CHANGE		(STORE_FRAME_CHANGE | STORE_GOLD_CHANGE)
+@@ -458,6 +461,7 @@ static void store_redraw(struct store_context *ctx)
  	}
  }
  
--static bool store_get_check(const char *prompt)
-+static bool store_get_check(const char *prompt, int32_t price)
++#ifndef __EMSCRIPTEN__
+ static bool store_get_check(const char *prompt)
  {
  	struct keypress ch;
+@@ -478,6 +482,8 @@ static bool store_get_check(const char *prompt)
+ 	return (true);
+ }
  
- 	/* Prompt for it */
--	prt(prompt, 0, 0);
-+#ifdef __EMSCRIPTEN__
-+	prt(format("%s [y/n]", prompt), 0, 0);
-+#else
-+	prt(format("%s [ESC, any other key to accept]", prompt), 0, 0);
++#endif
++
+ /*
+  * Sell an object, or drop if it we're in the home.
+  */
+@@ -492,7 +498,9 @@ static bool store_sell(struct store_context *ctx)
+ 	struct object object_type_body = OBJECT_NULL;
+ 	struct object *temp_obj = &object_type_body;
+ 
++#ifndef __EMSCRIPTEN__
+ 	char o_name[120];
 +#endif
  
- 	/* Get an answer */
-+#ifdef __EMSCRIPTEN__
-+	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_CONFIRM);
-+	const char *previous_prompt = web_set_prompt(prompt);
-+	web_set_confirmation_price(price);
-+#else
-+	(void)price;
-+#endif
- 	ch = inkey();
-+#ifdef __EMSCRIPTEN__
-+	web_set_prompt(previous_prompt);
-+	web_set_input_mode(previous);
-+#endif
+ 	item_tester tester = NULL;
  
- 	/* Erase the prompt */
+@@ -506,7 +514,11 @@ static bool store_sell(struct store_context *ctx)
  	prt("", 0, 0);
  
- 	if (ch.code == ESCAPE) return (false);
- 	if (strchr("Nn", ch.code)) return (false);
+ 	if (store->feat == FEAT_HOME) {
 +#ifdef __EMSCRIPTEN__
-+	if (ch.code != 'y' && ch.code != 'Y' && ch.code != KC_ENTER && ch.code != '\n')
-+		return (false);
++		prompt = "Stash which item? ";
++#else
+ 		prompt = "Drop which item? ";
++#endif
+ 	} else {
+ 		tester = store_will_buy_tester;
+ 		get_mode |= SHOW_PRICES;
+@@ -528,7 +540,11 @@ static bool store_sell(struct store_context *ctx)
+ 	}
+ 
+ 	/* Get a quantity */
++#ifdef __EMSCRIPTEN__
++	amt = web_store_quantity(store, obj, false, false);
++#else
+ 	amt = get_quantity(NULL, obj->number);
 +#endif
  
- 	/* Success */
- 	return (true);
-@@ -563,8 +582,10 @@ static bool store_sell(struct store_context *ctx)
- 			prt(format("Price: %ld", (long)price), 1, 0);
+ 	/* Allow user abort */
+ 	if (amt <= 0) return false;
+@@ -546,12 +562,12 @@ static bool store_sell(struct store_context *ctx)
+ 		return false;
+ 	}
  
- 		/* Confirm sale */
--		if (!store_get_check(format("%s %s? [ESC, any other key to accept]",
--				OPT(player, birth_no_selling) ? "Give" : "Sell", o_name))) {
-+		char question[160];
-+		bool give = OPT(player, birth_no_selling);
-+		strnfmt(question, sizeof(question), "%s %s?", give ? "Give" : "Sell", o_name);
-+		if (!store_get_check(question, give ? -1 : price)) {
- 			screen_load();
- 			return false;
+-	/* Get a full description */
+-	object_desc(o_name, sizeof(o_name), temp_obj,
+-		ODESC_PREFIX | ODESC_FULL, player);
+-
+ 	/* Real store */
+ 	if (store->feat != FEAT_HOME) {
++#ifndef __EMSCRIPTEN__
++		object_desc(o_name, sizeof(o_name), temp_obj,
++			ODESC_PREFIX | ODESC_FULL, player);
++
+ 		/* Extract the value of the items */
+ 		int32_t price = price_item(store, temp_obj, true, amt);
+ 
+@@ -570,6 +586,9 @@ static bool store_sell(struct store_context *ctx)
  		}
-@@ -713,10 +734,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
- 		prt(format("Price: %ld", (long)price), 1, 0);
- 
- 		/* Confirm purchase */
--		response = store_get_check(format("Buy %s?%s %s",
--					o_name,
--					obj_can_use ? "" : " (Can't use!)",
--					"[ESC, any other key to accept]"));
-+		char question[160];
-+		strnfmt(question, sizeof(question), "Buy %s?%s",
-+			o_name, obj_can_use ? "" : " (Can't use!)");
-+		response = store_get_check(question, price);
  
  		screen_load();
++#else
++		object_wipe(temp_obj);
++#endif
  
-@@ -777,6 +798,9 @@ static void store_examine(struct store_context *ctx, int item)
+ 		cmdq_push(CMD_SELL);
+ 		cmd_set_arg_item(cmdq_peek(), "item", obj);
+@@ -599,11 +618,12 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 	struct object *obj = ctx->list[item];
+ 	struct object *dummy = NULL;
+ 
++	int amt;
++#ifndef __EMSCRIPTEN__
+ 	char o_name[80];
+-
+-	int amt, num;
+-
++	int num;
+ 	int32_t price;
++#endif
+ 
+ 	/* Clear all current messages */
+ 	msg_flag = false;
+@@ -613,6 +633,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 	/*** Check the player can get any at all ***/
+ 
+ 	/* Get an amount if we weren't given one */
++#ifdef __EMSCRIPTEN__
++	amt = web_store_quantity(store, obj, true, single);
++	if (!amt) return false;
++#else
+ 	if (single) {
+ 		amt = 1;
+ 
+@@ -682,6 +706,8 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 		if (amt <= 0) return false;
+ 	}
+ 
++#endif
++
+ 	/* Get desired object */
+ 	dummy = object_new();
+ 	object_copy_amt(dummy, obj, amt);
+@@ -695,6 +721,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 
+ 	/* Attempt to buy it */
+ 	if (store->feat != FEAT_HOME) {
++#ifndef __EMSCRIPTEN__
+ 		bool response;
+ 
+ 		bool obj_is_book = tval_is_book_k(obj->kind);
+@@ -722,6 +749,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+ 
+ 		/* Negative response, so give up */
+ 		if (!response) return false;
++#endif
+ 
+ 		cmdq_push(CMD_BUY);
+ 		cmd_set_arg_item(cmdq_peek(), "item", obj);
+@@ -777,6 +805,9 @@ static void store_examine(struct store_context *ctx, int item)
  	textblock_free(tb);
  
  	/* Browse book, then prompt for a command */
@@ -1964,7 +2063,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (obj_can_browse(obj))
  		textui_book_browse(obj);
  }
-@@ -849,7 +873,9 @@ static bool store_process_command_key(struct keypress kp)
+@@ -849,7 +880,9 @@ static bool store_process_command_key(struct keypress kp)
  		case 'i': do_cmd_inven(); break;
  		case '|': do_cmd_quiver(); break;
  		case KTRL('E'): toggle_inven_equip(); break;
@@ -1974,25 +2073,24 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  		case KTRL('P'): do_cmd_messages(); break;
  		case ')': do_cmd_save_screen(); break;
  
-@@ -865,15 +891,77 @@ static bool store_process_command_key(struct keypress kp)
+@@ -865,15 +898,85 @@ static bool store_process_command_key(struct keypress kp)
  /**
   * Select an item from the store's stock, and return the stock index
   */
 -static int store_get_stock(struct menu *m, int oid)
 +#ifdef __EMSCRIPTEN__
-+static void web_store_label(struct store *store, struct object *obj, unsigned mode,
-+	char *name, size_t name_size, char *price, size_t price_size, bool *unaffordable)
++static int web_store_label(struct store *store, struct object *obj, unsigned mode,
++	char *name, size_t name_size, char *price, size_t price_size)
 +{
 +	bool home = store->feat == FEAT_HOME;
 +	object_desc(name, name_size, obj,
 +		ODESC_PREFIX | ODESC_FULL | mode | (home ? 0 : ODESC_STORE), player);
-+	if (!home) {
-+		int cost = price_item(store, obj, false, 1);
-+		*unaffordable = player->au < cost;
-+		strnfmt(price, price_size, "%ld au%s",
-+			(long)cost,
-+			tval_can_have_charges(obj) && obj->number > 1 ? " avg" : "");
-+	}
++	if (home) return 0;
++
++	int cost = web_store_price_one(store, obj);
++	const char *unit = tval_can_have_charges(obj) && obj->number > 1 ? " for 1" : " each";
++	strnfmt(price, price_size, "%d au%s", cost, unit);
++	return MAX(0, cost - player->au);
 +}
 +
 +static void web_render_store(struct menu *m)
@@ -2001,23 +2099,32 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +	struct store *store = ctx->store;
 +	bool home = store->feat == FEAT_HOME;
 +
-+	m->web_no_keyboard = ctx->inspect_only || (m->flags & MN_NO_ACTION) != 0;
++	bool item_actions = (ctx->flags & STORE_ITEM_ACTIONS) && m->cursor >= 0 && m->cursor < m->count;
++	bool stack = item_actions && ctx->list[m->cursor]->number > 1;
++	store_menu_set_selections(m, ctx->inspect_only);
++	if (item_actions) m->cmd_keys = stack ? "pgolx" : "pglx";
++	m->web_no_keyboard = item_actions || ctx->inspect_only || (m->flags & MN_NO_ACTION) != 0;
 +	web_set_menu(m, m->cursor, NULL);
-+	web_set_store(home ? "Your Home" : f_info[store->feat].name, home, ctx->inspect_only);
++	web_set_store(home ? "Your Home" : f_info[store->feat].name, home, ctx->inspect_only, item_actions);
 +	for (int i = 0; i < m->count; i++) {
 +		struct object *obj = ctx->list[i];
 +		char name[160];
-+		char detail[32];
++		char detail[80];
 +		char price[32] = "";
-+		bool unaffordable = false;
 +		int weight = object_weight_one(obj);
 +
-+		web_store_label(store, obj, 0, name, sizeof(name), price, sizeof(price), &unaffordable);
++		int shortfall = web_store_label(store, obj, 0, name, sizeof(name), price, sizeof(price));
 +		strnfmt(detail, sizeof(detail), "%d.%d lb each", weight / 10, weight % 10);
-+		web_add_menu_row(i, name, detail, price, m->selections[i], true);
-+		web_set_menu_row_color(obj->kind->base->attr, unaffordable);
++		if (shortfall) my_strcat(detail, format(" · Need %d more au", shortfall), sizeof(detail));
++		char key = m->selections[i];
++		web_add_menu_row(i, name, detail, price, stack && key == 'o' ? 0 : key, true);
++		web_set_menu_row_color(obj->kind->base->attr, shortfall > 0);
 +	}
-+	if (!(m->flags & MN_NO_ACTION)) {
++	if (item_actions) {
++		web_menu_action(OPT(player, rogue_like_commands) ? 'x' : 'l', "Examine");
++		web_menu_action('p', "Buy");
++		if (stack) web_menu_action('o', "Buy one");
++	} else if (!(m->flags & MN_NO_ACTION)) {
 +		if (!ctx->inspect_only) {
 +			if (m->count)
 +				web_menu_action('p', home ? "Take" : "Buy");
@@ -2025,7 +2132,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +				OPT(player, birth_no_selling) ? "Give" : "Sell");
 +		}
 +		if (m->count && !ctx->inspect_only)
-+			web_menu_action('l', "Examine");
++			web_menu_action(OPT(player, rogue_like_commands) ? 'x' : 'l', "Examine");
 +	}
 +}
 +#endif
@@ -2053,7 +2160,30 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (!no_act) {
  		m->flags &= ~MN_NO_ACTION;
  	}
-@@ -1007,6 +1095,10 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+@@ -888,6 +991,22 @@ static int store_get_stock(struct menu *m, int oid)
+ 	return oid;
+ }
+ 
++static void store_choose_purchase(struct menu *m, int oid)
++{
++	struct store_context *ctx = menu_priv(m);
++	msg_flag = false;
++	oid = store_get_stock(m, oid, ctx->store->feat == FEAT_HOME ?
++		"Take which item?" : "Purchase which item?");
++	if (oid >= 0) store_purchase(ctx, oid, false);
++}
++
++static void store_choose_examine(struct menu *m, int oid)
++{
++	msg_flag = false;
++	oid = store_get_stock(m, oid, "Examine which item?");
++	if (oid >= 0) store_examine(menu_priv(m), oid);
++}
++
+ /** Enum for context menu entries */
+ enum {
+ 	ACT_INSPECT_INVEN,
+@@ -1007,6 +1126,10 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -2064,27 +2194,53 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	selected = menu_dynamic_select(m);
  
  	menu_dynamic_free(m);
-@@ -1034,6 +1126,34 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1034,6 +1157,60 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
 +
 +#ifdef __EMSCRIPTEN__
-+	if (event->type == EVT_SELECT && ctx->inspect_only) {
-+		if (oid >= 0 && oid < m->count) store_examine(ctx, oid);
-+		return true;
++	int key = 0;
++	if (event->type == EVT_SELECT) {
++		if (oid < 0 || oid >= m->count) return true;
++		if (ctx->inspect_only) {
++			store_examine(ctx, oid);
++			return true;
++		}
++		if (store->feat != FEAT_HOME) {
++			ctx->flags |= STORE_ITEM_ACTIONS;
++			return true;
++		}
++		key = 'p';
++	} else if (event->type == EVT_WEB_STORE_ACTION) {
++		if (ctx->inspect_only) return true;
++		key = event->store_action.key;
++		oid = event->store_action.row;
++	} else if (event->type == EVT_KBRD && (ctx->flags & STORE_ITEM_ACTIONS)) {
++		int code = event->key.code;
++		if (code == 'g') key = 'p';
++		else if (code == 'p' || code == 'o' || code == 'l' || code == 'x') key = code;
 +	}
-+	if (event->type == EVT_WEB_STORE_ACTION) {
-+		int stock = event->store_action.row;
-+		int key = event->store_action.key;
-+		if (key == 's' && !ctx->inspect_only) {
++	if (key) {
++		bool use_current_item = store->feat == FEAT_HOME || (ctx->flags & STORE_ITEM_ACTIONS);
++		ctx->flags &= ~STORE_ITEM_ACTIONS;
++		if (key == 's') {
 +			store_sell(ctx);
-+		} else if (stock >= 0 && stock < m->count) {
-+			m->cursor = stock;
-+			if (key == 'p' && !ctx->inspect_only)
-+				store_purchase(ctx, stock, false);
-+			else if (key == 'l')
-+				store_examine(ctx, stock);
++		} else if (oid >= 0 && oid < m->count) {
++			m->cursor = oid;
++			if (key == 'p') {
++				if (use_current_item)
++					store_purchase(ctx, oid, false);
++				else
++					store_choose_purchase(m, oid);
++			} else if (key == 'o' && ctx->list[oid]->number > 1) {
++				store_purchase(ctx, oid, true);
++			} else if (key == 'l' || key == 'x') {
++				if (use_current_item)
++					store_examine(ctx, oid);
++				else
++					store_choose_examine(m, oid);
++			}
 +		}
 +		cmdq_pop(CTX_STORE);
 +		notice_stuff(player);
@@ -2099,10 +2255,11 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1103,15 +1223,8 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1102,31 +1279,12 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+ 			case 'p':
  			case 'g':
  				/* use the old way of purchasing items */
- 				msg_flag = false;
+-				msg_flag = false;
 -				if (store->feat != FEAT_HOME) {
 -					prt("Purchase which item? (ESC to cancel, Enter to select)",
 -						0, 0);
@@ -2112,35 +2269,38 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 -				}
 -				oid = store_get_stock(m, oid);
 -				prt("", 0, 0);
-+				oid = store_get_stock(m, oid, store->feat != FEAT_HOME ?
-+					"Purchase which item?" : "Get which item?");
- 				if (oid >= 0) {
- 					store_purchase(ctx, oid, false);
- 				}
-@@ -1120,10 +1233,7 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+-				if (oid >= 0) {
+-					store_purchase(ctx, oid, false);
+-				}
++				store_choose_purchase(m, oid);
+ 				break;
+ 			case 'l':
  			case 'x':
  				/* use the old way of examining items */
- 				msg_flag = false;
+-				msg_flag = false;
 -				prt("Examine which item? (ESC to cancel, Enter to select)",
 -					0, 0);
 -				oid = store_get_stock(m, oid);
 -				prt("", 0, 0);
-+				oid = store_get_stock(m, oid, "Examine which item?");
- 				if (oid >= 0) {
- 					store_examine(ctx, oid);
- 				}
-@@ -1199,6 +1309,10 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+-				if (oid >= 0) {
+-					store_examine(ctx, oid);
+-				}
++				store_choose_examine(m, oid);
+ 				break;
+ 
+ 			case '?': {
+@@ -1199,6 +1357,10 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
 +#ifdef __EMSCRIPTEN__
 +	menu->web_render = web_render_store;
-+	menu->web_select_once = inspect_only;
++	menu->web_select_once = true;
 +#endif
  	menu_setpriv(menu, 0, ctx);
  
  	/* Calculate the positions of things and draw */
-@@ -1217,15 +1331,40 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1217,15 +1379,39 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  void textui_store_knowledge(int n)
  {
  	struct store_context ctx;
@@ -2152,9 +2312,8 @@ diff --git a/src/ui-store.c b/src/ui-store.c
 +		for (struct object *obj = ctx.store->stock; obj; obj = obj->next, ++i) {
 +			if (web_search_entry == WEB_SEARCH_COLLECT) {
 +				char name[160], price[32] = "";
-+				bool unaffordable = false;
 +				web_store_label(ctx.store, obj, ODESC_NO_SEEN, name, sizeof(name),
-+					price, sizeof(price), &unaffordable);
++					price, sizeof(price));
 +				web_add_search_entry(i, name, NULL, price);
 +			} else if (web_search_entry == i) {
 +				ctx.list = &obj;
@@ -2183,21 +2342,24 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	screen_load();
  
-@@ -1294,7 +1433,13 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1294,7 +1480,16 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  		prt_welcome(store->owner);
  
  	/* Shopping */
 +#ifdef __EMSCRIPTEN__
 +	web_enter_store_menu();
-+#endif
- 	menu_select(&ctx.menu, 0, false);
-+#ifdef __EMSCRIPTEN__
++	do {
++		ctx.flags &= ~STORE_ITEM_ACTIONS;
++		menu_select(&ctx.menu, 0, false);
++	} while (ctx.flags & STORE_ITEM_ACTIONS);
 +	web_leave_store_menu();
++#else
+ 	menu_select(&ctx.menu, 0, false);
 +#endif
  
  	/* Shopping's done */
  	event_remove_handler(EVENT_STORECHANGED, refresh_stock, &ctx);
-@@ -1305,7 +1450,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1305,7 +1500,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  	player->upkeep->energy_use = z_info->move_energy;
  
  	/* Flush messages */
@@ -3165,7 +3327,7 @@ diff --git a/src/ui-menu.h b/src/ui-menu.h
 diff --git a/src/ui-object.c b/src/ui-object.c
 --- a/src/ui-object.c
 +++ b/src/ui-object.c
-@@ -131,6 +131,15 @@ static wchar_t object_char(struct object *obj)
+@@ -131,6 +131,15 @@ wchar_t object_char(const struct object *obj)
  	return object_kind_char(obj->kind);
  }
  
@@ -3181,8 +3343,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
  /**
   * Display an object.  Each object may be prefixed with a label.
   * Used by show_inven(), show_equip(), show_quiver() and show_floor().
-@@ -174,18 +183,8 @@ static void show_obj(int obj_num, int row, int col, bool cursor,
- 		items[obj_num].o_name[truncate] = '\0';
+@@ -175,17 +184,7 @@ static void show_obj(int obj_num, int row, int col, bool cursor,
  	}
  
  	/* Item kind determines the color of the output */
@@ -3249,7 +3410,7 @@ diff --git a/src/ui-object.c b/src/ui-object.c
 +			if (olist_mode & OLIST_PRICE) {
 +				struct store *store = store_at(cave, player->grid);
 +				if (store)
-+					strnfmt(price, sizeof(price), "%d au",
++					strnfmt(price, sizeof(price), "%d au total",
 +						price_item(store, obj, true, obj->number));
 +			}
 +		} else {

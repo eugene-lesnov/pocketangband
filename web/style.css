@@ -193,9 +193,11 @@ dt { color: var(--muted); }
 .view {
     --map-button-size: 44px;
     --message-row-height: max(48px, 2.5rem);
+    --journal-text-height: calc(2 * 1.25 * 0.875rem);
+    --journal-height: max(var(--map-button-size), calc(var(--journal-text-height) + 0.375rem));
     position: relative;
     display: grid;
-    grid-template: "bar" auto "content" minmax(0, 1fr) "prompt" auto "journal" auto "save" auto / minmax(0, 1fr);
+    grid-template: "bar" auto "content" minmax(0, 1fr) "prompt" auto "journal" var(--journal-track, auto) "save" auto / minmax(0, 1fr);
 }
 .view-bar { grid-area: bar; }
 .view > :is(.screen, .menu-screen) { grid-area: content; }
@@ -517,7 +519,7 @@ dt { color: var(--muted); }
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    max-height: 2.5em;
+    max-height: var(--journal-text-height);
     overflow: hidden;
 }
 #latest-message {
@@ -526,6 +528,21 @@ dt { color: var(--muted); }
     white-space: pre-line;
 }
 #journal.prompt .journal-preview { display: block; overflow: auto; overscroll-behavior: contain; }
+.shop-view {
+    --journal-track: var(--journal-height);
+}
+.shop-view :is(#journal, #message-pause) {
+    height: auto;
+    grid-template-rows: minmax(0, 1fr);
+    margin: 0;
+    padding-inline: 0.625rem;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0 0 0.4375rem 0.4375rem;
+    background: #191813;
+}
+.shop-view #journal { padding-block: 0.25rem; }
+.shop-view #paused-message { max-height: var(--journal-text-height); overscroll-behavior: contain; }
 
 .in-world #journal,
 .in-world #input-prompt[hidden] ~ #save-status:not(.error) {
@@ -537,7 +554,7 @@ dt { color: var(--muted); }
     margin: 0;
 }
 .in-world #journal {
-    height: max(var(--map-button-size), calc(2.5em + 0.375rem));
+    height: var(--journal-height);
     padding: 0.1875rem 0.375rem;
     border-radius: 0.375rem;
     background: var(--panel);
@@ -564,7 +581,7 @@ dt { color: var(--muted); }
     border-radius: 0.5rem;
     background: var(--panel);
 }
-main:not(.in-world) .view:has(#journal:not([hidden])) #message-pause {
+main:not(.in-world) :is(.view:has(#journal:not([hidden])), .shop-view) #message-pause {
     grid-area: journal;
     position: static;
 }
@@ -619,6 +636,11 @@ main:not(.in-world) .view:has(#journal:not([hidden])) #message-pause {
     pointer-events: none;
 }
 #picker #edit-value { margin: 0 0.25rem 0.25rem; }
+#trade-quantity-label, #trade-summary { margin: 0 0.625rem 0.375rem; font-size: 0.875rem; }
+#trade-summary { color: var(--accent); }
+#trade-details { margin: 0 0.625rem 0.375rem; }
+#trade-details summary { min-height: 44px; align-content: center; cursor: pointer; }
+#trade-details .detail-text { max-height: 22dvh; overflow: auto; overscroll-behavior: contain; }
 #picker-list { min-height: 0; }
 #picker-toggle {
     display: grid;
