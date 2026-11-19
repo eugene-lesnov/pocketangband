@@ -1,6 +1,6 @@
 # PocketAngband
 
-PocketAngband brings the classic single-player dungeon roguelike [Angband](https://rephial.org/) to iPhone and Android. It runs the original Angband 4.2.6 engine in the browser with a portrait layout, touch controls, and a choice of ASCII or tiles. Download the game once and play offline.
+PocketAngband brings the classic single-player dungeon roguelike [Angband](https://github.com/angband/angband) to iPhone and Android. It runs the original Angband 4.2.6 engine in the browser with a portrait layout, touch controls, and a choice of ASCII or tiles. Download the game once and play offline.
 
 PocketAngband’s ideas were inspired by [PocketZot](https://github.com/pocketzot/pocketzot).
 
