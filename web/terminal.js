@@ -350,10 +350,11 @@ let repeatName = "";
 let graphicsRestored = false;
 let messageRecallRequest = 0;
 let recalledMessages = [];
+const preferencesKey = "pocketangband-touch";
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
     fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
 try {
-    const saved = JSON.parse(localStorage.getItem("pocketband-touch") || "{}");
+    const saved = JSON.parse(localStorage.getItem(preferencesKey) || "{}");
     for (const key of Object.keys(preferences)) {
         if (typeof saved[key] === typeof preferences[key]) preferences[key] = saved[key];
     }
@@ -361,7 +362,7 @@ try {
 } catch {}
 
 function savePreferences() {
-    try { localStorage.setItem("pocketband-touch", JSON.stringify(preferences)); } catch {}
+    try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch {}
 }
 
 function applyPreferences() {

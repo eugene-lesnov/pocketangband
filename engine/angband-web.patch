@@ -496,7 +496,7 @@ diff --git a/src/ui-game.c b/src/ui-game.c
 - * actually displayed and the player has a chance to examine
 - * the inventory and such.  This allows cheating if the game
 - * is equipped with a "quit without save" method.  XXX XXX XXX
-+ * Native clients save after the tombstone. PocketBand saves before
++ * Native clients save after the tombstone. PocketAngband saves before
 + * showing the outcome because the browser may close while it is open.
   */
  void close_game(bool prompt_failed_save)
@@ -3381,7 +3381,7 @@ diff --git a/src/ui-player.c b/src/ui-player.c
 +void web_download_character_dump(void)
 +{
 +	char filename[PLAYER_NAME_LEN + sizeof(".txt")];
-+	const char *path = "/tmp/pocketband-character.txt";
++	const char *path = "/tmp/pocketangband-character.txt";
 +	strnfmt(filename, sizeof(filename), "%s.txt",
 +		player->full_name[0] ? player->full_name : "Angband");
 +	for (char *ch = filename; *ch; ch++) {
@@ -5199,7 +5199,7 @@ diff --git a/src/ui-death.c b/src/ui-death.c
 +	Term_clear();
 +	while (menu_select(menu, 0, false).type == EVT_SELECT) {
 +		int choice = menu->cursor;
-+		const char *path = "/tmp/pocketband-spoiler.spo";
++		const char *path = "/tmp/pocketangband-spoiler.spo";
 +		bool ok = spoiler_choices[choice].generate(path);
 +		web_show_generated_file(spoiler_choices[choice].label, ok ? path : NULL,
 +			spoiler_choices[choice].filename);

@@ -7,12 +7,12 @@ output_dir=${2:-"$project_dir/dist"}
 source "$project_dir/engine/versions.sh"
 angband_patch_date=2026-11-13
 
-pocketband_version=${3:-dev}
+pocketangband_version=${3:-dev}
 if [[ -z ${3:-} && -f "$project_dir/VERSION" ]]; then
-    pocketband_version=$(<"$project_dir/VERSION")
+    pocketangband_version=$(<"$project_dir/VERSION")
 fi
-if [[ $pocketband_version != dev && ! $pocketband_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$ ]]; then
-    printf 'Invalid PocketBand version: %s\n' "$pocketband_version" >&2
+if [[ $pocketangband_version != dev && ! $pocketangband_version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$ ]]; then
+    printf 'Invalid PocketAngband version: %s\n' "$pocketangband_version" >&2
     exit 1
 fi
 
@@ -22,21 +22,21 @@ if [[ -L $output_dir ]] || [[ -e $output_dir && ( ! -d $output_dir || -n $(ls -A
 fi
 
 if ! command -v emcc >/dev/null || [[ $(emcc -dumpversion) != "$emscripten_version" ]]; then
-    printf 'Activate Emscripten %s before building PocketBand.\n' "$emscripten_version" >&2
+    printf 'Activate Emscripten %s before building PocketAngband.\n' "$emscripten_version" >&2
     exit 1
 fi
 emscripten_dir=$(em-config EMSCRIPTEN_ROOT)
 
 build_dir=$(mktemp -d)
 trap 'rm -rf -- "$build_dir"' EXIT
-source_dir="$build_dir/pocketband-source"
+source_dir="$build_dir/pocketangband-source"
 mkdir -p "$source_dir"/{.github/workflows,angband,deploy,engine,web,emscripten}
 cp "$project_dir"/{build.sh,COPYING,ATTRIBUTION.md} "$source_dir/"
 cp "$project_dir"/.github/workflows/pages.yml "$source_dir/.github/workflows/"
 cp "$project_dir"/deploy/release.py "$source_dir/deploy/"
 cp "$project_dir"/engine/{angband-web.patch,main-web.c,versions.sh} "$source_dir/engine/"
 cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,inscriptions.js,frame-renderer.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
-printf '%s\n' "$pocketband_version" > "$source_dir/VERSION"
+printf '%s\n' "$pocketangband_version" > "$source_dir/VERSION"
 
 if [[ -z ${1:-} && -f "$project_dir/angband/docs/copying.rst" ]]; then
     cp -R "$project_dir/angband/." "$source_dir/angband/"
@@ -66,7 +66,7 @@ else
         git apply "$patch"
         git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
             {
-                printf '/* Modified by PocketBand on %s for the WebAssembly port. */\n\n' "$angband_patch_date"
+                printf '/* Modified by PocketAngband on %s for the WebAssembly port. */\n\n' "$angband_patch_date"
                 cat "$path"
             } > "$path.noticed"
             mv -- "$path.noticed" "$path"
@@ -80,11 +80,11 @@ tar -C "$emscripten_dir" --exclude=__pycache__ --exclude=test --exclude=tests -c
 
 cd -- "$build_dir"
 tar --format=gnu --sort=name --mtime=@0 --numeric-owner --owner=0 --group=0 \
-    --mode='u+rw,go+r,go-w,a+X' -cf - pocketband-source | gzip -n > source.tar.gz
+    --mode='u+rw,go+r,go-w,a+X' -cf - pocketangband-source | gzip -n > source.tar.gz
 
 mkdir site
 cp "$source_dir"/web/* site/
-sed -i "s/__POCKETBAND_VERSION__/$pocketband_version/" site/{index,licenses}.html
+sed -i "s/__POCKETANGBAND_VERSION__/$pocketangband_version/" site/{index,licenses}.html
 cp "$source_dir/COPYING" site/gpl-2.0.txt
 cp "$source_dir/emscripten/LICENSE" site/emscripten-license.txt
 cp "$source_dir/emscripten/AUTHORS" site/emscripten-authors.txt
@@ -99,8 +99,8 @@ mv lib/tiles/old/8x8.png "$build_dir/site/original-tiles.png"
 mv lib/tiles/adam-bolt/16x16.png "$build_dir/site/adam-bolt.png"
 mv lib/tiles/gervais/32x32.png "$build_dir/site/gervais.png"
 
-object_list=$(make -s --no-print-directory -f src/Makefile.src -f - pocketband_objects <<'MAKE'
-pocketband_objects:
+object_list=$(make -s --no-print-directory -f src/Makefile.src -f - pocketangband_objects <<'MAKE'
+pocketangband_objects:
 	@printf '%s\n' '$(filter-out borg/%,$(ANGFILES) $(ZFILES))'
 MAKE
 )
@@ -109,7 +109,7 @@ sources=("${objects[@]/%.o/.c}")
 sources=("${sources[@]/#/src/}")
 
 emcc -O2 -Isrc -DBUILD_ID="$angband_version" \
-    -DPRIVATE_USER_PATH='"/profile"' -DUSE_PRIVATE_PATHS \
+    -DPRIVATE_USER_PATH='"/pocketangband-profile"' -DUSE_PRIVATE_PATHS \
     -sMODULARIZE -sEXPORT_ES6 -sENVIRONMENT=worker -sEXIT_RUNTIME=1 \
     -sASYNCIFY -sASYNCIFY_STACK_SIZE=65536 -sALLOW_MEMORY_GROWTH \
     -sINVOKE_RUN=0 -sEXPORTED_RUNTIME_METHODS=FS,IDBFS,callMain -lidbfs.js \
@@ -117,4 +117,4 @@ emcc -O2 -Isrc -DBUILD_ID="$angband_version" \
     "${sources[@]}" src/main.c src/main-web.c -o angband.js
 
 cp angband.js angband.wasm angband.data "$build_dir/site/"
-python3 "$source_dir/deploy/release.py" pack "$build_dir/site" "$build_dir/source.tar.gz" "$output_dir" "$pocketband_version"
+python3 "$source_dir/deploy/release.py" pack "$build_dir/site" "$build_dir/source.tar.gz" "$output_dir" "$pocketangband_version"

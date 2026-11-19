@@ -1,8 +1,8 @@
 {
     "lang": "en",
-    "id": "/pocketband",
-    "name": "PocketBand",
-    "short_name": "PocketBand",
+    "id": "/pocketangband",
+    "name": "PocketAngband",
+    "short_name": "PocketAngband",
     "description": "Play Angband offline.",
     "start_url": "./",
     "scope": "./",

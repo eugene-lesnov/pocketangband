@@ -1,7 +1,7 @@
 import createAngband from "./angband.js";
 import { graphicsModes } from "./tiles.js";
 
-const profileDirectory = "/profile";
+const profileDirectory = "/pocketangband-profile";
 let preferredSaveSlot = new URL(self.location.href).searchParams.get("slot") || "";
 const input = [];
 let waiting;
@@ -344,7 +344,7 @@ try {
     if (!navigator.locks) {
         throw new Error("The Angband profile requires a browser with Web Locks and an HTTPS or localhost address.");
     }
-    const result = await navigator.locks.request("pocketband-profile", { ifAvailable: true }, async (lock) => {
+    const result = await navigator.locks.request(profileDirectory, { ifAvailable: true }, async (lock) => {
         if (!lock) throw new Error("The Angband profile is open in another tab.");
         let exit = await play();
         while (exit.code === 0 && exit.afterRun) {

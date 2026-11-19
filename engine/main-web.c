@@ -1,4 +1,4 @@
-/* Copyright (C) 2026 PocketBand contributors. SPDX-License-Identifier: GPL-2.0-only */
+/* Copyright (C) 2026 PocketAngband contributors. SPDX-License-Identifier: GPL-2.0-only */
 
 #include "main.h"
 #include "buildid.h"

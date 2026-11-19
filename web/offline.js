@@ -34,7 +34,7 @@ async function pinLegacyWorker() {
 async function installWorker(url, reportProgress, waitForActivation = false) {
     const serviceWorkers = navigator.serviceWorker;
     const onMessage = ({ data, source }) => {
-        if (source?.scriptURL === url.href && data?.type === "pocketband-download") {
+        if (source?.scriptURL === url.href && data?.type === "pocketangband-download") {
             reportProgress(data.percent);
         }
     };
@@ -111,7 +111,7 @@ function activateWorker(worker) {
     return new Promise((resolve, reject) => {
         const serviceWorkers = navigator.serviceWorker;
         const channel = new MessageChannel();
-        const unavailable = "Could not apply the update. Close all PocketBand windows and reopen the app.";
+        const unavailable = "Could not apply the update. Close all PocketAngband windows and reopen the app.";
         const timeout = setTimeout(() => finish(unavailable), 10_000);
 
         function finish(message) {
@@ -127,12 +127,12 @@ function activateWorker(worker) {
         }
 
         channel.port1.onmessage = ({ data }) => {
-            if (data === "other-windows") finish("Close other PocketBand windows and try again.");
+            if (data === "other-windows") finish("Close other PocketAngband windows and try again.");
             else finish(unavailable);
         };
         serviceWorkers.addEventListener("controllerchange", onControllerChange);
         try {
-            worker.postMessage({ type: "pocketband-apply-update" }, [channel.port2]);
+            worker.postMessage({ type: "pocketangband-apply-update" }, [channel.port2]);
             onControllerChange();
         } catch {
             channel.port2.close();

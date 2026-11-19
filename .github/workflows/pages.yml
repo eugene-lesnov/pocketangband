@@ -1,4 +1,4 @@
-name: Deploy a PocketBand release
+name: Deploy a PocketAngband release
 run-name: Deploy ${{ inputs.tag || github.ref_name }}
 
 on:
@@ -57,7 +57,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           bash build.sh angband-upstream dist "$RELEASE_TAG"
-          python3 deploy/release.py pages "$RUNNER_TEMP/pocketband-build-preview" dist/release
+          python3 deploy/release.py pages "$RUNNER_TEMP/pocketangband-build-preview" dist/release
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: release-files
@@ -75,9 +75,9 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: release-files
-          path: ${{ runner.temp }}/pocketband-release
+          path: ${{ runner.temp }}/pocketangband-release
       - name: Publish GitHub Release
-        working-directory: ${{ runner.temp }}/pocketband-release
+        working-directory: ${{ runner.temp }}/pocketangband-release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -89,7 +89,7 @@ jobs:
             exit 1
           fi
 
-          files=(pocketband-web.zip pocketband-source.tar.gz SHA256SUMS)
+          files=(pocketangband-web.zip pocketangband-source.tar.gz SHA256SUMS)
           prerelease=false
           if [[ $RELEASE_TAG == *-* ]]; then
             prerelease=true
@@ -99,7 +99,7 @@ jobs:
           if [[ $release == null ]]; then
             gh release create "$RELEASE_TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "$RELEASE_TAG" --prerelease="$prerelease" --generate-notes \
-              --notes '[Play PocketBand](https://eugene-lesnov.github.io/pocketband/).'
+              --notes '[Play PocketAngband](https://eugene-lesnov.github.io/pocketangband/).'
           elif jq -e .draft <<< "$release" >/dev/null; then
             gh release upload "$RELEASE_TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease="$prerelease"
@@ -142,14 +142,14 @@ jobs:
               printf 'Invalid release tag: %s\n' "$tag" >&2
               exit 1
             fi
-            folder="$RUNNER_TEMP/pocketband-$tag"
+            folder="$RUNNER_TEMP/pocketangband-$tag"
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$folder" \
-              --pattern pocketband-web.zip --pattern pocketband-source.tar.gz --pattern SHA256SUMS
+              --pattern pocketangband-web.zip --pattern pocketangband-source.tar.gz --pattern SHA256SUMS
             downloads+=("$folder")
           }
 
           tags=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq \
-            '.[] | select(.draft == false and any(.assets[]; .name == "pocketband-web.zip")) | .tag_name')
+            '.[] | select(.draft == false and any(.assets[]; .name == "pocketangband-web.zip")) | .tag_name')
           if ! grep -Fxq -- "$RELEASE_TAG" <<< "$tags"; then
             printf 'Release must be published with a web bundle: %s\n' "$RELEASE_TAG" >&2
             exit 1
@@ -161,7 +161,7 @@ jobs:
               download_release "$tag"
             fi
           done <<< "$tags"
-          python3 deploy/release.py pages "$RUNNER_TEMP/pocketband-pages" "${downloads[@]}"
+          python3 deploy/release.py pages "$RUNNER_TEMP/pocketangband-pages" "${downloads[@]}"
       - name: Name the Pages artifact
         id: artifact
         run: printf 'name=github-pages-%s\n' "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
@@ -169,7 +169,7 @@ jobs:
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
         with:
           name: ${{ steps.artifact.outputs.name }}
-          path: ${{ runner.temp }}/pocketband-pages
+          path: ${{ runner.temp }}/pocketangband-pages
 
   publish:
     needs: prepare

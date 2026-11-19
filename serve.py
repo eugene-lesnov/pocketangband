@@ -17,7 +17,7 @@ PORT = 8749
 URL = f"http://{HOST}:{PORT}/"
 
 
-def is_pocketband_server(pid):
+def is_pocketangband_server(pid):
     process = Path("/proc") / str(pid)
     if process.stat().st_uid != os.getuid():
         return False
@@ -85,7 +85,7 @@ def stop_previous_server():
     except ProcessLookupError:
         return
     try:
-        if not is_pocketband_server(pid):
+        if not is_pocketangband_server(pid):
             raise RuntimeError(f"{URL} is already in use by another process (PID {pid}).")
         if os.readlink(f"/proc/{pid}/fd/{fd}") != f"socket:[{inode}]":
             raise RuntimeError(f"The listener on {URL} changed. Try again.")
@@ -93,8 +93,8 @@ def stop_previous_server():
         poller = select.poll()
         poller.register(process, select.POLLIN)
         if not poller.poll(5000):
-            raise RuntimeError(f"The previous PocketBand server (PID {pid}) did not stop.")
-        print(f"Stopped the previous PocketBand server (PID {pid}).", flush=True)
+            raise RuntimeError(f"The previous PocketAngband server (PID {pid}) did not stop.")
+        print(f"Stopped the previous PocketAngband server (PID {pid}).", flush=True)
     except (FileNotFoundError, ProcessLookupError):
         pass
     finally:
@@ -102,14 +102,14 @@ def stop_previous_server():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Serve a local PocketBand build.")
+    parser = argparse.ArgumentParser(description="Serve a local PocketAngband build.")
     parser.add_argument(
         "directory", nargs="?", type=Path, default=PROJECT_DIR / "dist",
         help="build output directory (default: dist)",
     )
     directory = parser.parse_args().directory.resolve()
     if not all((directory / name).is_file() for name in ("index.html", "sw.js", "angband.wasm")):
-        parser.exit(1, f"No PocketBand build found in {directory}.\n")
+        parser.exit(1, f"No PocketAngband build found in {directory}.\n")
 
     handler = partial(SimpleHTTPRequestHandler, directory=directory)
     try:
@@ -128,7 +128,7 @@ def main():
         parser.exit(1, f"{error}\n")
 
     with server:
-        print(f"Serving PocketBand from {directory} at {URL}", flush=True)
+        print(f"Serving PocketAngband from {directory} at {URL}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:

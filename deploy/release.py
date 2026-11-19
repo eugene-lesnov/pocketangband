@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 
-RELEASE_FILES = ("pocketband-web.zip", "pocketband-source.tar.gz", "SHA256SUMS")
+RELEASE_FILES = ("pocketangband-web.zip", "pocketangband-source.tar.gz", "SHA256SUMS")
 BOOTSTRAP_FILES = ("index.html", "manifest.webmanifest", "sw.js")
 HEX = "[0-9a-f]{64}"
 ASSET_NAME = r"[a-z0-9][a-z0-9.-]*"
@@ -61,7 +61,7 @@ def pack(site, source, output, release_name):
     (site / "sw.js").write_text(template.replace("__ASSETS__", inventory).replace("__VERSION__", version), encoding="utf-8")
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix=".pocketband-", dir=output.parent) as temporary:
+    with TemporaryDirectory(prefix=".pocketangband-", dir=output.parent) as temporary:
         staging = Path(temporary)
         web = staging / "web"
         package = web / "packages" / version
@@ -177,7 +177,7 @@ def unpack_release(download, site, current):
 
 def pages(output, selected, retained):
     output.parent.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(prefix=".pocketband-", dir=output.parent) as temporary:
+    with TemporaryDirectory(prefix=".pocketangband-", dir=output.parent) as temporary:
         site = Path(temporary) / "site"
         version = unpack_release(selected, site, current=True)
         for download in retained:

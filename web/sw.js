@@ -1,7 +1,7 @@
 const assets = __ASSETS__;
 const version = "__VERSION__";
 const scope = new URL(self.registration.scope);
-const cachePrefix = `pocketband:${encodeURIComponent(scope.href)}:`;
+const cachePrefix = `pocketangband:${encodeURIComponent(scope.href)}:`;
 const cacheName = cachePrefix + version;
 const legacyWorker = self.location.href === new URL("sw.js", scope).href;
 const installedPackageUrl = new URL("installed-package.json", scope);
@@ -83,7 +83,7 @@ async function downloadPackage() {
         const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         for (const client of clients) {
             if (client.url.startsWith(scope.href)) {
-                client.postMessage({ type: "pocketband-download", percent: next });
+                client.postMessage({ type: "pocketangband-download", percent: next });
             }
         }
     }
@@ -102,7 +102,7 @@ async function downloadPackage() {
 self.addEventListener("install", (event) => {
     event.waitUntil((async () => {
         if (legacyWorker && self.registration.active && await caches.match(installedPackageUrl)) {
-            throw new Error("Switch to a versioned worker to update PocketBand.");
+            throw new Error("Switch to a versioned worker to update PocketAngband.");
         }
         await downloadPackage();
     })());
@@ -110,7 +110,7 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("message", (event) => {
     const { source, ports: [reply] } = event;
-    if (event.data?.type !== "pocketband-apply-update" || !reply || !source?.url?.startsWith(scope.href)) return;
+    if (event.data?.type !== "pocketangband-apply-update" || !reply || !source?.url?.startsWith(scope.href)) return;
     event.waitUntil((async () => {
         const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         if (windows.some((client) => client.id !== source.id && client.url.startsWith(scope.href))) {
