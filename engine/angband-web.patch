@@ -6393,3 +6393,26 @@ index 2a8d9d0..42f8676 100644
  }
  
  
+diff --git a/src/cmd-misc.c b/src/cmd-misc.c
+index e4faf23..f4324e6 100644
+--- a/src/cmd-misc.c
++++ b/src/cmd-misc.c
+@@ -38,6 +38,10 @@ void do_cmd_wizard(void)
+ {
+ 	/* Verify first time */
+ 	if (!(player->noscore & NOSCORE_WIZARD)) {
++#ifdef __EMSCRIPTEN__
++		if (!get_check("Enter wizard mode?\nYour game will not be scored."))
++			return;
++#else
+ 		/* Mention effects */
+ 		msg("You are about to enter 'wizard' mode for the very first time!");
+ 		msg("This is a form of cheating, and your game will not be scored!");
+@@ -46,6 +50,7 @@ void do_cmd_wizard(void)
+ 		/* Verify request */
+ 		if (!get_check("Are you sure you want to enter wizard mode? "))
+ 			return;
++#endif
+ 
+ 		/* Mark savefile */
+ 		player->noscore |= NOSCORE_WIZARD;
