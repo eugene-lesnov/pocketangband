@@ -1106,6 +1106,7 @@ function targetActionLabel() {
 
 function getConfirmAction(selectedRow, closesScreen) {
     if (!unavailableScreen.hidden) return ["Escape", "Back"];
+    if (context.browseKey) return [context.browseKey, "Browse"];
     switch (mode) {
         case "birth-review": return ["Enter", "Start game"];
         case "retire": return ["@", "Retire character and quit"];
@@ -1167,7 +1168,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     cancelKey.textContent = getCancelLabel();
     cancelKey.setAttribute("aria-label", cancelKey.textContent);
     setKeyHint(cancelKey);
-    cancelKey.hidden = closesScreen || mode === "victory";
+    cancelKey.hidden = (closesScreen && !context.browseKey) || mode === "victory";
 }
 
 function updateBirthControls(disabled) {
@@ -3573,6 +3574,7 @@ document.addEventListener("keydown", (event) => {
     }
     if (mode === "details" && context.detail !== undefined &&
         !["Escape", "Enter", "[", "]"].includes(event.key) &&
+        event.key !== context.browseKey &&
         !(context.sortByExp !== undefined && event.key === "x")) return;
     const code = keyCode(event.key);
     if (code) {

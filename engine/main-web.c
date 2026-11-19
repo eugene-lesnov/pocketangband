@@ -522,9 +522,22 @@ void web_set_edit_value(const char *value, int cursor, bool initial)
     }
 }
 
-void web_set_details(textblock *tb)
+EM_JS(void, set_book_browse_key, (int key), {
+    Module['inputContext'].browseKey = String.fromCharCode(key);
+});
+
+struct keypress web_show_details(textblock *tb, const char *header, int browse_key)
 {
+    enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
+    const char *previous_prompt = web_set_prompt(header);
+    screen_save();
     publish_details(tb, "screen");
+    if (browse_key) set_book_browse_key(browse_key);
+    struct keypress choice = inkey();
+    web_set_prompt(previous_prompt);
+    web_set_input_mode(previous);
+    screen_load();
+    return choice;
 }
 
 EM_JS(void, web_set_overview, (int width, int height), {

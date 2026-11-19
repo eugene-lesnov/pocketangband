@@ -1645,7 +1645,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_set_list_entry(wchar_t symbol, int symbol_attr, int race, int object);
 +void web_set_list_row_cell(int dx, int dy);
 +struct textblock;
-+void web_set_details(struct textblock *tb);
++struct keypress web_show_details(struct textblock *tb, const char *header, int browse_key);
 +void web_set_overview(int width, int height);
 +void web_set_history(const char *text);
 +void web_show_help(bool roguelike);
@@ -1913,7 +1913,18 @@ diff --git a/src/store.c b/src/store.c
 diff --git a/src/ui-store.c b/src/ui-store.c
 --- a/src/ui-store.c
 +++ b/src/ui-store.c
-@@ -101,6 +101,9 @@ enum
+@@ -39,6 +39,10 @@
+ #include "store.h"
+ #include "target.h"
+ #include "ui-display.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-game.h"
++#include "ui-keymap.h"
++#endif
+ #include "ui-input.h"
+ #include "ui-menu.h"
+ #include "ui-object.h"
+@@ -101,6 +105,9 @@ enum
  #define STORE_GOLD_CHANGE      0x01
  #define STORE_FRAME_CHANGE     0x02
  #define STORE_SHOW_HELP        0x04
@@ -1923,7 +1934,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  /* Compound flag for the initial display of a store */
  #define STORE_INIT_CHANGE		(STORE_FRAME_CHANGE | STORE_GOLD_CHANGE)
-@@ -458,6 +461,7 @@ static void store_redraw(struct store_context *ctx)
+@@ -458,6 +465,7 @@ static void store_redraw(struct store_context *ctx)
  	}
  }
  
@@ -1931,7 +1942,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  static bool store_get_check(const char *prompt)
  {
  	struct keypress ch;
-@@ -478,6 +482,8 @@ static bool store_get_check(const char *prompt)
+@@ -478,6 +486,8 @@ static bool store_get_check(const char *prompt)
  	return (true);
  }
  
@@ -1940,7 +1951,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  /*
   * Sell an object, or drop if it we're in the home.
   */
-@@ -492,7 +498,9 @@ static bool store_sell(struct store_context *ctx)
+@@ -492,7 +502,9 @@ static bool store_sell(struct store_context *ctx)
  	struct object object_type_body = OBJECT_NULL;
  	struct object *temp_obj = &object_type_body;
  
@@ -1950,7 +1961,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	item_tester tester = NULL;
  
-@@ -506,7 +514,11 @@ static bool store_sell(struct store_context *ctx)
+@@ -506,7 +518,11 @@ static bool store_sell(struct store_context *ctx)
  	prt("", 0, 0);
  
  	if (store->feat == FEAT_HOME) {
@@ -1962,7 +1973,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	} else {
  		tester = store_will_buy_tester;
  		get_mode |= SHOW_PRICES;
-@@ -528,7 +540,11 @@ static bool store_sell(struct store_context *ctx)
+@@ -528,7 +544,11 @@ static bool store_sell(struct store_context *ctx)
  	}
  
  	/* Get a quantity */
@@ -1974,7 +1985,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Allow user abort */
  	if (amt <= 0) return false;
-@@ -546,12 +562,12 @@ static bool store_sell(struct store_context *ctx)
+@@ -546,12 +566,12 @@ static bool store_sell(struct store_context *ctx)
  		return false;
  	}
  
@@ -1991,7 +2002,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  		/* Extract the value of the items */
  		int32_t price = price_item(store, temp_obj, true, amt);
  
-@@ -570,6 +586,9 @@ static bool store_sell(struct store_context *ctx)
+@@ -570,6 +590,9 @@ static bool store_sell(struct store_context *ctx)
  		}
  
  		screen_load();
@@ -2001,7 +2012,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  		cmdq_push(CMD_SELL);
  		cmd_set_arg_item(cmdq_peek(), "item", obj);
-@@ -599,11 +618,12 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -599,11 +622,12 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  	struct object *obj = ctx->list[item];
  	struct object *dummy = NULL;
  
@@ -2017,7 +2028,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Clear all current messages */
  	msg_flag = false;
-@@ -613,6 +633,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -613,6 +637,10 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  	/*** Check the player can get any at all ***/
  
  	/* Get an amount if we weren't given one */
@@ -2028,7 +2039,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (single) {
  		amt = 1;
  
-@@ -682,6 +706,8 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -682,6 +710,8 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  		if (amt <= 0) return false;
  	}
  
@@ -2037,7 +2048,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	/* Get desired object */
  	dummy = object_new();
  	object_copy_amt(dummy, obj, amt);
-@@ -695,6 +721,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -695,6 +725,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  
  	/* Attempt to buy it */
  	if (store->feat != FEAT_HOME) {
@@ -2045,7 +2056,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  		bool response;
  
  		bool obj_is_book = tval_is_book_k(obj->kind);
-@@ -722,6 +749,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
+@@ -722,6 +753,7 @@ static bool store_purchase(struct store_context *ctx, int item, bool single)
  
  		/* Negative response, so give up */
  		if (!response) return false;
@@ -2053,17 +2064,40 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  		cmdq_push(CMD_BUY);
  		cmd_set_arg_item(cmdq_peek(), "item", obj);
-@@ -777,6 +805,9 @@ static void store_examine(struct store_context *ctx, int item)
+@@ -751,7 +783,6 @@ static void store_examine(struct store_context *ctx, int item)
+ 	struct object *obj;
+ 	char header[120];
+ 	textblock *tb;
+-	region area = { 0, 0, 0, 0 };
+ 	uint32_t odesc_flags = ODESC_PREFIX | ODESC_FULL;
+ 
+ 	if (item < 0) return;
+@@ -773,11 +804,23 @@ static void store_examine(struct store_context *ctx, int item)
+ 	tb = object_info(obj, OINFO_NONE);
+ 	object_desc(header, sizeof(header), obj, odesc_flags, player);
+ 
++#ifdef __EMSCRIPTEN__
++	int browse_key = 0;
++	if (web_search_entry == WEB_SEARCH_CLOSED && obj_can_browse(obj)) {
++		int keymap = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
++		browse_key = cmd_lookup_key(CMD_BROWSE_SPELL, keymap);
++	}
++	struct keypress choice = web_show_details(tb, header, browse_key);
++	bool browse = browse_key && choice.code == browse_key;
++#else
++	region area = { 0, 0, 0, 0 };
+ 	textui_textblock_show(tb, area, header);
++	bool browse = obj_can_browse(obj);
++#endif
  	textblock_free(tb);
  
  	/* Browse book, then prompt for a command */
-+#ifdef __EMSCRIPTEN__
-+	if (web_search_entry >= 0) return;
-+#endif
- 	if (obj_can_browse(obj))
+-	if (obj_can_browse(obj))
++	if (browse)
  		textui_book_browse(obj);
  }
-@@ -849,7 +880,9 @@ static bool store_process_command_key(struct keypress kp)
+ 
+@@ -849,7 +892,9 @@ static bool store_process_command_key(struct keypress kp)
  		case 'i': do_cmd_inven(); break;
  		case '|': do_cmd_quiver(); break;
  		case KTRL('E'): toggle_inven_equip(); break;
@@ -2073,7 +2107,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  		case KTRL('P'): do_cmd_messages(); break;
  		case ')': do_cmd_save_screen(); break;
  
-@@ -865,15 +898,85 @@ static bool store_process_command_key(struct keypress kp)
+@@ -865,15 +910,85 @@ static bool store_process_command_key(struct keypress kp)
  /**
   * Select an item from the store's stock, and return the stock index
   */
@@ -2160,7 +2194,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	if (!no_act) {
  		m->flags &= ~MN_NO_ACTION;
  	}
-@@ -888,6 +991,22 @@ static int store_get_stock(struct menu *m, int oid)
+@@ -888,6 +1003,22 @@ static int store_get_stock(struct menu *m, int oid)
  	return oid;
  }
  
@@ -2183,7 +2217,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  /** Enum for context menu entries */
  enum {
  	ACT_INSPECT_INVEN,
-@@ -1007,6 +1126,10 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
+@@ -1007,6 +1138,10 @@ static bool context_menu_store_item(struct store_context *ctx, const int oid, in
  	region_erase_bordered(&m->boundary);
  
  	prt(format("(Enter to select, ESC) Command for %s:", header), 0, 0);
@@ -2194,7 +2228,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	selected = menu_dynamic_select(m);
  
  	menu_dynamic_free(m);
-@@ -1034,6 +1157,60 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1034,6 +1169,60 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  	bool processed = true;
  	struct store_context *ctx = menu_priv(m);
  	struct store *store = ctx->store;
@@ -2255,7 +2289,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	
  	if (event->type == EVT_SELECT) {
  		/* HACK there's no mouse event coordinates to use for */
-@@ -1102,31 +1279,12 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
+@@ -1102,31 +1291,12 @@ static bool store_menu_handle(struct menu *m, const ui_event *event, int oid)
  			case 'p':
  			case 'g':
  				/* use the old way of purchasing items */
@@ -2289,7 +2323,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  				break;
  
  			case '?': {
-@@ -1199,6 +1357,10 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1199,6 +1369,10 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  
  	/* Init the menu structure */
  	menu_init(menu, MN_SKIN_SCROLL, &store_menu);
@@ -2300,7 +2334,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  	menu_setpriv(menu, 0, ctx);
  
  	/* Calculate the positions of things and draw */
-@@ -1217,15 +1379,39 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
+@@ -1217,15 +1391,39 @@ static void store_menu_init(struct store_context *ctx, struct store *store, bool
  void textui_store_knowledge(int n)
  {
  	struct store_context ctx;
@@ -2342,7 +2376,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	screen_load();
  
-@@ -1294,7 +1480,16 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1294,7 +1492,16 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  		prt_welcome(store->owner);
  
  	/* Shopping */
@@ -2359,7 +2393,7 @@ diff --git a/src/ui-store.c b/src/ui-store.c
  
  	/* Shopping's done */
  	event_remove_handler(EVENT_STORECHANGED, refresh_stock, &ctx);
-@@ -1305,7 +1500,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
+@@ -1305,7 +1512,7 @@ void use_store(game_event_type type, game_event_data *data, void *user)
  	player->upkeep->energy_use = z_info->move_energy;
  
  	/* Flush messages */
@@ -3653,26 +3687,18 @@ diff --git a/src/ui-obj-list.c b/src/ui-obj-list.c
 diff --git a/src/ui-output.c b/src/ui-output.c
 --- a/src/ui-output.c
 +++ b/src/ui-output.c
-@@ -154,6 +154,18 @@ void textui_textblock_place(textblock *tb, region orig_area, const char *header)
+@@ -154,6 +154,10 @@ void textui_textblock_place(textblock *tb, region orig_area, const char *header)
   */
  struct keypress textui_textblock_show(textblock *tb, region orig_area, const char *header)
  {
 +#ifdef __EMSCRIPTEN__
-+	enum web_input_mode previous = web_set_input_mode(WEB_INPUT_DETAILS);
-+	const char *previous_prompt = web_set_prompt(header);
 +	(void)orig_area;
-+	screen_save();
-+	web_set_details(tb);
-+	struct keypress ch = inkey();
-+	web_set_prompt(previous_prompt);
-+	web_set_input_mode(previous);
-+	screen_load();
-+	return ch;
++	return web_show_details(tb, header, 0);
 +#else
  	/* xxx on resize this should be recalculated */
  	region area = region_calculate(orig_area);
  
-@@ -220,13 +232,13 @@ struct keypress textui_textblock_show(textblock *tb, region orig_area, const cha
+@@ -220,13 +224,13 @@ struct keypress textui_textblock_show(textblock *tb, region orig_area, const cha
  				area.row + n_lines + 1, area.col);
  		ch = inkey();
  	}
@@ -3687,7 +3713,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  }
  
  
-@@ -427,7 +440,7 @@ void screen_save(void)
+@@ -427,7 +431,7 @@ void screen_save(void)
  {
  	player->upkeep->redraw |= PR_MAP;
  	redraw_stuff(player);
@@ -3696,7 +3722,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  	Term_save();
  	screen_save_depth++;
  }
-@@ -437,7 +450,7 @@ void screen_save(void)
+@@ -437,7 +441,7 @@ void screen_save(void)
   */
  void screen_load(void)
  {
@@ -3705,7 +3731,7 @@ diff --git a/src/ui-output.c b/src/ui-output.c
  	Term_load();
  	screen_save_depth--;
  }
-@@ -448,7 +461,7 @@ void screen_load(void)
+@@ -448,7 +452,7 @@ void screen_load(void)
   */
  void screen_load_all(void)
  {
