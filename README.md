@@ -5,15 +5,15 @@ PocketAngband brings the classic single-player dungeon roguelike [Angband](https
 PocketAngband’s ideas were inspired by [PocketZot](https://github.com/pocketzot/pocketzot).
 
 <p>
-  <a href="screenshots/hello.jpg"><img src="screenshots/hello.jpg" width="220" alt="PocketAngband welcome screen"></a>
-  <a href="screenshots/spellbook.jpg"><img src="screenshots/spellbook.jpg" width="220" alt="Browsing Light Room with the town map above the spellbook"></a>
-  <a href="screenshots/character.jpg"><img src="screenshots/character.jpg" width="220" alt="Elenor’s character sheet with stats and conditions"></a>
+  <a href="screenshots/hello.png"><img src="screenshots/hello.png" width="220" alt="PocketAngband welcome screen"></a>
+  <a href="screenshots/spellbook.png"><img src="screenshots/spellbook.png" width="220" alt="Browsing Light Room with the town map above the spellbook"></a>
+  <a href="screenshots/character.png"><img src="screenshots/character.png" width="220" alt="Dáin’s Dwarf Paladin character sheet with stats, conditions and combat skills"></a>
 </p>
 
 <p>
-  <a href="screenshots/ascii.jpg"><img src="screenshots/ascii.jpg" width="220" alt="A High-Elf Mage faces Sauron at 4,950 feet in ASCII mode"></a>
-  <a href="screenshots/tiles.jpg"><img src="screenshots/tiles.jpg" width="220" alt="The same encounter with Sauron shown with David Gervais' tiles"></a>
-  <a href="screenshots/victory.jpg"><img src="screenshots/victory.jpg" width="220" alt="Dáin, a level 50 Dwarf Paladin, crowned following victory over Morgoth"></a>
+  <a href="screenshots/ascii.png"><img src="screenshots/ascii.png" width="220" alt="Elenor faces Sauron, the Sorcerer at 4,950 feet in ASCII mode"></a>
+  <a href="screenshots/tiles.png"><img src="screenshots/tiles.png" width="220" alt="Elenor fights Morgoth, Lord of Darkness at 5,000 feet using David Gervais' tiles"></a>
+  <a href="screenshots/victory.png"><img src="screenshots/victory.png" width="220" alt="Victory screen for Elenor, a level 50 High-Elf Mage, after defeating Morgoth"></a>
 </p>
 
 ## Play on GitHub Pages
