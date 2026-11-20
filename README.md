@@ -6,8 +6,8 @@ PocketAngband’s ideas were inspired by [PocketZot](https://github.com/pocketzo
 
 <p>
   <a href="screenshots/hello.png"><img src="screenshots/hello.png" width="220" alt="PocketAngband welcome screen"></a>
-  <a href="screenshots/spellbook.png"><img src="screenshots/spellbook.png" width="220" alt="Browsing Light Room with the town map above the spellbook"></a>
-  <a href="screenshots/character.png"><img src="screenshots/character.png" width="220" alt="Dáin’s Dwarf Paladin character sheet with stats, conditions and combat skills"></a>
+  <a href="screenshots/spellbook.png"><img src="screenshots/spellbook.png" width="220" alt="Browsing Light Room and six other learned spells in First Spells"></a>
+  <a href="screenshots/character.png"><img src="screenshots/character.png" width="220" alt="Elenor’s High-Elf Mage character sheet with stats, conditions and combat skills"></a>
 </p>
 
 <p>
