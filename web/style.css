@@ -803,7 +803,9 @@ button > .key-hint {
 #terminal-keys.aim-controls #confirm-key { grid-column: 1 / -1; grid-row: 1; }
 #terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys.birth-choice-controls { grid-template-columns: minmax(0, 1fr); }
-#terminal-keys.birth-stat-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#terminal-keys.birth-choice-controls:has(#confirm-key:not([hidden])), #terminal-keys.birth-stat-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 #terminal-keys.birth-choice-controls > [hidden], #terminal-keys.birth-stat-controls > [hidden] {
     display: none !important;
 }
@@ -1110,7 +1112,25 @@ button.visible-list-row {
 }
 .menu-description { white-space: pre-line; overflow-wrap: anywhere; }
 #birth-choice { color: var(--accent); }
-.birth-preview-hint { display: block; color: var(--muted); font-size: 0.8125rem; }
+main > #stat-method-character {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--panel);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+#stat-method-identity { color: var(--accent); font-size: 1.125rem; }
+#stat-method-character p { margin-top: 0.5rem; }
+#stat-method-bonuses { padding-top: 0.5rem; border-top: 1px solid var(--border); white-space: pre-line; }
+#picker-list.birth-menu .menu-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#picker-list.birth-menu button { text-align: center; }
+.picker-expanded #stat-method-character { display: none; }
+#birth-description { margin-top: 0.25rem; }
 #birth-bonuses { margin-top: 0.25rem; white-space: pre-line; overflow-wrap: anywhere; }
 .birth-stats-header {
     display: flex;
@@ -1266,7 +1286,8 @@ main.picker-expanded .controls { flex: 1; max-height: 100%; }
 #message-dialog form button { width: 100%; }
 .large-text button { font-size: 0.9375rem; }
 .large-text .menu-rows button { font-size: 1rem; }
-.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-bonuses, #messages li) { font-size: 1rem; }
+.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-bonuses, #stat-method-character, #messages li),
+.large-text #picker-list.birth-menu ~ #picker-description { font-size: 1rem; }
 .large-text h2 { font-size: 1rem; }
 .large-text #movement-mode button { font-size: 0.8125rem; }
 .large-text .direction-pad button { font-size: 1.25rem; }

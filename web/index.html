@@ -18,6 +18,12 @@
             <progress id="download-progress" max="100" aria-label="Game download progress" hidden></progress>
             <button id="retry" type="button" hidden>Try again</button>
         </div>
+        <section id="stat-method-character" aria-labelledby="stat-method-identity" hidden>
+            <h2 id="stat-method-identity"></h2>
+            <p id="stat-method-race"></p>
+            <p id="stat-method-class"></p>
+            <p id="stat-method-bonuses"></p>
+        </section>
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">PocketAngband</h2>
@@ -124,7 +130,7 @@
             <p id="menu-description" class="menu-description" aria-live="polite" hidden></p>
             <section id="birth-preview" aria-label="Choice details" hidden>
                 <strong id="birth-choice"></strong>
-                <span class="birth-preview-hint">Tap the highlighted row to confirm.</span>
+                <p id="birth-description"></p>
                 <p id="birth-bonuses"></p>
             </section>
             <section id="birth-stats" class="menu-screen" aria-labelledby="view-title" hidden>

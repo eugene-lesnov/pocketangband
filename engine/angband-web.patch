@@ -602,7 +602,7 @@ index 0f97d18..4026c49 100644
 diff --git a/src/ui-event.h b/src/ui-event.h
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,26 @@
+@@ -36,7 +36,27 @@
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -626,11 +626,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_HISTORY = 0x2000000,
 +	EVT_WEB_TEXT = 0x4000000,
 +	EVT_WEB_CHARACTER = 0x8000000,
++	EVT_WEB_MENU_PREVIEW = 0x10000000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +215,14 @@
+@@ -196,6 +216,14 @@
  	uint8_t mods;
  };
  
@@ -645,7 +646,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +248,9 @@
+@@ -221,6 +249,9 @@
   */
  typedef union {
  	ui_event_type type;
@@ -725,7 +726,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	for (j = 0; j < len; j++) {  
  		const char *name = stat_names_reduced[j];
-@@ -391,6 +399,50 @@ static void class_help(int i, void *db,
+@@ -391,6 +399,55 @@ static void class_help(int i, void *db,
  	text_out_indent = 0;
  }
  
@@ -737,31 +738,36 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 +	my_strcat(birth_help_text, text, sizeof(birth_help_text));
 +}
 +
++static const char *web_birth_detail(struct menu *menu, int row)
++{
++	void (*old_hook)(uint8_t, const char *) = text_out_hook;
++	birth_help_text[0] = '\0';
++	text_out_hook = collect_birth_help;
++	menu->browse_hook(row, menu_priv(menu), NULL);
++	text_out_hook = old_hook;
++	return birth_help_text;
++}
++
 +static void web_render_birth_choices(struct menu *menu)
 +{
 +	const struct birthmenu_data *data = menu_priv(menu);
 +	bool race = menu == &race_menu;
-+	bool preview = menu->browse_hook != NULL;
 +	const char *title = race ? "Choose race" :
 +		menu == &class_menu ? "Choose class" : "Choose stat method";
-+	const char *summary = race ? NULL : player->race->name;
-+	if (menu == &roller_menu)
-+		summary = format("%s / %s", player->race->name, player->class->name);
++	const char *race_name = race ? NULL : player->race->name;
++	const char *class_name = menu == &roller_menu ? player->class->name : NULL;
 +
 +	web_set_menu(menu, menu->cursor, NULL);
-+	web_set_birth_menu(title, summary, preview);
++	web_set_birth_menu(title, race_name, class_name,
++		class_name ? web_birth_detail(&class_menu, player->class->cidx) : NULL);
 +	for (int i = 0; i < menu->count; i++) {
 +		const char *detail;
-+		if (preview) {
-+			void (*old_hook)(uint8_t, const char *) = text_out_hook;
-+			birth_help_text[0] = '\0';
-+			text_out_hook = collect_birth_help;
-+			menu->browse_hook(i, menu_priv(menu), NULL);
-+			text_out_hook = old_hook;
-+			detail = birth_help_text;
++		if (menu->browse_hook) {
++			detail = web_birth_detail(menu, i);
 +		} else {
-+			detail = i == BR_POINTBASED ? "Spend points to adjust your attributes." :
-+				"Roll a random set of attributes.";
++			detail = i == BR_POINTBASED ?
++				"Start with the recommended stats for your class. Spend or redistribute points to adjust them." :
++				"Roll a random set of stats. You can reroll or return to the previous roll before accepting.";
 +		}
 +		web_add_menu_row(i, data->items[i], detail, NULL, 0, true);
 +	}
@@ -776,7 +782,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  /**
   * Display and handle user interaction with a context menu appropriate for the
   * current stage.  That way actions available with certain keys are also
-@@ -501,11 +553,13 @@ static void init_birth_menu(struct menu
+@@ -501,11 +558,13 @@ static void init_birth_menu(struct menu
  	/* Initialise a basic menu */
  	menu_init(menu, MN_SKIN_SCROLL, &birth_iter);
  
@@ -793,7 +799,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Copy across the game's suggested initial selection, etc. */
  	menu->cursor = initial_choice;
-@@ -865,6 +919,36 @@ static enum birth_stage menu_question(en
+@@ -865,6 +924,36 @@ static enum birth_stage menu_question(en
   * ------------------------------------------------------------------------
   * The rolling bit of the roller.
   * ------------------------------------------------------------------------ */
@@ -830,7 +836,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  static enum birth_stage roller_command(bool first_call)
  {
  	enum {
-@@ -906,7 +990,23 @@ static enum birth_stage roller_command(b
+@@ -906,7 +995,23 @@ static enum birth_stage roller_command(b
  	 * events to look like keystrokes.
  	 */
  	while (1) {
@@ -854,7 +860,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1026,6 +1126,34 @@ static enum birth_stage roller_command(b
+@@ -1026,6 +1131,34 @@ static enum birth_stage roller_command(b
   */
  static int buysell[STAT_MAX];
  
@@ -889,7 +895,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  /**
   * This is called whenever a stat changes.  We take the easy road, and just
   * redisplay them all using the standard function.
-@@ -1062,6 +1190,11 @@ static void point_based_points(game_even
+@@ -1062,6 +1195,11 @@ static void point_based_points(game_even
  	const int *inc = data->birthpoints.inc_points;
  	int remaining = data->birthpoints.remaining;
  
@@ -901,7 +907,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	/* Display the costs header */
  	put_str("Cost", COSTS_ROW - 1, COSTS_COL);
  	
-@@ -1071,7 +1204,7 @@ static void point_based_points(game_even
+@@ -1071,7 +1209,7 @@ static void point_based_points(game_even
  		if (spent[i] > 0) {
  			buysell[i] |= 1;
  		}
@@ -910,7 +916,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  			buysell[i] |= 2;
  		}
  		/* Display cost */
-@@ -1139,7 +1272,30 @@ static enum birth_stage point_based_comm
+@@ -1139,7 +1277,30 @@ static enum birth_stage point_based_comm
  	 * to look like keystrokes.
  	 */
  	while (1) {
@@ -941,7 +947,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1385,7 +1541,24 @@ static int edit_text(char *buffer, int b
+@@ -1385,7 +1546,24 @@ static int edit_text(char *buffer, int b
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
@@ -966,7 +972,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1706,16 @@ static enum birth_stage get_history_comm
+@@ -1533,7 +1711,16 @@ static enum birth_stage get_history_comm
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
@@ -983,7 +989,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
-@@ -1566,16 +1748,20 @@ static enum birth_stage get_history_command(void)
+@@ -1566,16 +1753,20 @@ static enum birth_stage get_history_command(void)
   * ------------------------------------------------------------------------ */
  static enum birth_stage get_confirm_command(void)
  {
@@ -1008,7 +1014,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	
  	/* Start over */
  	if (ke.code == 'S' || ke.code == 's') {
-@@ -1633,6 +1819,9 @@
+@@ -1633,6 +1824,9 @@
  			case BIRTH_RESET:
  			{
  				cmdq_push(CMD_BIRTH_RESET);
@@ -1018,7 +1024,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				roller = BIRTH_RESET;
  				
-@@ -1676,8 +1865,13 @@ int textui_do_birth(void)
+@@ -1676,8 +1870,13 @@ int textui_do_birth(void)
  
  				next = menu_question(current_stage, menu, command);
  
@@ -1033,7 +1039,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				/* Make sure the character gets reset before quickstarting */
  				if (next == BIRTH_QUICKSTART) 
-@@ -1739,8 +1933,13 @@
+@@ -1739,8 +1938,13 @@
  					display_player(0);
  
  				next = get_history_command();
@@ -1048,7 +1054,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				break;
  			}
-@@ -1753,6 +1952,11 @@ int textui_do_birth(void)
+@@ -1753,6 +1957,11 @@ int textui_do_birth(void)
  				next = get_confirm_command();
 -				if (next == BIRTH_BACK)
 +				if (next == BIRTH_BACK) {
@@ -1663,7 +1669,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +void web_show_generated_file(const char *title, const char *path, const char *filename);
 +bool web_get_export_filename(const char *suggested, char *filename, size_t size);
 +void web_download_file(const char *path, const char *filename, const char *error);
-+void web_set_birth_menu(const char *title, const char *summary, bool preview);
++void web_set_birth_menu(const char *title, const char *race, const char *class_name, const char *detail);
 +void web_set_birth_stats(const char *race, const char *class_name, int remaining, int cursor);
 +void web_set_birth_name(const char *name, size_t size);
 +void web_set_birth_history(const char *history, size_t size);
@@ -1762,7 +1768,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  	assert(menu->active.width != 0 && menu->active.page_rows != 0);
  
-@@ -782,7 +788,66 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -782,7 +788,67 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
@@ -1800,7 +1806,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  		in = inkey_ex();
 +#ifdef __EMSCRIPTEN__
 +		web_set_input_mode(previous);
-+		if (in.type == EVT_WEB_MENU_ROW) {
++		if (in.type == EVT_WEB_MENU_ROW || in.type == EVT_WEB_MENU_PREVIEW) {
 +			int pos = in.key.code;
 +			int oid = pos;
 +			int count = menu->filter_list ? menu->filter_count : menu->count;
@@ -1813,6 +1819,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +				menu->row_funcs->valid_row(menu, oid) != MN_ROW_VALID)
 +				continue;
 +			menu->cursor = pos;
++			if (in.type == EVT_WEB_MENU_PREVIEW) continue;
 +			out.type = (menu->flags & MN_DBL_TAP) &&
 +				!menu->web_select_once && cursor != pos ? EVT_MOVE : EVT_SELECT;
 +		} else if (in.type == EVT_WEB_MENU_SECTION || in.type == EVT_WEB_STORE_ACTION) {
@@ -1829,7 +1836,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -798,7 +863,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -798,7 +864,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  				continue;
  
  			/* Switch key */
@@ -1838,7 +1845,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  				strchr(menu->switch_keys, (char)in.key.code)) {
  				menu_handle_action(menu, &in);
  				if (popup)
-@@ -1052,10 +1117,32 @@ static const menu_iter dynamic_iter = {
+@@ -1052,10 +1118,32 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
  

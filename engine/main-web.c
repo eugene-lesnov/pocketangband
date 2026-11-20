@@ -922,9 +922,11 @@ void web_add_option_toggle(int row, const char *label, bool checked, bool enable
     }, checked);
 }
 
-EM_JS(void, web_set_birth_menu, (const char *title, const char *summary, bool preview), {
-    Module['inputMenu'].birth = { title: UTF8ToString(title),
-        summary: summary ? UTF8ToString(summary) : "", preview: !!preview };
+EM_JS(void, web_set_birth_menu, (const char *title, const char *race, const char *class_name, const char *detail), {
+    const menu = Module['inputMenu'];
+    menu.birth = { title: UTF8ToString(title), race: race ? UTF8ToString(race) : "",
+        className: class_name ? UTF8ToString(class_name) : "", detail: detail ? UTF8ToString(detail) : "" };
+    menu.choice = !!class_name;
 });
 
 EM_JS(void, web_set_birth_stats, (const char *race, const char *class_name, int remaining, int cursor), {
@@ -1712,7 +1714,7 @@ void web_poll_interrupt(void)
     if (take_interrupt()) Term_keypress(ESCAPE, 0);
 }
 
-EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section,
+EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
         int text_event, int delete_event, int run_direction, int character_event), {
@@ -1744,6 +1746,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int section
             return name_event;
         case "tap": return tap;
         case "menu-row": return row;
+        case "menu-preview": return preview;
         case "delete-save": return delete_event;
         case "menu-section": return section;
         case "store-action": return store_action;
@@ -1885,7 +1888,7 @@ static ui_event_type wait_for_input(void)
 static errr queue_input(void)
 {
     int code = 0, x = 0, y = 0;
-    ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW,
+    ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW, EVT_WEB_MENU_PREVIEW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
         EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION,

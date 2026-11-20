@@ -184,6 +184,34 @@ const mainView = viewTitle.closest(".view");
 const pickerToggle = document.querySelector("#picker-toggle");
 const birthPreview = document.querySelector("#birth-preview");
 const birthChoice = document.querySelector("#birth-choice");
+const birthDescription = document.querySelector("#birth-description");
+const statMethodCharacter = document.querySelector("#stat-method-character");
+const statMethodIdentity = document.querySelector("#stat-method-identity");
+const statMethodRace = document.querySelector("#stat-method-race");
+const statMethodClass = document.querySelector("#stat-method-class");
+const statMethodBonuses = document.querySelector("#stat-method-bonuses");
+const birthDescriptions = new Map([
+    ["Human", "Humans have no racial adjustments to their stats and gain levels quickly."],
+    ["Half-Elf", "Half-Elves are quick and skilled at archery and magic. Their dexterity cannot be drained."],
+    ["Elf", "Elves excel at magic and searching. They resist bright light and their dexterity cannot be drained."],
+    ["Hobbit", "Hobbits are stealthy and accurate with shots and throws. They can identify mushrooms on sight."],
+    ["Gnome", "Gnomes identify wands and staves on sight and use them well. They are immune to paralysis."],
+    ["Dwarf", "Dwarves are tough fighters and miners who can sense buried treasure. They are immune to blindness."],
+    ["Half-Orc", "Half-Orcs are hardy fighters with little talent for stealth or magic. They resist darkness."],
+    ["Half-Troll", "Half-Trolls have great strength and many hit points. They regenerate quickly and need extra food."],
+    ["Dunadan", "Dunedain of the West have especially high constitution, which cannot be drained."],
+    ["High-Elf", "High-Elves see invisible creatures and resist bright light. They need more experience to gain levels."],
+    ["Kobold", "Kobolds are nimble underground dwellers with excellent infravision and resistance to poison."],
+    ["Warrior", "Warriors strike more blows in melee than any other class. They excel with missile weapons and learn no spells."],
+    ["Mage", "Mages rely on spells and magical devices to attack and escape. Intelligence is their primary stat."],
+    ["Druid", "Druids use nature magic to shape their surroundings and take the forms of creatures. They rely on wisdom."],
+    ["Priest", "Priests rely on wisdom and receive their prayers from a deity. They fight well with blessed or hafted weapons."],
+    ["Necromancer", "Necromancers thrive in darkness and command spirits. Their powerful spells can also harm the caster."],
+    ["Paladin", "Paladins combine strong melee fighting with priestly prayers. Strength and wisdom are their primary stats."],
+    ["Rogue", "Rogues use stealth to strike first or steal from monsters. They excel at picking locks and disarming traps."],
+    ["Ranger", "Rangers excel with bows and use spells of survival and forest craft. They are skilled at stealth and searching."],
+    ["Blackguard", "Blackguards favour heavy weapons and shields, and learn destructive spells. They rely on strength and intelligence."],
+]);
 const birthBonuses = document.querySelector("#birth-bonuses");
 const birthStatsScreen = document.querySelector("#birth-stats");
 const birthNameForm = document.querySelector("#birth-name-form");
@@ -321,7 +349,7 @@ let context = {};
 let mapDirectionAction;
 let menu;
 let menuCursor;
-let birthSelection;
+const birthScroll = new Map();
 let openPanel;
 let panelTrigger;
 let characterTrigger;
@@ -1133,7 +1161,7 @@ function getConfirmAction(selectedRow, closesScreen) {
         case "option-number":
         case "rest": return ["Enter", "Done"];
         case "save-slots": return ["Enter", selectedRow?.index > 0 ? "Continue" : "New game"];
-        case "menu": return ["Enter", "Select"];
+        case "menu": return ["Enter", menu?.birth ? "Continue" : "Select"];
         default: return closesScreen ? ["Escape", "Back"] : ["Enter", "Continue"];
     }
 }
@@ -1166,8 +1194,8 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     confirmKey.textContent = label;
     setKeyHint(confirmKey);
     const noAimTarget = aiming && !context.current;
-    confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options || !!menu?.birth ||
-        (resultChild && !context.resultsList?.action) || isDirectionPrompt() || mode === "key" || menu?.choice || directMenu || showTargetControls ||
+    confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options ||
+        (resultChild && !context.resultsList?.action) || isDirectionPrompt() || mode === "key" || (menu?.choice && !menu.birth) || directMenu || showTargetControls ||
         noAimTarget);
     confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget || context.trade?.amount === 0 ||
         (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
@@ -1438,6 +1466,17 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("choosing", choosing);
     main.classList.toggle("picker-expanded", choosing && pickerExpanded);
     mainView.inert = hud.inert = choosing;
+    const statMethod = menu?.birth?.className;
+    mainView.hidden = !!statMethod;
+    statMethodCharacter.hidden = !statMethod;
+    if (statMethod) {
+        const identity = `${menu.birth.race} ${statMethod}`;
+        if (statMethodIdentity.textContent !== identity) statMethodCharacter.scrollTop = 0;
+        statMethodIdentity.textContent = identity;
+        statMethodRace.textContent = birthDescriptions.get(menu.birth.race) ?? "";
+        statMethodClass.textContent = birthDescriptions.get(statMethod) ?? "";
+        statMethodBonuses.textContent = menu.birth.detail.trim();
+    }
     picker.hidden = !choosing;
     knowledgeSearchToggle.hidden = choosing || !!openPanel || menu?.title !== "Knowledge";
     knowledgeSearch.hidden = knowledgeSearchToggle.hidden || !menu?.search;
@@ -1445,8 +1484,9 @@ function updateView(state = world, region = views.target.crop) {
     knowledgeSearchToggle.setAttribute("aria-label", knowledgeSearch.hidden ? "Search Knowledge" : "Close search");
     if (choosing) {
         unavailableScreen.hidden = true;
-        controls.setAttribute("role", "dialog");
-        controls.setAttribute("aria-modal", "true");
+        controls.setAttribute("role", statMethod ? "region" : "dialog");
+        if (statMethod) controls.removeAttribute("aria-modal");
+        else controls.setAttribute("aria-modal", "true");
         controls.setAttribute("aria-labelledby", "picker-heading");
         renderPicker();
         updatePrompt();
@@ -1667,12 +1707,13 @@ function updateDetailsScreen() {
 function renderPicker() {
     const trade = context.trade;
     const tradeTitle = trade && `${trade.verb} ${trade.item}?${trade.usable ? "" : " (Can't use!)"}`;
-    const title = panelTitles[openPanel] || tradeTitle || menu?.selectionTitle || menu?.title || menu?.prompt ||
+    const title = panelTitles[openPanel] || tradeTitle || menu?.birth?.title || menu?.selectionTitle || menu?.title || menu?.prompt ||
         context.prompt?.trim() || (mode === "quantity" ? terminalLine(0) : "") ||
         (menu ? "Choices" : screenTitles.get(mode));
     const resizable = !!menu || !!openPanel || inspectingChoice;
     picker.classList.toggle("resizable", resizable);
     if (menu?.card) pickerHeading.setAttribute("aria-describedby", "knowledge-card-text");
+    else if (menu?.birth) pickerHeading.setAttribute("aria-describedby", "stat-method-identity");
     else pickerHeading.removeAttribute("aria-describedby");
     pickerHeading.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
     pickerToggle.setAttribute("aria-controls", openPanel ? "actions-screen" :
@@ -1682,7 +1723,8 @@ function renderPicker() {
         const action = pickerExpanded ? "Fit to contents" : "Expand to full screen";
         pickerToggle.setAttribute("aria-label", `${title} ${action}`);
     }
-    renderMenu(openPanel ? undefined : menu, inspectingChoice ? context.detail : undefined);
+    const methodDetail = menu?.birth && menu.rows.find(row => row.index === menu.cursor)?.detail;
+    renderMenu(openPanel ? undefined : menu, inspectingChoice ? context.detail : methodDetail);
     tradeDetails.hidden = !trade?.description?.codepoints.length;
     renderDescription(tradeDetails.lastElementChild, trade?.description ?? "");
     tradeQuantityLabel.hidden = !trade || trade.maximum <= 1;
@@ -1817,6 +1859,13 @@ function handleWorkerMessage({ data }) {
             const changed = !!menu?.search !== !!data.menu?.search || data.mode !== mode || data.menu?.choice !== menu?.choice ||
                 data.menu?.birth?.title !== menu?.birth?.title ||
                 data.menu?.title !== menu?.title || !!data.context.outcome !== !!context.outcome;
+            if (changed && menu?.birth && !menu.choice) {
+                birthScroll.set(menu.id, {
+                    cursor: menuCursor, race: menu.birth.race,
+                    list: pageList.screen.scrollTop, details: birthPreview.scrollTop,
+                });
+            }
+            if (data.mode === "save-slots") birthScroll.clear();
             const changedPicker = data.menu?.choice &&
                 (data.menu.selectionTitle !== menu?.selectionTitle ||
                     data.menu.prompt !== menu?.prompt || data.context.prompt !== context.prompt);
@@ -1900,7 +1949,18 @@ function handleWorkerMessage({ data }) {
             if (changed && mode === "results-list") resultsList.focus({ preventScroll: true });
             if (changed && mode === "results-file") resultsFile.focus({ preventScroll: true });
             if (changed && mode === "help") showHelpPage();
-            if (menu?.search) {
+            if (changed && menu?.birth && !menu.choice) {
+                const saved = birthScroll.get(menu.id);
+                const selected = pageList.rows.querySelector('[aria-current="true"]');
+                selected?.focus({ preventScroll: true });
+                if (saved && saved.cursor === menuCursor && saved.race === menu.birth.race) {
+                    pageList.screen.scrollTop = saved.list;
+                    birthPreview.scrollTop = saved.details;
+                } else {
+                    birthPreview.scrollTop = 0;
+                    selected?.scrollIntoView({ block: "nearest" });
+                }
+            } else if (menu?.search) {
                 const selected = pageList.rows.querySelector('[aria-current="true"]');
                 (menu.cursor < 0 ? knowledgeSearch : selected)?.focus({ preventScroll: true });
                 pageList.scrollArea.scrollTop = knowledgeScroll;
@@ -2368,20 +2428,17 @@ main.addEventListener("click", (event) => {
         }
         return;
     }
-    const previewBirthChoice = menu?.birth?.preview && birthSelection !== input.code;
+    if (input.type === "menu-row" && menu?.birth) {
+        if (input.code !== menuCursor) sendInput({ type: "menu-preview", code: input.code });
+        return;
+    }
     const selectingStock = menu?.store && !menu.store.inspectOnly && (!menu.choice || isShopStockChoice(menu));
-    if (input.type === "menu-row" && (selectingStock || previewBirthChoice)) {
+    if (input.type === "menu-row" && selectingStock) {
         if (request === undefined) return;
         menuCursor = input.code;
         for (const row of activeList.rows.querySelectorAll('[data-input="menu-row"]')) {
             if (row === button) row.setAttribute("aria-current", "true");
             else row.removeAttribute("aria-current");
-        }
-        if (previewBirthChoice) {
-            birthSelection = input.code;
-            renderBirthPreview();
-            button.scrollIntoView({ block: "nearest" });
-            return;
         }
     }
     if (menu?.search && input.type === "menu-row") knowledgeScroll = pageList.scrollArea.scrollTop;
@@ -2680,12 +2737,14 @@ async function chooseTiles(input, button) {
 }
 
 function renderBirthPreview() {
-    const row = menu?.birth?.preview && menu.rows.find(({ index }) => index === birthSelection);
+    const row = menu?.birth && menu.rows.find(({ index }) => index === menuCursor);
     birthPreview.hidden = !row;
     if (!row) return;
-    birthChoice.textContent = row.name;
+    const title = [menu.birth.race, row.name].filter(Boolean).join(" ");
+    if (birthChoice.textContent !== title || birthBonuses.textContent !== row.detail) birthPreview.scrollTop = 0;
+    birthChoice.textContent = title;
+    birthDescription.textContent = birthDescriptions.get(row.name) ?? "";
     birthBonuses.textContent = row.detail;
-    birthPreview.scrollTop = 0;
 }
 
 function renderBirthStats(stats, changed) {
@@ -2802,7 +2861,6 @@ function renderMenu(state, description = state?.description ?? "") {
         activeList.state = undefined;
         menuCursor = undefined;
         if (activeList === pageList) {
-            birthSelection = undefined;
             outcomeActions.replaceChildren();
             renderBirthPreview();
         }
@@ -2823,13 +2881,11 @@ function renderMenu(state, description = state?.description ?? "") {
     menuScreen.classList.toggle("scroll-menu-items", scrollItems);
     const scrollArea = scrollItems ? menuItems : menuScreen;
     activeList.scrollArea = scrollArea;
-    if (differentList) birthSelection = undefined;
-    else if (state.birth?.preview && state.cursor !== previous.cursor) birthSelection = state.cursor;
-    menuCursor = birthSelection ?? state.cursor;
+    menuCursor = state.cursor;
     const query = state.search ? knowledgeSearch.value.trim().toLowerCase() : "";
     const results = query ? knowledgeResults(state.rows, query) : undefined;
     const rows = results?.visible ?? (state.search ? state.rows.filter(row => row.sectionOnly) : state.rows);
-    const summary = state.burden || state.birth?.summary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
+    const summary = state.burden || (!state.choice && state.birth?.race) || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.textContent = results?.count ?
         `${results.count} ${results.count === 1 ? "match" : "matches"}` : summary;
     menuSummary.hidden = !menuSummary.textContent;
@@ -2877,15 +2933,16 @@ function renderMenu(state, description = state?.description ?? "") {
             button.setAttribute("aria-pressed", String(row.checked));
             button.classList.toggle("read-only", !row.enabled);
         }
-        if (row.index === menuCursor && !button.disabled && (!state.birth?.preview || birthSelection !== undefined)) {
+        if (row.index === menuCursor && !button.disabled) {
             current = button;
             button.setAttribute("aria-current", "true");
+            if (state.birth) button.setAttribute("aria-describedby", state.choice ? "picker-description" : "birth-description");
         }
         const description = document.createElement("span");
         description.textContent = label;
         if (row.color) description.style.color = row.color;
         if (row.spellInfo !== undefined) button.classList.add("spell-choice");
-        if (row.detail && !state.birth?.preview) {
+        if (row.detail && !state.birth) {
             const detail = document.createElement("small");
             detail.textContent = row.detail;
             if (row.spellInfo) {
@@ -2910,7 +2967,7 @@ function renderMenu(state, description = state?.description ?? "") {
             if (rowKey) button.setAttribute("aria-description", `Shortcut: ${rowKey}`);
         }
         button.setAttribute("aria-label",
-            [label, query && row.group !== label ? row.group : "", state.birth?.preview ? "" : row.detail, row.spellInfo,
+            [label, query && row.group !== label ? row.group : "", state.birth ? "" : row.detail, row.spellInfo,
                 row.checked === undefined ? row.price : "",
                 row.unaffordable ? "You do not have enough gold for this item." : ""]
                 .filter(Boolean).join(", "));
@@ -3552,6 +3609,12 @@ document.addEventListener("keydown", (event) => {
             event.preventDefault();
             if (!event.repeat) sendInput({ type: "key", code: keyCode(shortcut) });
         }
+        return;
+    }
+    if (event.key === "Enter" && menu?.birth &&
+        activeList.rows.contains(event.target) && event.target.closest('[aria-current="true"]')) {
+        event.preventDefault();
+        if (!event.repeat) sendInput({ type: "menu-row", code: menuCursor });
         return;
     }
     if ((event.key === "Enter" || event.key === " ") &&

@@ -121,10 +121,12 @@ self.addEventListener("message", ({ data }) => {
             !Number.isInteger(data.code) || data.code < 0) return;
         const stat = waiting.context.birthStats?.rows[data.code];
         if (!(data.type === "buy-stat" ? stat?.canIncrease : stat?.canDecrease)) return;
-    } else if (["menu-row", "menu-section", "store-action"].includes(data.type)) {
+    } else if (["menu-row", "menu-preview", "menu-section", "store-action"].includes(data.type)) {
         if (!waiting?.menu || waiting.mode === "more" || data.request !== waiting.request) return;
         const { rows, sections, actions } = waiting.menu;
-        if (data.type === "menu-row" && !rows.some((row) => row.index === data.code && row.enabled)) return;
+        if (data.type === "menu-preview" && !waiting.menu.birth) return;
+        if ((data.type === "menu-row" || data.type === "menu-preview") &&
+            !rows.some((row) => row.index === data.code && row.enabled)) return;
         if (data.type === "menu-section" &&
             !sections?.some((section) => section.id === data.code && !section.active)) return;
         if (data.type === "store-action" &&
