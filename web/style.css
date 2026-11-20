@@ -781,7 +781,8 @@ button > .key-hint {
 #terminal-keys > [hidden] { display: block !important; visibility: hidden; }
 #terminal-keys > :is(#edit-history, #birth-start-over, #target-inspect, #nearest, #character-dump)[hidden],
 #terminal-keys.birth-confirmation-controls > [hidden],
-#terminal-keys.options-controls > [hidden] {
+#terminal-keys.options-controls > [hidden],
+main:has(#help-screen:not([hidden])) #terminal-keys > [hidden] {
     display: none !important;
 }
 #terminal-keys.birth-confirmation-controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -802,7 +803,8 @@ button > .key-hint {
 #terminal-keys.single-row-controls > button { flex: 1; }
 #terminal-keys.single-row-controls > #keyboard-toggle { flex: 0 0 60px; }
 #terminal-keys.aim-controls #confirm-key { grid-column: 1 / -1; grid-row: 1; }
-#terminal-keys.options-controls { grid-template-columns: minmax(0, 1fr); }
+#terminal-keys.options-controls,
+main:has(#help-screen:not([hidden])) #terminal-keys { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys.birth-choice-controls { grid-template-columns: minmax(0, 1fr); }
 #terminal-keys.birth-choice-controls:has(#confirm-key:not([hidden])), #terminal-keys.birth-stat-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1061,6 +1063,7 @@ button.visible-list-row {
 .menu-sections { flex-wrap: wrap; padding: 0.25rem; }
 .menu-sections button, #menu-actions button { flex: 1 1 0; padding-inline: 0.35rem; }
 #option-save-status { min-height: 1lh; padding-inline: 0.35rem; color: #cbe7a4; font-size: 0.8125rem; }
+#option-save-status:empty { position: absolute; min-height: 0; padding: 0; }
 .menu-sections button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .menu-rows { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem; }
 .menu-rows button {
