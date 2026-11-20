@@ -27,8 +27,8 @@ body { margin: 0; }
     -webkit-touch-callout: default;
 }
 main {
-    --pad-key-size: clamp(44px, 13vw, 52px);
-    --pad-height: calc(3 * var(--pad-key-size) + 0.5rem);
+    --pad-key-height: clamp(44px, 13vw, 52px);
+    --pad-height: calc(3 * var(--pad-key-height) + 0.5rem);
     --hud-height: 96px;
     --dock-height: max(224px, calc(var(--hud-height) + var(--pad-height)));
     display: flex;
@@ -668,7 +668,7 @@ main:not(.in-world) :is(.view:has(#journal:not([hidden])), .shop-view) #message-
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
-    gap: 0.5rem;
+    column-gap: 1rem;
 }
 .game-controls-row:has(#direction-pad[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .game-controls-row:not(:has(fieldset:not([hidden]))) { display: none; }
@@ -677,8 +677,9 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .direction-pad, .key-row, #play-keys, #map-action-buttons,
 #keyboard-utilities, #terminal-keys { display: grid; gap: 0.25rem; }
 .direction-pad {
-    grid-template-columns: repeat(3, var(--pad-key-size));
-    grid-auto-rows: var(--pad-key-size);
+    grid-template-columns: repeat(3, clamp(44px, calc(20vw - 20px), 60px));
+    grid-auto-rows: var(--pad-key-height);
+    column-gap: clamp(4px, calc(5vw - 12px), 8px);
 }
 .direction-pad button { padding: 0; font: 1.25rem/1 var(--mono); }
 .direction-pad.run-direction button:enabled { border-color: var(--accent); }
@@ -721,7 +722,7 @@ button > .key-hint {
     white-space: nowrap;
 }
 .game-controls-row:has(#direction-pad:not([hidden])) #play-keys {
-    grid-auto-rows: minmax(var(--pad-key-size), auto);
+    grid-auto-rows: minmax(var(--pad-key-height), auto);
     grid-template-columns: minmax(0, 1fr) minmax(90px, 1fr);
 }
 #keyboard-utilities { grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 2fr); }
