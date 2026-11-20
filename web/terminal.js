@@ -1079,9 +1079,8 @@ function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
 
 function updateMapControls(disabled, showKeyboard, stopVisible) {
     const command = mode === "command" && unavailableScreen.hidden;
-    const showMapMenu = command && !openPanel && !stopVisible;
-    const pickingOnMap = !picker.hidden && !views.map.viewport.hidden && !openPanel && !stopVisible;
-    const showPlayActions = showMapMenu && !showKeyboard;
+    const mapCommandsAvailable = command && !openPanel && !stopVisible;
+    const showPlayActions = mapCommandsAvailable && !showKeyboard;
     const inspectingCell = showPlayActions && !!context.mapCell?.actions;
     vitals.disabled = disabled || !(command || context.character);
     stopAction.hidden = !stopVisible;
@@ -1091,9 +1090,8 @@ function updateMapControls(disabled, showKeyboard, stopVisible) {
     walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
-    setActions(openMenu, showMapMenu || pickingOnMap, disabled || pickingOnMap);
-    setActions(openMapLists, (showMapMenu && context.worldView) || pickingOnMap,
-        disabled || pickingOnMap || !!mapDirectionAction);
+    openMenu.disabled = disabled || !mapCommandsAvailable;
+    openMapLists.disabled = openMenu.disabled || !context.worldView || !!mapDirectionAction;
     if (openMapLists.hidden || openMapLists.disabled) setMapListsOpen(false);
     mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
@@ -1246,7 +1244,7 @@ function updateKeyboardControls(disabled, canOpenKeyboard, showKeyboard, stopVis
     setActions(keyboardUtilities, mode === "command" && showKeyboard && !stopVisible, disabled);
     keyboardToggle.hidden = !canOpenKeyboard ||
         (mode === "aim" && !showKeyboard && (context.worldView || views.target.crop));
-    setActions(mapKeyboardToggle, mode === "command" && canOpenKeyboard && !stopVisible, disabled);
+    mapKeyboardToggle.disabled = disabled || mode !== "command" || !canOpenKeyboard || stopVisible;
     for (const toggle of [keyboardToggle, mapKeyboardToggle]) {
         toggle.setAttribute("aria-expanded", String(showKeyboard));
         toggle.setAttribute("aria-label", showKeyboard ? "Hide keyboard" : "Show keyboard");
@@ -1484,7 +1482,9 @@ function updateView(state = world, region = views.target.crop) {
     mapStatus.hidden = hud.hidden;
     if (hud.hidden) monsterHealth.hidden = true;
     viewTitle.textContent = context.listPreview?.title ?? getViewTitle({ character, outcome });
-    zoom.hidden = activeView.viewport.hidden;
+    for (const control of [zoom, openMenu, openMapLists, mapKeyboardToggle]) {
+        control.hidden = activeView.viewport.hidden;
+    }
     if (previous !== activeView) {
         if (activeView === views.target) {
             activeView.zoom = views.map.zoom;

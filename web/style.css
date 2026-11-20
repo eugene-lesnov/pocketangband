@@ -602,6 +602,7 @@ main:not(.in-world) :is(.view:has(#journal:not([hidden])), .shop-view) #message-
     padding-inline: 0.625rem;
     border-color: #9c7749;
 }
+.in-world #message-pause { inset-inline: calc(var(--map-button-size) + 0.5rem); }
 
 .controls {
     display: flex;
