@@ -3001,10 +3001,24 @@ index b2ac4fc..09d4d77 100644
  		return CMD_OK;
  	}
 diff --git a/src/ui-command.c b/src/ui-command.c
-index 182a73a..b24cf5d 100644
+index 182a73a..b956ef4 100644
 --- a/src/ui-command.c
 +++ b/src/ui-command.c
-@@ -177,7 +177,15 @@ void textui_cmd_retire(void)
+@@ -147,9 +147,13 @@ void do_cmd_version(void)
+ 	textblock *tb = textblock_new();
+ 	region local_area = { 0, 0, 0, 0 };
+ 
++#ifdef __EMSCRIPTEN__
++	my_strcpy(header_buf, buildid, sizeof(header_buf));
++#else
+ 	my_strcpy(header_buf,
+ 			  format("You are playing %s.  Type '?' for more info.", buildver),
+ 			  sizeof(header_buf));
++#endif
+ 	textblock_append(tb, "\n");
+ 	textblock_append(tb, "%s", copyright);
+ 	textui_textblock_show(tb, local_area, header_buf);
+@@ -177,7 +181,15 @@ void textui_cmd_retire(void)
  		/* Special Verification for retirement */
  		prt("Please verify RETIRING THIS CHARACTER by typing the '@' sign: ", 0, 0);
  		event_signal(EVENT_INPUT_FLUSH);
@@ -3020,7 +3034,7 @@ index 182a73a..b24cf5d 100644
  		prt("", 0, 0);
  		if (ch.code != '@') return;
  	}
-@@ -195,7 +203,14 @@ void textui_cmd_rest(void)
+@@ -195,7 +207,14 @@ void textui_cmd_rest(void)
  	char out_val[5] = "& ";
  
  	/* Ask for duration */
@@ -3036,7 +3050,7 @@ index 182a73a..b24cf5d 100644
  
  	/* Rest... */
  	if (out_val[0] == '&') {
-@@ -491,24 +506,34 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+@@ -491,24 +510,34 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
  
  	ang_file *fff;
  	char file_name[1024];
@@ -3074,7 +3088,7 @@ index 182a73a..b24cf5d 100644
  		return;
  	}
  
-@@ -529,8 +554,23 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+@@ -529,8 +558,23 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
  	file_delete(file_name);
  	do_cmd_redraw();
  
@@ -3098,7 +3112,7 @@ index 182a73a..b24cf5d 100644
  }
  
  
-@@ -539,6 +579,21 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
+@@ -539,6 +583,21 @@ static void do_cmd_save_screen_html(int mode, term *other_term)
   */
  void do_cmd_save_screen(void)
  {
@@ -3120,7 +3134,7 @@ index 182a73a..b24cf5d 100644
  	char ch = get_char("Dump as (H)TML or (F)orum text? ", "hf", 2, ' ');
  	int mode = 0;
  	term *ml_term;
-@@ -558,4 +613,5 @@ void do_cmd_save_screen(void)
+@@ -558,4 +617,5 @@ void do_cmd_save_screen(void)
  		if (!get_check("Include monster list? ")) ml_term = NULL;
  	}
  	do_cmd_save_screen_html(mode, ml_term);
