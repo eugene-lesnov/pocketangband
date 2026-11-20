@@ -1080,6 +1080,7 @@ function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
 function updateMapControls(disabled, showKeyboard, stopVisible) {
     const command = mode === "command" && unavailableScreen.hidden;
     const showMapMenu = command && !openPanel && !stopVisible;
+    const pickingOnMap = !picker.hidden && !views.map.viewport.hidden && !openPanel && !stopVisible;
     const showPlayActions = showMapMenu && !showKeyboard;
     const inspectingCell = showPlayActions && !!context.mapCell?.actions;
     vitals.disabled = disabled || !(command || context.character);
@@ -1090,8 +1091,9 @@ function updateMapControls(disabled, showKeyboard, stopVisible) {
     walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
-    setActions(openMenu, showMapMenu, disabled);
-    setActions(openMapLists, showMapMenu && context.worldView, disabled || !!mapDirectionAction);
+    setActions(openMenu, showMapMenu || pickingOnMap, disabled || pickingOnMap);
+    setActions(openMapLists, (showMapMenu && context.worldView) || pickingOnMap,
+        disabled || pickingOnMap || !!mapDirectionAction);
     if (openMapLists.hidden || openMapLists.disabled) setMapListsOpen(false);
     mapLists.disabled = openMapLists.disabled;
     heroActions.disabled = !context.worldView;
