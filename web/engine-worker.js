@@ -209,8 +209,8 @@ async function play(afterRun) {
         takeInput() {
             return input.shift();
         },
-        takeInterrupt() {
-            const pending = interruptPending;
+        takeInterrupt(exploring) {
+            const pending = interruptPending || (exploring && backgroundSavePending);
             interruptPending = false;
             return pending;
         },

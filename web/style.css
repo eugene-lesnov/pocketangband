@@ -698,7 +698,15 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 #stop-action { grid-column: 1 / -1; border-color: var(--accent); background: #4c3820; }
 #play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 #play-keys button { min-width: 0; }
-#play-keys.stopping > :not(#stop-action, #movement-mode) { display: none; }
+#quick-actions, #primary-actions { display: contents; }
+#primary-actions:has(#use-action) {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(max-content, 1fr) repeat(2, minmax(44px, 1fr));
+    gap: 0.25rem;
+}
+#primary-actions:has(#use-action) button { padding-inline: 1px; }
+#play-keys.stopping #explore-action { display: none; }
 #play-keys.stopping:has(#movement-mode:not([hidden])) #stop-action { grid-column: auto; }
 #movement-mode {
     display: grid;

@@ -1,0 +1,633 @@
+diff --git a/docs/command.rst b/docs/command.rst
+index 52e13dc..d1d5cb0 100644
+--- a/docs/command.rst
++++ b/docs/command.rst
+@@ -157,16 +157,16 @@ Go down staircase (``>``)
+   :ref:`Pathfinding <pathfinding-player>` has more information about how the
+   path is calculated and what happens when following the path.
+ 
+-Path to nearest unknown grid (``p``)
+-  Unless the :ref:`Autoexplore Commands Option <autoexplore-commands-option>`
+-  is on, this command does nothing.  When that option is on, you are not
+-  confused, and no monsters are in view, ``p`` will determine a path to
+-  the nearest (by turns) known passable grid that has an unknown neighbor
+-  and start you along that path.  If there is no such path, it will try
+-  to find a path to the nearest known passable grid that is next to a closed
+-  door or impassable rubble and that door or rubble has an unknown neighbor.
+-  :ref:`Pathfinding <pathfinding-player>` has more information about how the
+-  path is calculated and what happens when following the path.
++Start exploring (``p``)
++  With the :ref:`Autoexplore Commands Option <autoexplore-commands-option>`
++  enabled, explore follows known routes to the nearest unexplored areas of the
++  current level. If you fail to pick a lock, explore skips that door until
++  you see it open or see the terrain change. It crosses glyphs of warding and
++  avoids damaging terrain, impassable rubble and known traps that can affect
++  you. Seeing a monster, discovering a staircase or an item you would leave
++  on the floor, or being disturbed returns control to you. Press ``p`` to
++  continue, or Escape to stop while moving. Items on your route use the
++  usual pickup rules.
+ 
+ Resting Commands
+ ================
+diff --git a/docs/option.rst b/docs/option.rst
+index 989aef8..5c378a2 100644
+--- a/docs/option.rst
++++ b/docs/option.rst
+@@ -44,8 +44,7 @@ Autoexplore commands ``autoexplore_commands``
+   Modifies how the commands to use staircases work: if not already at
+   the appropriate staircase, attempt to move to the nearest known
+   staircase of the appropriate kind. Adds a command, ``p``, in both
+-  the original and "roguelike" command sets to move to the nearest
+-  unexplored location.
++  the original and "roguelike" command sets to explore the current level.
+ 
+ Use sound ``use_sound``
+   Turns on sound effects, if your system supports them.
+diff --git a/docs/playing.rst b/docs/playing.rst
+index f37148c..ab6bd16 100644
+--- a/docs/playing.rst
++++ b/docs/playing.rst
+@@ -167,8 +167,8 @@ option is off (that is the default), the commands act as described above.
+ When that option is on, ``<`` or ``>`` will use the staircase at the player's
+ location if it is the appropriate kind of staircase or will move to the
+ nearest known staircase of the appropriate kind if the player is not already
+-at that kind of staircase. ``p`` will move to the nearest unexplored location
+-when the autoexplore_commands option is on.
++at that kind of staircase. ``p`` explores the level until you are disturbed,
++you discover a staircase or an item to examine, or no route remains.
+ 
+ .. index::
+    single: roguelike keyset
+@@ -247,8 +247,8 @@ option is off (that is the default), the commands act as described above. When
+ that option is on, ``<`` or ``>`` will use the staircase at the player's
+ location if it is the appropriate kind of staircase or will move to the
+ nearest known staircase of the appropriate kind if the player is not already
+-at that kind of staircase. ``p`` will move to the nearest unexplored location
+-when the autoexplore_commands option is on.
++at that kind of staircase. ``p`` explores the level until you are disturbed,
++you discover a staircase or an item to examine, or no route remains.
+ 
+ .. _disturb-player:
+ .. index::
+@@ -588,7 +588,7 @@ Pathfinding
+ 
+ If you use 'g' from targeting or looking to move to a location, click with
+ the first mouse button on the map, click with the second mouse button on the
+-map and select the option to pathfind, or use '<', '>', or 'p' when the
++map and select the option to pathfind, or use '<' or '>' when the
+ :ref:`Autoexplore Commands Option <autoexplore-commands-option>` is on, the
+ game computes a path to the destination and then launches you along that path.
+ The computation of the path looks for a path which will take the minimum amount
+@@ -617,10 +617,8 @@ process will also be interrupted by other events that
+ :ref:`disturb <disturb-player>`.  If following the path was interrupted and
+ you have not issued another command, repeating the previous command (``n`` in
+ the original keyset, ``^v`` in the roguelike keyset) will recompute the path
+-(if the path was from '<', '>', or 'p', it will find the nearest up staircase,
+-down staircase, or unknown location, respectively, and compute a path to it
+-from your current location; otherwise, it will compute a path to the original
+-destination from your current location) and start along that path.
++(for '<' or '>', it will find the nearest known staircase of that kind)
++and start along that path.
+ 
+ Following a path can automatically open a door or dig out impassable rubble
+ that is in the path.  It will only do so if you know the terrain in all the
+diff --git a/lib/help/commands.txt b/lib/help/commands.txt
+index 5a3ebe9..dc8fb21 100644
+--- a/lib/help/commands.txt
++++ b/lib/help/commands.txt
+@@ -12,8 +12,8 @@ is the default), the commands act as described below.  When that option
+ is on, '<' or '>' will use the staircase at the player's location if it
+ is the appropriate kind of staircase or will move to the nearest known
+ staircase of the appropriate kind if the player is not already at that
+-kind of staircase.  'p' will move to the nearest unexplored location
+-when the autoexplore_commands option is on.
++kind of staircase.  'p' explores the level until you are disturbed,
++you discover a staircase or an item to examine, or no route remains.
+ 
+   a    Aim a wand                      A    Activate an object
+   b    Browse a book                   B    -
+diff --git a/lib/help/r_comm.txt b/lib/help/r_comm.txt
+index 3b16564..dee352f 100644
+--- a/lib/help/r_comm.txt
++++ b/lib/help/r_comm.txt
+@@ -12,8 +12,8 @@ is the default), the commands act as described below.  When that option
+ is on, '<' or '>' will use the staircase at the player's location if it
+ is the appropriate kind of staircase or will move to the nearest known
+ staircase of the appropriate kind if the player is not already at that
+-kind of staircase.  'p' will move to the nearest unexplored location
+-when the autoexplore_commands option is on.
++kind of staircase.  'p' explores the level until you are disturbed,
++you discover a staircase or an item to examine, or no route remains.
+ 
+   a    Zap a rod (Activate)            A    Activate an object
+   b    (walk - south west)             B    (run - south west)
+diff --git a/src/cave-square.c b/src/cave-square.c
+index 9bac394..6e5e952 100644
+--- a/src/cave-square.c
++++ b/src/cave-square.c
+@@ -1273,8 +1273,12 @@ void square_set_feat(struct chunk *c, struct loc grid, int feat)
+  */
+ static void square_set_known_feat(struct chunk *c, struct loc grid, int feat)
+ {
++	struct square *known;
+ 	if (c != cave) return;
+-	player->cave->squares[grid.y][grid.x].feat = feat;
++	known = &player->cave->squares[grid.y][grid.x];
++	if (known->feat != feat)
++		sqinfo_off(known->info, SQUARE_EXPLORE_LOCKED);
++	known->feat = feat;
+ }
+ 
+ /**
+@@ -1573,6 +1577,12 @@ const char *square_apparent_look_in_preposition(struct chunk *c, struct loc grid
+ /* Memorize the terrain */
+ void square_memorize(struct chunk *c, struct loc grid) {
+ 	if (c != cave) return;
++	if (player->upkeep->exploring && !player->upkeep->explore_stair[0]
++			&& square_isseen(c, grid) && square_isstairs(c, grid)
++			&& square(c, grid)->feat != square(player->cave, grid)->feat) {
++		strnfmt(player->upkeep->explore_stair, sizeof(player->upkeep->explore_stair),
++			"%s%s", square_apparent_look_prefix(c, grid), square_apparent_name(c, grid));
++	}
+ 	square_set_known_feat(c, grid, square(c, grid)->feat);
+ }
+ 
+diff --git a/src/cave.h b/src/cave.h
+index 83bb47b..d4ce519 100644
+--- a/src/cave.h
++++ b/src/cave.h
+@@ -160,6 +160,7 @@ struct grid_data {
+ 
+ struct square {
+ 	uint8_t feat;
++	uint8_t explore_neighbors;
+ 	bitflag *info;
+ 	int light;
+ 	int16_t mon;
+diff --git a/src/cmd-cave.c b/src/cmd-cave.c
+index 918fc80..4fe87c3 100644
+--- a/src/cmd-cave.c
++++ b/src/cmd-cave.c
+@@ -203,6 +203,8 @@ static bool do_cmd_open_aux(struct loc grid)
+ 			/* Removed to avoid exploit by repeatedly locking and unlocking */
+ 			/* player_exp_gain(player, 1); */
+ 		} else {
++			if (player->upkeep->exploring)
++				sqinfo_on(square(player->cave, grid)->info, SQUARE_EXPLORE_LOCKED);
+ 			event_signal(EVENT_INPUT_FLUSH);
+ 
+ 			/* Message */
+@@ -1068,6 +1070,7 @@ void move_player(int dir, bool disarm)
+ 	/* Many things can happen on movement */
+ 	if (m_idx > 0) {
+ 		/* Attack monsters */
++		if (player->upkeep->exploring) disturb(player);
+ 		if (monster_is_camouflaged(mon)) {
+ 			become_aware(cave, mon);
+ 
+@@ -1077,10 +1080,17 @@ void move_player(int dir, bool disarm)
+ 			py_attack(player, grid);
+ 		}
+ 	} else if (((trap && disarm) || door) && square_isknown(cave, grid)) {
+-		/* Auto-repeat if not already repeating */
+-		if (cmd_get_nrepeats() == 0)
+-			cmd_set_repeat(99);
+-		do_cmd_alter_aux(dir);
++		if (door && player->upkeep->exploring) {
++			player->upkeep->energy_use = z_info->move_energy;
++			player->upkeep->step_count = 0;
++			if (do_cmd_open_aux(grid) || !square_isopendoor(player->cave, grid))
++				disturb(player);
++		} else {
++			/* Auto-repeat if not already repeating */
++			if (cmd_get_nrepeats() == 0)
++				cmd_set_repeat(99);
++			do_cmd_alter_aux(dir);
++		}
+ 	} else if (trap && player->upkeep->running && !trapsafe) {
+ 		/* Stop running before known traps */
+ 		disturb(player);
+@@ -1147,6 +1157,8 @@ void move_player(int dir, bool disarm)
+ 		if (player->upkeep->running
+ 				&& !player->upkeep->running_firststep
+ 				&& old_dtrap && !new_dtrap) {
++			if (player->upkeep->exploring)
++				msg("You are at the edge of the trap detected area.");
+ 			disturb(player);
+ 			/* No move made so no energy spent. */
+ 			player->upkeep->energy_use = 0;
+@@ -1499,47 +1511,66 @@ void do_cmd_navigate_up(struct command *cmd)
+  */
+ void do_cmd_explore(struct command *cmd)
+ {
+-	/* Do nothing if autoexplore commands disabled. */
+-	if (!OPT(player, autoexplore_commands)) {
++	struct player_upkeep *upkeep = player->upkeep;
++	const char *reason = NULL;
++	struct loc next;
++	struct monster *mon;
++	int dir;
++
++	if (!OPT(player, autoexplore_commands) || (cmd->background_command && !upkeep->exploring))
++		return;
++	if (player->timed[TMD_CONFUSED]) reason = "You cannot explore while confused.";
++	else if (player->timed[TMD_IMAGE]) reason = "You cannot explore while hallucinating.";
++	else if (player->timed[TMD_BLIND] || no_light(player)) reason = "You cannot see!";
++	else if (player_has_monster_in_view(player)) reason = "Something is here.";
++	if (reason) {
++		if (upkeep->exploring) disturb(player);
++		msg("%s", reason);
+ 		return;
+ 	}
+-
+-	/* cancel if confused */
+-	if (player->timed[TMD_CONFUSED]) {
+-		msg("You cannot explore while confused.");
++	if (upkeep->exploring && (upkeep->explore_stair[0] || upkeep->explore_item[0])) {
++		disturb(player);
+ 		return;
+ 	}
+-
+-
+-	/* If we're in a web, deal with that */
+ 	if (square_iswebbed(cave, player->grid)) {
+-		/* Clear the web, finish turn */
++		if (upkeep->exploring) disturb(player);
+ 		msg("You clear the web.");
+ 		square_destroy_trap(cave, player->grid);
+-		player->upkeep->energy_use = z_info->move_energy;
++		upkeep->energy_use = z_info->move_energy;
+ 		return;
+ 	}
+ 
+-
+-	/* Screen for visible monsters */
+-	if (player_has_monster_in_view(player)) {
+-		msg("Something is here.");
++	if (!upkeep->exploring) {
++		assert(!upkeep->steps);
++		upkeep->explore_stair[0] = '\0';
++		upkeep->explore_item[0] = '\0';
++		upkeep->exploring = true;
++		upkeep->running = 1;
++		upkeep->running_firststep = true;
++		upkeep->update |= PU_TORCH;
++	}
++	dir = explore_direction(player);
++	if (!dir) {
++		disturb(player);
++		msg("No apparent path for exploration.");
+ 		return;
+ 	}
+-
+-	assert(!player->upkeep->steps);
+-	player->upkeep->step_count = path_nearest_unknown(player, player->grid,
+-		&player->upkeep->path_dest, &player->upkeep->steps);
+-	if (player->upkeep->step_count > 0) {
+-		player->upkeep->running_firststep = true;
+-		player->upkeep->running = player->upkeep->step_count;
+-		/* Calculate torch radius */
+-		player->upkeep->update |= (PU_TORCH);
+-		run_step(0);
++	next = loc_sum(player->grid, ddgrid[dir]);
++	mon = square_monster(cave, next);
++	if (mon && monster_is_obvious(mon)) {
++		disturb(player);
++		msg("Something is here.");
+ 		return;
+ 	}
+ 
+-	msg("No apparent path for exploration.");
++	upkeep->energy_use = energy_per_move(player);
++	move_player(dir, false);
++	if (upkeep->exploring) {
++		if (!upkeep->running || upkeep->generate_level || player->is_dead || cmdq_push(CMD_EXPLORE))
++			disturb(player);
++		else
++			cmdq_peek()->background_command = 1;
++	}
+ }
+ 
+ 
+diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
+index c122ae1..9e5491e 100644
+--- a/src/cmd-pickup.c
++++ b/src/cmd-pickup.c
+@@ -144,7 +144,7 @@ static const struct object *find_stack_object_in_inventory(const struct object *
+  * Determine if an object can be picked up automatically and return the
+  * number to pick up.
+  */
+-static int auto_pickup_okay(const struct object *obj)
++int auto_pickup_okay(const struct object *obj)
+ {
+         /*
+ 	 * Use the following inscriptions to guide pickup with the last one
+@@ -427,7 +427,7 @@ int do_autopickup(struct player *p)
+ 			int auto_num;
+ 
+ 			/* Disturb */
+-			disturb(p);
++			if (!p->upkeep->exploring) disturb(p);
+ 
+ 			/* Automatically pick up items into the backpack */
+ 			auto_num = auto_pickup_okay(obj);
+diff --git a/src/cmds.h b/src/cmds.h
+index 8e48662..cf053c0 100644
+--- a/src/cmds.h
++++ b/src/cmds.h
+@@ -74,6 +74,7 @@ void do_cmd_study_book(struct command *cmd);
+ void do_cmd_study(struct command *cmd);
+ 
+ /* cmd-pickup.c */
++int auto_pickup_okay(const struct object *obj);
+ int do_autopickup(struct player *p);
+ void do_cmd_pickup(struct command *cmd);
+ void do_cmd_autopickup(struct command *cmd);
+diff --git a/src/game-world.c b/src/game-world.c
+index d384de8..a870631 100644
+--- a/src/game-world.c
++++ b/src/game-world.c
+@@ -1061,6 +1061,8 @@ void on_new_level(void)
+  * Housekeeping on leaving a level
+  */
+ static void on_leave_level(void) {
++	if (player->upkeep->exploring) disturb(player);
++
+ 	/* Cancel any command */
+ 	player_clear_timed(player, TMD_COMMAND, false, false);
+ 
+diff --git a/src/list-square-flags.h b/src/list-square-flags.h
+index 5cada7f..f72ae5e 100644
+--- a/src/list-square-flags.h
++++ b/src/list-square-flags.h
+@@ -32,3 +32,4 @@ SQUARE(PROJECT,		"marked for projection processing")
+ SQUARE(DTRAP,		"trap detected square")
+ SQUARE(NO_STAIRS,	"square is not suitable for placing stairs")
+ SQUARE(CLOSE_PLAYER,	"square is seen and in player's light radius or UNLIGHT detection radius")
++SQUARE(EXPLORE_LOCKED,	"exploration failed to open the door")
+diff --git a/src/mon-util.c b/src/mon-util.c
+index 1c8033b..c5dbc7e 100644
+--- a/src/mon-util.c
++++ b/src/mon-util.c
+@@ -453,8 +453,14 @@ void update_mon(struct monster *mon, struct chunk *c, bool full)
+ 			mflag_on(mon->mflag, MFLAG_VIEW);
+ 
+ 			/* Disturb on appearance */
+-			if (OPT(player, disturb_near))
++			if (player->upkeep->exploring && monster_is_obvious(mon)) {
++				char name[80];
++				monster_desc(name, sizeof(name), mon, MDESC_IND_VIS);
+ 				disturb(player);
++				msg("You see %s.", name);
++			} else if (OPT(player, disturb_near)) {
++				disturb(player);
++			}
+ 
+ 			/* Re-draw monster window */
+ 			player->upkeep->redraw |= PR_MONLIST;
+diff --git a/src/obj-knowledge.c b/src/obj-knowledge.c
+index f87027f..d628ab6 100644
+--- a/src/obj-knowledge.c
++++ b/src/obj-knowledge.c
+@@ -18,6 +18,7 @@
+ 
+ #include "angband.h"
+ #include "cave.h"
++#include "cmds.h"
+ #include "init.h"
+ #include "obj-curse.h"
+ #include "obj-desc.h"
+@@ -900,6 +901,9 @@ void object_see(struct player *p, struct object *obj)
+ {
+ 	struct object *known_obj = p->cave->objects[obj->oidx];
+ 	struct loc grid = obj->grid;
++	bool discovery = p->upkeep->exploring && !p->upkeep->explore_item[0]
++		&& (!known_obj || known_obj->kind != obj->kind
++			|| !loc_eq(known_obj->grid, grid));
+ 
+ 	/* Make new known objects, fully know sensed ones, relocate old ones */
+ 	if (known_obj == NULL) {
+@@ -948,6 +952,12 @@ void object_see(struct player *p, struct object *obj)
+ 			pile_insert_end(&p->cave->squares[grid.y][grid.x].obj, known_obj);
+ 		}
+ 	}
++
++	if (discovery && square_isseen(cave, grid) && !tval_is_money(obj)
++			&& !ignore_item_ok(p, obj) && auto_pickup_okay(obj) < obj->number) {
++		object_desc(p->upkeep->explore_item, sizeof(p->upkeep->explore_item),
++			obj, ODESC_PREFIX | ODESC_BASE, p);
++	}
+ }
+ 
+ /**
+diff --git a/src/player-path.c b/src/player-path.c
+index b679e4c..32cd9e7 100644
+--- a/src/player-path.c
++++ b/src/player-path.c
+@@ -117,6 +117,20 @@ static bool is_valid_pf(struct player *p, struct loc grid, bool only_known,
+ 	return false;
+ }
+ 
++static bool explore_can_enter(struct player *p, struct loc grid)
++{
++	if (!square_in_bounds_fully(p->cave, grid) || !is_valid_pf(p, grid, true, false)
++			|| square_isshop(p->cave, grid)) return false;
++
++	for (const struct trap *trap = square_trap(p->cave, grid); trap; trap = trap->next) {
++		if (trf_has(trap->flags, TRF_VISIBLE) && !trf_has(trap->flags, TRF_GLYPH)
++				&& !player_is_trapsafe(p)) return false;
++	}
++	if (square_iscloseddoor(p->cave, grid))
++		return !sqinfo_has(square(p->cave, grid)->info, SQUARE_EXPLORE_LOCKED);
++	return square_ispassable(p->cave, grid);
++}
++
+ /**
+  * Help compute_unlocked_penalty(), compute_locked_penalty(), and
+  * compute_rubble_penalty():  convert a penalty in standard turns to one in
+@@ -304,8 +318,8 @@ static int compute_rubble_penalty(struct player *p)
+  * only_known is false, grids that the player does not remember and are
+  * not on the boundary of the cave are treated as if they were easily passable.
+  */
+-struct pfdistances *prepare_pfdistances(struct player *p, struct loc start,
+-		bool only_known, bool forbid_traps)
++static struct pfdistances *prepare_distances(struct player *p, struct loc start,
++		bool only_known, bool forbid_traps, bool exploring)
+ {
+ 	struct pfdistances *result;
+ 	struct loc grid;
+@@ -342,8 +356,9 @@ struct pfdistances *prepare_pfdistances(struct player *p, struct loc start,
+ 	for (grid.y = 1; grid.y < result->height - 1; ++grid.y) {
+ 		result->rows[grid.y][0] = -1;
+ 		for (grid.x = 1; grid.x < result->width - 1; ++grid.x) {
+-			result->rows[grid.y][grid.x] = (is_valid_pf(p, grid,
+-				only_known, forbid_traps)) ?  INT_MAX : -1;
++			bool valid = exploring ? explore_can_enter(p, grid) :
++				is_valid_pf(p, grid, only_known, forbid_traps);
++			result->rows[grid.y][grid.x] = valid ? INT_MAX : -1;
+ 		}
+ 		result->rows[grid.y][result->width - 1] = -1;
+ 	}
+@@ -357,7 +372,7 @@ struct pfdistances *prepare_pfdistances(struct player *p, struct loc start,
+ 	/* Precompute quantities to penalize traversing some terrain. */
+ 	unlocked_penalty = compute_unlocked_penalty(p);
+ 	locked_penalty = compute_locked_penalty(p);
+-	rubble_penalty = compute_rubble_penalty(p);
++	rubble_penalty = exploring ? INT_MAX : compute_rubble_penalty(p);
+ 
+ 	/*
+ 	 * Set up a queue with the feasible points that remain to be
+@@ -467,6 +482,12 @@ struct pfdistances *prepare_pfdistances(struct player *p, struct loc start,
+ 	return result;
+ }
+ 
++struct pfdistances *prepare_pfdistances(struct player *p, struct loc start,
++		bool only_known, bool forbid_traps)
++{
++	return prepare_distances(p, start, only_known, forbid_traps, false);
++}
++
+ /**
+  * Return the expected number of movement turns to reach the given grid.
+  *
+@@ -1043,6 +1064,69 @@ int path_nearest_unknown(struct player *p, struct loc start,
+ 	}
+ }
+ 
++static uint8_t unknown_neighbors(struct player *p, struct loc grid)
++{
++	uint8_t mask = 0;
++	for (int i = 0; i < 8; i++) {
++		struct loc next = loc_sum(grid, ddgrid_ddd[i]);
++		if (square_in_bounds_fully(p->cave, next) && !square_isknown(p->cave, next))
++			mask |= 1U << i;
++	}
++	return mask;
++}
++
++static bool explore_frontier(struct player *p, struct loc grid)
++{
++	uint8_t unknown;
++	if (!explore_can_enter(p, grid)) return false;
++	unknown = unknown_neighbors(p, grid);
++	return unknown && unknown != square(p->cave, grid)->explore_neighbors;
++}
++
++int explore_direction(struct player *p)
++{
++	struct player_upkeep *upkeep = p->upkeep;
++	struct pfdistances *distances;
++	int best = INT_MAX;
++	struct loc grid;
++
++	p->cave->squares[p->grid.y][p->grid.x].explore_neighbors = unknown_neighbors(p, p->grid);
++	if (upkeep->steps && upkeep->step_count > 0 && explore_frontier(p, upkeep->path_dest)) {
++		int dir = upkeep->steps[upkeep->step_count - 1];
++		if (explore_can_enter(p, loc_sum(p->grid, ddgrid[dir]))) {
++			upkeep->step_count--;
++			return dir;
++		}
++	}
++	mem_free(upkeep->steps);
++	upkeep->steps = NULL;
++	upkeep->step_count = 0;
++
++	for (int i = 0; i < 8; i++) {
++		grid = loc_sum(p->grid, ddgrid_ddd[i]);
++		if (explore_frontier(p, grid) && square_ispassable(p->cave, grid))
++			return ddd[i];
++	}
++
++	distances = prepare_distances(p, p->grid, true, true, true);
++	if (!distances) return 0;
++	for (grid.y = 1; grid.y < p->cave->height - 1; grid.y++) {
++		for (grid.x = 1; grid.x < p->cave->width - 1; grid.x++) {
++			int turns = pfdistances_to_turncount(distances, grid);
++			if (turns > 0 && turns < best && explore_frontier(p, grid)) {
++				best = turns;
++				upkeep->path_dest = grid;
++			}
++		}
++	}
++	if (best < INT_MAX) {
++		upkeep->step_count = pfdistances_to_path(distances, upkeep->path_dest, &upkeep->steps);
++	}
++	release_pfdistances(distances);
++	if (upkeep->step_count <= 0) return 0;
++	return upkeep->steps[--upkeep->step_count];
++}
++
+ /**
+  * Compute the path from one location to another using the given player's
+  * knowledge of the cave.
+diff --git a/src/player-path.h b/src/player-path.h
+index 7679b38..c02a4cb 100644
+--- a/src/player-path.h
++++ b/src/player-path.h
+@@ -38,6 +38,7 @@ int path_nearest_unknown(struct player *p, struct loc start,
+ int find_path(struct player *p, struct loc start, struct loc dest,
+ 		int16_t **step_dirs);
+ int pathfind_direction_to(struct loc from, struct loc to);
++int explore_direction(struct player *p);
+ void run_step(int dir);
+ 
+ #endif /* !PLAYER_PATH_H */
+diff --git a/src/player-util.c b/src/player-util.c
+index 3da8c22..bd6c23b 100644
+--- a/src/player-util.c
++++ b/src/player-util.c
+@@ -1618,6 +1618,7 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+ 		event_remove_handler_type(EVENT_LEAVE_STORE);
+ 	} else {
+ 		if (is_involuntary) {
++			if (p->upkeep->exploring) disturb(p);
+ 			cmdq_flush();
+ 		}
+ 		square_know_pile(cave, p->grid, NULL);
+@@ -1644,6 +1645,8 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+  */
+ void disturb(struct player *p)
+ {
++	bool was_exploring = p->upkeep->exploring;
++
+ 	/* Cancel repeated commands */
+ 	cmd_cancel_repeat();
+ 
+@@ -1654,7 +1657,8 @@ void disturb(struct player *p)
+ 	}
+ 
+ 	/* Cancel running */
+-	if (p->upkeep->running) {
++	if (p->upkeep->running || was_exploring) {
++		p->upkeep->exploring = false;
+ 		p->upkeep->running = 0;
+ 		mem_free(p->upkeep->steps);
+ 		p->upkeep->steps = NULL;
+@@ -1672,6 +1676,13 @@ void disturb(struct player *p)
+ 
+ 	/* Flush input */
+ 	event_signal(EVENT_INPUT_FLUSH);
++
++	if (was_exploring) {
++		const char *stair = p->upkeep->explore_stair;
++		const char *item = p->upkeep->explore_item;
++		if (*stair || *item)
++			msg("You see %s%s%s.", stair, (*stair && *item) ? " and " : "", item);
++	}
+ }
+ 
+ /**
+diff --git a/src/player.h b/src/player.h
+index 36a6151..8ec8aa1 100644
+--- a/src/player.h
++++ b/src/player.h
+@@ -481,6 +481,9 @@ struct player_upkeep {
+ 
+ 	int running;			/* Running counter */
+ 	bool running_firststep;		/* Is this our first step running or following a precomputed path? */
++	bool exploring;
++	char explore_stair[80];
++	char explore_item[128];
+ 
+ 	struct object **quiver;	/* Quiver objects */
+ 	struct object **inven;	/* Inventory objects */

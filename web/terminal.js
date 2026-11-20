@@ -89,6 +89,8 @@ const cancelKey = document.querySelector("#cancel-key");
 const editHistory = document.querySelector("#edit-history");
 const confirmKey = document.querySelector("#confirm-key");
 const playKeys = document.querySelector("#play-keys");
+const quickActionKeys = document.querySelector("#quick-actions");
+const primaryActions = document.querySelector("#primary-actions");
 const heroActions = document.querySelector("#hero-actions");
 const useAction = document.querySelector("#use-action");
 const combatAction = document.querySelector("#combat-action");
@@ -106,6 +108,7 @@ const mapLists = document.querySelector("#map-lists");
 const mapKeyboardToggle = document.querySelector("#map-keyboard-toggle");
 const openMenu = document.querySelector("#open-menu");
 const stopAction = document.querySelector("#stop-action");
+const exploreAction = document.querySelector("#explore-action");
 const nearest = document.querySelector("#nearest");
 const targetActions = document.querySelector("#target-actions");
 const previousTarget = document.querySelector("#previous-target");
@@ -361,6 +364,7 @@ let saveNoticeTimer;
 let running = false;
 let runMode = false;
 let runningFromPad = false;
+let exploring = false;
 let playingGame = false;
 let saving = false;
 let deletingSave = false;
@@ -1046,7 +1050,7 @@ function updateControls() {
     const editingName = !characterNameEditor.hidden;
     const canOpenKeyboard = unavailableScreen.hidden && !isTextEntry(mode) && !modesWithoutKeyboard.has(mode) && !openPanel &&
         !menu?.birth && !menu?.noKeyboard && !outcome && !resultChild;
-    const showKeyboard = keyboardOpen && canOpenKeyboard;
+    const showKeyboard = keyboardOpen && canOpenKeyboard && !exploring;
     const stopVisible = running || !stopAction.hidden;
     const showTargetControls = mode === "target" && !showKeyboard && !openPanel && !stopVisible;
 
@@ -1111,12 +1115,15 @@ function updateMapControls(disabled, showKeyboard, stopVisible) {
     const mapCommandsAvailable = command && !openPanel && !stopVisible;
     const showPlayActions = mapCommandsAvailable && !showKeyboard;
     const inspectingCell = showPlayActions && !!context.mapCell?.actions;
+    const focusStop = exploring && document.activeElement === exploreAction;
     vitals.disabled = disabled || !(command || context.character);
     stopAction.hidden = !stopVisible;
     setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
     playKeys.classList.toggle("stopping", stopVisible);
-    movementMode.hidden = !(showPlayActions || runningFromPad);
-    walkMode.disabled = runModeButton.disabled = stopVisible ? stopAction.disabled : disabled;
+    setActions(quickActionKeys, showPlayActions || exploring, disabled || exploring);
+    movementMode.hidden = !(showPlayActions || runningFromPad || exploring);
+    walkMode.disabled = runModeButton.disabled = exploring || (stopVisible ? stopAction.disabled : disabled);
+    if (focusStop) stopAction.focus({ preventScroll: true });
     walkMode.setAttribute("aria-pressed", String(!runMode));
     runModeButton.setAttribute("aria-pressed", String(runMode));
     openMenu.disabled = disabled || !mapCommandsAvailable;
@@ -1838,7 +1845,8 @@ function handleWorkerMessage({ data }) {
             const restoreSaveFocus = deletingSave && data.mode === "save-slots";
             const restorePlayFocus = document.activeElement === stopAction ||
                 ((running || mode === "run-direction") && document.activeElement === document.body);
-            const playFocus = runningFromPad ? (runMode ? runModeButton : walkMode) : heroActions;
+            const playFocus = exploring ? exploreAction :
+                runningFromPad ? (runMode ? runModeButton : walkMode) : heroActions;
             clearPendingInput();
             const wasChoosing = isChoosing();
             const returningToStock = data.menu?.store && !data.menu.choice &&
@@ -2104,6 +2112,7 @@ function clearPendingInput() {
     pendingInput = undefined;
     running = false;
     runningFromPad = false;
+    exploring = false;
     stopAction.hidden = true;
     stopAction.disabled = false;
 }
@@ -2129,7 +2138,9 @@ function sendInput(input) {
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
     runningFromPad = input.type === "run-direction";
-    running = runningFromPad ||
+    exploring = mode === "command" && input.type === "key" && input.code === keyCode("p") &&
+        !!world?.quickActions?.canExplore;
+    running = runningFromPad || exploring ||
         (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
         (mode === "run-direction" && (input.type === "aim-cell" ||
             (input.type === "key" && input.code !== keyCode("Escape"))));
@@ -2601,7 +2612,17 @@ function commandKey([key, , alternative], roguelike) {
 }
 
 function renderQuickActions({ roguelike, quickActions }) {
-    const { spell, launcher } = quickActions;
+    const { spell, launcher, canExplore = false } = quickActions;
+    if (primaryActions.contains(useAction) !== canExplore) {
+        if (canExplore) {
+            heroActions.after(useAction);
+            combatAction.before(repeatAction);
+        } else {
+            primaryActions.after(useAction);
+            combatAction.after(repeatAction);
+        }
+    }
+    exploreAction.hidden = !canExplore;
     const spellAction = spell === "look" ? undefined : spellCommands[spell];
     const combat = spell === "cast" && spellAction ? spellAction :
         launcher ? fireCommand : spellAction ?? throwCommand;
@@ -2665,6 +2686,7 @@ function renderActionsPanel() {
         commands = gameMenu;
     } else if (openPanel === "commands") {
         commands = [...extraCommands];
+        if (world?.quickActions?.canExplore) commands.push(["p", "Start exploring"]);
         if (world?.quickActions?.canSteal) commands.push(stealCommand);
         commands.push(["Enter", "All Angband commands"]);
     }
@@ -2688,7 +2710,7 @@ function renderActionsPanel() {
     if (openPanel === "commands") {
         const grouped = [];
         for (const [title, keys] of [
-            ["Explore", [".", "R", "l", "[", "]", "<", ">", "/"]],
+            ["Explore", ["p", ".", "R", "l", "[", "]", "<", ">", "/"]],
             ["Fight", ["m", "f", "v", "h", "*", "s"]],
             ["Items", ["U", "r", "q", "u", "a", "z", "E", "A", "F", "g", "d", "K"]],
             ["Interact", ["+", "T", "D", "o", "c"]],

@@ -343,11 +343,16 @@
                         <button id="confirm-target" type="button" data-key="t">Select target</button>
                     </fieldset>
                     <fieldset id="play-keys" aria-label="Game controls" disabled hidden>
-                        <button id="hero-actions" type="button" aria-controls="map-cell-actions" aria-expanded="false">Actions</button>
-                        <button type="button" data-key="i" aria-label="Display inventory listing">Pack</button>
-                        <button id="use-action" type="button" data-key="U" aria-label="Use an item">Use</button>
-                        <button id="combat-action" type="button" data-key="v" aria-label="Throw an item">Throw</button>
-                        <button id="repeat-action" type="button" data-key="n" aria-label="Repeat previous command">Repeat</button>
+                        <fieldset id="quick-actions" aria-label="Quick actions" disabled hidden>
+                            <div id="primary-actions">
+                                <button id="hero-actions" type="button" aria-controls="map-cell-actions" aria-expanded="false">Actions</button>
+                                <button type="button" data-key="i" aria-label="Display inventory listing">Pack</button>
+                            </div>
+                            <button id="use-action" type="button" data-key="U" aria-label="Use an item">Use</button>
+                            <button id="combat-action" type="button" data-key="v" aria-label="Throw an item">Throw</button>
+                            <button id="repeat-action" type="button" data-key="n" aria-label="Repeat previous command">Repeat</button>
+                        </fieldset>
+                        <button id="explore-action" type="button" data-key="p" aria-label="Start exploring" hidden>Explore</button>
                         <button id="stop-action" type="button" hidden>Stop</button>
                         <div id="movement-mode" role="group" aria-label="Direction pad movement">
                             <button id="walk-mode" type="button" aria-pressed="true">Walk</button>

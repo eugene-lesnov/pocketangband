@@ -34,7 +34,7 @@ mkdir -p "$source_dir"/{.github/workflows,angband,deploy,engine,web,emscripten}
 cp "$project_dir"/{build.sh,COPYING,ATTRIBUTION.md} "$source_dir/"
 cp "$project_dir"/.github/workflows/pages.yml "$source_dir/.github/workflows/"
 cp "$project_dir"/deploy/release.py "$source_dir/deploy/"
-cp "$project_dir"/engine/{angband-web.patch,main-web.c,versions.sh} "$source_dir/engine/"
+cp "$project_dir"/engine/{angband-web.patch,angband-explore.patch,main-web.c,versions.sh} "$source_dir/engine/"
 cp "$project_dir"/web/{index.html,licenses.html,manifest.webmanifest,icon-192.png,icon-512.png,style.css,terminal.js,inscriptions.js,frame-renderer.js,tiles.js,offline.js,engine-worker.js,sw.js} "$source_dir/web/"
 printf '%s\n' "$pocketangband_version" > "$source_dir/VERSION"
 
@@ -57,19 +57,27 @@ else
         ':(glob)lib/gamedata/*.txt' ':(glob)lib/customize/*.prf' \
         ':(glob)lib/screens/*.txt' ':(glob)lib/help/*.txt' lib/tiles/list.txt \
         ':(glob)lib/tiles/'{old,adam-bolt,gervais}'/*.prf' \
-        lib/tiles/{old/8x8,adam-bolt/16x16,gervais/32x32}.png docs/copying.rst \
+        lib/tiles/{old/8x8,adam-bolt/16x16,gervais/32x32}.png docs/{copying,command,option,playing}.rst \
         | tar -xf - -C "$source_dir/angband"
 
     (
         cd -- "$source_dir/angband"
-        patch="$source_dir/engine/angband-web.patch"
-        git apply "$patch"
-        git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
-            {
-                printf '/* Modified by PocketAngband on %s for the WebAssembly port. */\n\n' "$angband_patch_date"
-                cat "$path"
-            } > "$path.noticed"
-            mv -- "$path.noticed" "$path"
+        patches=("$source_dir"/engine/angband-{explore,web}.patch)
+        for patch in "${patches[@]}"; do git apply "$patch"; done
+        for patch in "${patches[@]}"; do
+            notice="Modified by PocketAngband on $angband_patch_date for the WebAssembly port."
+            if [[ $patch == */angband-explore.patch ]]; then
+                notice="Modified by PocketAngband on 2026-11-21 for continuous exploration."
+            fi
+            git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
+                case "$path" in
+                    src/*) printf '/* %s */\n\n' "$notice" > "$path.noticed" ;;
+                    docs/*) printf '.. %s\n\n' "$notice" > "$path.noticed" ;;
+                    lib/help/*) printf '\n%s\n' "$notice" >> "$path"; continue ;;
+                esac
+                cat "$path" >> "$path.noticed"
+                mv -- "$path.noticed" "$path"
+            done
         done
     )
 fi

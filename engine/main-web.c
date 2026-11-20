@@ -1044,10 +1044,10 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
 });
 
 EM_JS(void, send_quick_actions, (const char *spell_action,
-        bool launcher, bool can_steal, const char *repeat), {
+        bool launcher, bool can_steal, bool can_explore, const char *repeat), {
     Module['worldQuickActions'] = {
         spell: UTF8ToString(spell_action),
-        launcher: !!launcher, canSteal: !!can_steal,
+        launcher: !!launcher, canSteal: !!can_steal, canExplore: !!can_explore,
         repeat: repeat ? UTF8ToString(repeat) : "",
     };
 });
@@ -1096,7 +1096,8 @@ static void publish_quick_actions(void)
         }
     }
 
-    send_quick_actions(spell_action, launcher, player_has(player, PF_STEAL), web_repeat_label());
+    send_quick_actions(spell_action, launcher, player_has(player, PF_STEAL),
+        OPT(player, autoexplore_commands), web_repeat_label());
 }
 
 enum { LOW_LIGHT_FUEL = 50 };
@@ -1736,15 +1737,15 @@ void web_run_direction(int direction)
     pace_run = true;
 }
 
-EM_JS(bool, take_interrupt, (void), {
-    return Module['takeInterrupt']();
+EM_JS(bool, take_interrupt, (bool exploring), {
+    return Module['takeInterrupt'](exploring);
 });
 
 void web_poll_interrupt(void)
 {
     if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
     double now = emscripten_get_now();
-    if (pace_run && player->upkeep->running) {
+    if ((pace_run || player->upkeep->exploring) && player->upkeep->running) {
         if (web_has_overhead_map()) {
             term *map = angband_term[WEB_MAP_TERM];
             handle_stuff(player);
@@ -1759,7 +1760,7 @@ void web_poll_interrupt(void)
         last_interrupt_poll = now;
         emscripten_sleep(1);
     }
-    if (take_interrupt()) Term_keypress(ESCAPE, 0);
+    if (take_interrupt(player->upkeep->exploring)) Term_keypress(ESCAPE, 0);
 }
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview, int section,
