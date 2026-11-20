@@ -24,6 +24,7 @@
 #include "object.h"
 #include "player.h"
 #include "player-calcs.h"
+#include "player-properties.h"
 #include "player-spell.h"
 #include "player-timed.h"
 #include "player-util.h"
@@ -922,12 +923,61 @@ void web_add_option_toggle(int row, const char *label, bool checked, bool enable
     }, checked);
 }
 
-EM_JS(void, web_set_birth_menu, (const char *title, const char *race, const char *class_name, const char *detail), {
+EM_JS(void, set_birth_menu, (const char *title, const char *race, const char *class_name,
+        bool method, int hit_die, int xp_modifier, int infra), {
     const menu = Module['inputMenu'];
-    menu.birth = { title: UTF8ToString(title), race: race ? UTF8ToString(race) : "",
-        className: class_name ? UTF8ToString(class_name) : "", detail: detail ? UTF8ToString(detail) : "" };
-    menu.choice = !!class_name;
+    menu.birth = { title: UTF8ToString(title), race: UTF8ToString(race),
+        className: class_name ? UTF8ToString(class_name) : "", hitDie: hit_die,
+        xpModifier: xp_modifier, infravision: infra, stats: [], skills: [], abilities: [] };
+    menu.choice = !!method;
 });
+
+EM_JS(void, add_birth_modifier, (bool stat, const char *label, int value), {
+    const birth = Module['inputMenu'].birth;
+    (stat ? birth.stats : birth.skills).push({ label: UTF8ToString(label), value });
+});
+
+EM_JS(void, add_birth_ability, (const char *name), {
+    Module['inputMenu'].birth.abilities.push(UTF8ToString(name));
+});
+
+void web_set_birth_menu(const char *title, const struct player_race *race,
+        const struct player_class *class, bool method)
+{
+    static const struct { int index; const char *label; } skills[] = {
+        { SKILL_TO_HIT_MELEE, "Melee" }, { SKILL_TO_HIT_BOW, "Shooting" },
+        { SKILL_TO_HIT_THROW, "Throwing" }, { SKILL_DISARM_PHYS, "Disarm – physical" },
+        { SKILL_DISARM_MAGIC, "Disarm – magic" }, { SKILL_DEVICE, "Magic Devices" },
+        { SKILL_SAVE, "Saving Throw" }, { SKILL_STEALTH, "Stealth" },
+        { SKILL_DIGGING, "Digging" }, { SKILL_SEARCH, "Searching" }
+    };
+    set_birth_menu(title, race->name, class ? class->name : NULL, method,
+        race->r_mhp + (class ? class->c_mhp : 0), race->r_exp + (class ? class->c_exp : 0),
+        class ? -1 : race->infra * 10);
+    for (int i = 0; i < STAT_MAX; i++) {
+        char label[4];
+        strnfmt(label, sizeof(label), "%.3s", stat_names[i]);
+        add_birth_modifier(true, label, race->r_adj[i] + (class ? class->c_adj[i] : 0));
+    }
+    for (size_t i = 0; i < N_ELEMENTS(skills); i++) {
+        int index = skills[i].index;
+        add_birth_modifier(false, skills[i].label, race->r_skills[index] + (class ? class->c_skills[index] : 0));
+    }
+    if (class && class->magic.total_spells) {
+        int count;
+        struct magic_realm *realm = class_magic_realms(class, &count);
+        while (realm) {
+            add_birth_ability(format("Learns %s magic", realm->name));
+            struct magic_realm *next = realm->next;
+            mem_free(realm);
+            realm = next;
+        }
+    }
+    for (struct player_ability *ability = player_abilities; ability; ability = ability->next) {
+        if (class ? class_has_ability(class, ability) : race_has_ability(race, ability))
+            add_birth_ability(ability->name);
+    }
+}
 
 EM_JS(void, web_set_birth_stats, (const char *race, const char *class_name, int remaining, int cursor), {
     Module['inputContext'] = { birthStats: { race: UTF8ToString(race), className: UTF8ToString(class_name),

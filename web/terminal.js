@@ -183,13 +183,15 @@ const controls = picker.parentElement;
 const mainView = viewTitle.closest(".view");
 const pickerToggle = document.querySelector("#picker-toggle");
 const birthPreview = document.querySelector("#birth-preview");
+const birthCard = document.querySelector("#birth-card");
 const birthChoice = document.querySelector("#birth-choice");
 const birthDescription = document.querySelector("#birth-description");
+const birthRaceDescription = document.querySelector("#birth-race-description");
+const birthAdjustments = document.querySelector("#birth-adjustments");
+const birthVitals = document.querySelector("#birth-vitals");
+const birthAbilities = document.querySelector("#birth-abilities");
+const birthSkills = document.querySelector("#birth-skills > div");
 const statMethodCharacter = document.querySelector("#stat-method-character");
-const statMethodIdentity = document.querySelector("#stat-method-identity");
-const statMethodRace = document.querySelector("#stat-method-race");
-const statMethodClass = document.querySelector("#stat-method-class");
-const statMethodBonuses = document.querySelector("#stat-method-bonuses");
 const birthDescriptions = new Map([
     ["Human", "Humans have no racial adjustments to their stats and gain levels quickly."],
     ["Half-Elf", "Half-Elves are quick and skilled at archery and magic. Their dexterity cannot be drained."],
@@ -212,7 +214,6 @@ const birthDescriptions = new Map([
     ["Ranger", "Rangers excel with bows and use spells of survival and forest craft. They are skilled at stealth and searching."],
     ["Blackguard", "Blackguards favour heavy weapons and shields, and learn destructive spells. They rely on strength and intelligence."],
 ]);
-const birthBonuses = document.querySelector("#birth-bonuses");
 const birthStatsScreen = document.querySelector("#birth-stats");
 const birthNameForm = document.querySelector("#birth-name-form");
 const birthNameFields = document.querySelector("#birth-name-fields");
@@ -1466,17 +1467,11 @@ function updateView(state = world, region = views.target.crop) {
     main.classList.toggle("choosing", choosing);
     main.classList.toggle("picker-expanded", choosing && pickerExpanded);
     mainView.inert = hud.inert = choosing;
-    const statMethod = menu?.birth?.className;
-    mainView.hidden = !!statMethod;
+    const statMethod = !!menu?.birth && menu.choice;
+    mainView.hidden = statMethod;
     statMethodCharacter.hidden = !statMethod;
-    if (statMethod) {
-        const identity = `${menu.birth.race} ${statMethod}`;
-        if (statMethodIdentity.textContent !== identity) statMethodCharacter.scrollTop = 0;
-        statMethodIdentity.textContent = identity;
-        statMethodRace.textContent = birthDescriptions.get(menu.birth.race) ?? "";
-        statMethodClass.textContent = birthDescriptions.get(statMethod) ?? "";
-        statMethodBonuses.textContent = menu.birth.detail.trim();
-    }
+    birthPreview.hidden = !menu?.birth || statMethod;
+    if (menu?.birth) renderBirthCard(menu.birth, statMethod);
     picker.hidden = !choosing;
     knowledgeSearchToggle.hidden = choosing || !!openPanel || menu?.title !== "Knowledge";
     knowledgeSearch.hidden = knowledgeSearchToggle.hidden || !menu?.search;
@@ -1713,7 +1708,7 @@ function renderPicker() {
     const resizable = !!menu || !!openPanel || inspectingChoice;
     picker.classList.toggle("resizable", resizable);
     if (menu?.card) pickerHeading.setAttribute("aria-describedby", "knowledge-card-text");
-    else if (menu?.birth) pickerHeading.setAttribute("aria-describedby", "stat-method-identity");
+    else if (menu?.birth) pickerHeading.setAttribute("aria-describedby", "birth-choice");
     else pickerHeading.removeAttribute("aria-describedby");
     pickerHeading.textContent = context.castWarning ? `${context.castWarning}\n${title}` : title;
     pickerToggle.setAttribute("aria-controls", openPanel ? "actions-screen" :
@@ -2736,15 +2731,37 @@ async function chooseTiles(input, button) {
     }
 }
 
-function renderBirthPreview() {
-    const row = menu?.birth && menu.rows.find(({ index }) => index === menuCursor);
-    birthPreview.hidden = !row;
-    if (!row) return;
-    const title = [menu.birth.race, row.name].filter(Boolean).join(" ");
-    if (birthChoice.textContent !== title || birthBonuses.textContent !== row.detail) birthPreview.scrollTop = 0;
+function birthModifierRows(rows) {
+    return characterRows(rows.map(({ label, value }) => ({
+        label, value: value < 0 ? `−${-value}` : `+${value}`,
+    })));
+}
+
+function renderBirthCard(birth, statMethod) {
+    const { race, className, stats, skills, abilities, hitDie, xpModifier, infravision } = birth;
+    const container = statMethod ? statMethodCharacter : birthPreview;
+    const title = [race, className].filter(Boolean).join(" ");
+    if (birthCard.parentElement === container && birthChoice.textContent === title) return;
+    container.append(birthCard);
     birthChoice.textContent = title;
-    birthDescription.textContent = birthDescriptions.get(row.name) ?? "";
-    birthBonuses.textContent = row.detail;
+    birthDescription.textContent = birthDescriptions.get(className || race) ?? "";
+    birthRaceDescription.textContent = statMethod ? birthDescriptions.get(race) ?? "" : "";
+    birthRaceDescription.hidden = !birthRaceDescription.textContent;
+
+    const adjustments = birthModifierRows(stats);
+    adjustments.setAttribute("aria-label", className ? "Combined race and class stat adjustments" : "Race stat adjustments");
+    stats.forEach(({ value }, i) => {
+        if (value) adjustments.children[i].classList.add(value > 0 ? "positive" : "negative");
+    });
+    birthAdjustments.replaceChildren(adjustments);
+    const vitals = [{ label: "Hit die", value: hitDie }, { label: "XP modifier", value: `${xpModifier}%` }];
+    if (infravision >= 0) vitals.push({ label: "Infravision", value: `${infravision} ft` });
+    birthVitals.replaceChildren(characterRows(vitals));
+    birthAbilities.hidden = !abilities.length;
+    birthAbilities.querySelector("h3").textContent = className ? "Class abilities" : "Race abilities";
+    birthAbilities.querySelector("p").textContent = abilities.join(" · ");
+    birthSkills.replaceChildren(birthModifierRows(skills));
+    container.scrollTop = 0;
 }
 
 function renderBirthStats(stats, changed) {
@@ -2860,10 +2877,7 @@ function renderMenu(state, description = state?.description ?? "") {
     if (!state) {
         activeList.state = undefined;
         menuCursor = undefined;
-        if (activeList === pageList) {
-            outcomeActions.replaceChildren();
-            renderBirthPreview();
-        }
+        if (activeList === pageList) outcomeActions.replaceChildren();
         return;
     }
     if (state === activeList.state) return;
@@ -2885,7 +2899,8 @@ function renderMenu(state, description = state?.description ?? "") {
     const query = state.search ? knowledgeSearch.value.trim().toLowerCase() : "";
     const results = query ? knowledgeResults(state.rows, query) : undefined;
     const rows = results?.visible ?? (state.search ? state.rows.filter(row => row.sectionOnly) : state.rows);
-    const summary = state.burden || (!state.choice && state.birth?.race) || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
+    const raceSummary = !state.choice && state.birth?.className && state.birth.race;
+    const summary = state.burden || raceSummary || (showGold ? `Gold Remaining: ${state.store.gold} au` : "");
     menuSummary.textContent = results?.count ?
         `${results.count} ${results.count === 1 ? "match" : "matches"}` : summary;
     menuSummary.hidden = !menuSummary.textContent;
@@ -3041,7 +3056,6 @@ function renderMenu(state, description = state?.description ?? "") {
     if (focusedAction && !differentList) {
         [...menuActions.children].find((button) => button.dataset.key === focusedAction)?.focus({ preventScroll: true });
     }
-    if (activeList === pageList) renderBirthPreview();
     scrollArea.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
         const bounds = current.getBoundingClientRect();

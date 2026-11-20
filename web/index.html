@@ -18,12 +18,7 @@
             <progress id="download-progress" max="100" aria-label="Game download progress" hidden></progress>
             <button id="retry" type="button" hidden>Try again</button>
         </div>
-        <section id="stat-method-character" aria-labelledby="stat-method-identity" hidden>
-            <h2 id="stat-method-identity"></h2>
-            <p id="stat-method-race"></p>
-            <p id="stat-method-class"></p>
-            <p id="stat-method-bonuses"></p>
-        </section>
+        <div id="stat-method-character" hidden></div>
         <section class="view" aria-labelledby="view-title">
             <div class="view-bar">
                 <h2 id="view-title">PocketAngband</h2>
@@ -128,11 +123,23 @@
                 </section>
             </div>
             <p id="menu-description" class="menu-description" aria-live="polite" hidden></p>
-            <section id="birth-preview" aria-label="Choice details" hidden>
-                <strong id="birth-choice"></strong>
-                <p id="birth-description"></p>
-                <p id="birth-bonuses"></p>
-            </section>
+            <div id="birth-preview" hidden>
+                <article id="birth-card" aria-labelledby="birth-choice">
+                    <h2 id="birth-choice"></h2>
+                    <p id="birth-description"></p>
+                    <div id="birth-adjustments"></div>
+                    <div id="birth-vitals"></div>
+                    <section id="birth-abilities">
+                        <h3></h3>
+                        <p></p>
+                    </section>
+                    <section id="birth-skills">
+                        <h3>Skills</h3>
+                        <div></div>
+                    </section>
+                    <p id="birth-race-description" hidden></p>
+                </article>
+            </div>
             <section id="birth-stats" class="menu-screen" aria-labelledby="view-title" hidden>
                 <form id="birth-name-form">
                     <fieldset id="birth-name-fields" disabled>

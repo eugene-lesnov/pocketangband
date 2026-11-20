@@ -1111,7 +1111,7 @@ button.visible-list-row {
     line-height: 1.4;
 }
 .menu-description { white-space: pre-line; overflow-wrap: anywhere; }
-#birth-choice { color: var(--accent); }
+#birth-preview { max-height: min(56dvh, max(9rem, calc(100dvh - 17rem))); }
 main > #stat-method-character {
     flex: 1;
     min-height: 0;
@@ -1124,14 +1124,38 @@ main > #stat-method-character {
     font-size: 0.875rem;
     line-height: 1.45;
 }
-#stat-method-identity { color: var(--accent); font-size: 1.125rem; }
-#stat-method-character p { margin-top: 0.5rem; }
-#stat-method-bonuses { padding-top: 0.5rem; border-top: 1px solid var(--border); white-space: pre-line; }
+#birth-card { display: grid; gap: 0.375rem; overflow-wrap: anywhere; }
+#birth-choice { color: var(--accent); font-size: 1rem; }
+#birth-race-description { padding-top: 0.375rem; border-top: 1px solid var(--border); }
+#birth-card h3 { margin: 0; color: var(--muted); font-size: 0.875em; }
+#birth-card .character-rows { font-size: inherit; }
+#birth-card .character-rows > div { padding: 0; border: 0; }
+#birth-adjustments dl {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 0.25rem;
+    border-radius: 0.375rem;
+    background: #302b23;
+    text-align: center;
+}
+#birth-adjustments .character-rows > div { display: block; }
+#birth-adjustments dt { color: var(--muted); font-size: 0.8125em; }
+#birth-adjustments dd { text-align: center; font-size: 1.125em; font-weight: 600; }
+#birth-adjustments .positive dd { color: #bed4a8; }
+#birth-adjustments .negative dd { color: #eda99c; }
+#birth-vitals dl { display: flex; flex-wrap: wrap; gap: 0.125rem 1rem; }
+#birth-vitals .character-rows > div { display: flex; gap: 0.375rem; }
+#birth-vitals dt { color: var(--muted); }
+#birth-skills { border-top: 1px solid var(--border); padding-top: 0.375rem; }
+#birth-skills dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.125rem 1rem;
+}
+#birth-skills .character-rows > div { grid-template-columns: minmax(0, 1fr) auto; gap: 0.25rem; }
 #picker-list.birth-menu .menu-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #picker-list.birth-menu button { text-align: center; }
 .picker-expanded #stat-method-character { display: none; }
-#birth-description { margin-top: 0.25rem; }
-#birth-bonuses { margin-top: 0.25rem; white-space: pre-line; overflow-wrap: anywhere; }
 .birth-stats-header {
     display: flex;
     align-items: center;
@@ -1286,7 +1310,7 @@ main.picker-expanded .controls { flex: 1; max-height: 100%; }
 #message-dialog form button { width: 100%; }
 .large-text button { font-size: 0.9375rem; }
 .large-text .menu-rows button { font-size: 1rem; }
-.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-bonuses, #stat-method-character, #messages li),
+.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-card, #messages li),
 .large-text #picker-list.birth-menu ~ #picker-description { font-size: 1rem; }
 .large-text h2 { font-size: 1rem; }
 .large-text #movement-mode button { font-size: 0.8125rem; }
