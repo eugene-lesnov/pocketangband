@@ -2914,7 +2914,7 @@ index b2ac4fc..22a6d94 100644
 +{
 +	if (!repeat_prev_allowed) return NULL;
 +	const struct command *cmd = last_command_idx >= 0 ? &cmd_queue[last_command_idx] : &last_command;
-+	if (cmd->code == CMD_GO_UP || cmd->code == CMD_GO_DOWN) return NULL;
++	if (cmd->code == CMD_GO_UP || cmd->code == CMD_GO_DOWN || cmd->code == CMD_EXPLORE) return NULL;
 +	return cmd->code == CMD_WALK && repeat_walk_attacked ? "hit" : cmd_verb(cmd->code);
 +}
 +
