@@ -2903,7 +2903,7 @@ index b2ac4fc..22a6d94 100644
  	{ CMD_WIZ_QUERY_SQUARE_FLAG, "query square flag", do_cmd_wiz_query_square_flag, false, false, 0 },
  	{ CMD_WIZ_QUIT_NO_SAVE, "quit without saving", do_cmd_wiz_quit_no_save, false, false, 0 },
  	{ CMD_WIZ_RECALL_MONSTER, "recall monster", do_cmd_wiz_recall_monster, false, false, 0 },
-@@ -261,6 +266,23 @@ static struct command last_command = {
+@@ -261,6 +266,24 @@ static struct command last_command = {
  static bool repeat_prev_allowed = false;
  static bool repeating = false;
  
@@ -2914,6 +2914,7 @@ index b2ac4fc..22a6d94 100644
 +{
 +	if (!repeat_prev_allowed) return NULL;
 +	const struct command *cmd = last_command_idx >= 0 ? &cmd_queue[last_command_idx] : &last_command;
++	if (cmd->code == CMD_GO_UP || cmd->code == CMD_GO_DOWN) return NULL;
 +	return cmd->code == CMD_WALK && repeat_walk_attacked ? "hit" : cmd_verb(cmd->code);
 +}
 +
@@ -2927,7 +2928,7 @@ index b2ac4fc..22a6d94 100644
  
  struct command *cmdq_peek(void)
  {
-@@ -417,6 +439,9 @@ bool cmdq_pop(cmd_context c)
+@@ -417,6 +440,9 @@ bool cmdq_pop(cmd_context c)
  	/* Now process it */
  	if (!cmd->background_command) {
  		last_command_idx = prev_cmd_idx(cmd_tail);
@@ -2937,7 +2938,7 @@ index b2ac4fc..22a6d94 100644
  	}
  	process_command(c, cmd);
  	return true;
-@@ -847,14 +872,21 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
+@@ -847,14 +873,21 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
  		return CMD_OK;
  
  	/* Introduce */
@@ -2960,7 +2961,7 @@ index b2ac4fc..22a6d94 100644
  		cmd_set_arg_string(cmd, arg, tmp);
  		if (cmd_get_arg_string(cmd, arg, str) == CMD_OK)
  			return CMD_OK;
-@@ -905,7 +937,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
+@@ -905,7 +938,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
  	}
  
  	/* We need to do extra work */
@@ -2976,7 +2977,7 @@ index b2ac4fc..22a6d94 100644
  		cmd_set_arg_direction(cmd, arg, *dir);
  		return CMD_OK;
  	}
-@@ -961,7 +1000,18 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+@@ -961,7 +1001,18 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
  			return CMD_OK;
  	}
  
