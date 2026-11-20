@@ -619,6 +619,7 @@ main:not(.in-world) :is(.view:has(#journal:not([hidden])), .shop-view) #message-
     overscroll-behavior: contain;
 }
 .picker-bar { display: flex; flex: none; align-items: center; justify-content: space-between; }
+.picker-bar:has(#picker-toggle:not([hidden])) { padding-block: 0.25rem; }
 #picker-heading {
     min-width: 0;
     padding: 0.625rem;
