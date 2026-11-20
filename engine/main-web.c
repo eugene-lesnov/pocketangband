@@ -1096,9 +1096,7 @@ static void publish_quick_actions(void)
         }
     }
 
-    const struct command *repeat = web_repeat_command();
-    send_quick_actions(spell_action, launcher,
-        player_has(player, PF_STEAL), repeat ? cmd_verb(repeat->code) : NULL);
+    send_quick_actions(spell_action, launcher, player_has(player, PF_STEAL), web_repeat_label());
 }
 
 enum { LOW_LIGHT_FUEL = 50 };

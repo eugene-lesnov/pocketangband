@@ -1530,9 +1530,10 @@ index ec19a5b..a77ce42 100644
  			bool keymap_ok = true;
  			switch (ke.key.code) {
 diff --git a/src/ui-input.h b/src/ui-input.h
+index 956ef26..c566168 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,135 @@
+@@ -24,6 +24,136 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1564,7 +1565,8 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +bool web_confirm_cast(const char *warning, const char *prompt);
 +cmd_code web_set_direction_command(cmd_code code);
 +void web_set_aim_command(struct command *cmd);
-+const struct command *web_repeat_command(void);
++const char *web_repeat_label(void);
++void web_mark_walk_attack(void);
 +struct loc web_direction_grid(int x, int y);
 +void web_set_aim_options(bool selecting, struct loc location);
 +bool web_aim_at_cell(int x, int y, struct loc *location);
@@ -1668,7 +1670,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +196,10 @@ struct command_list
+@@ -67,6 +197,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1679,7 +1681,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +225,7 @@ ui_event inkey_m(void);
+@@ -92,6 +226,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1687,7 +1689,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +236,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +237,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -2853,8 +2855,32 @@ diff --git a/src/cmd-obj.c b/src/cmd-obj.c
  	}
  
  	if (spell_needs_aim(spell_index)) {
+diff --git a/src/cmd-cave.c b/src/cmd-cave.c
+index 918fc80..ecb8eeb 100644
+--- a/src/cmd-cave.c
++++ b/src/cmd-cave.c
+@@ -49,6 +49,9 @@
+ #include "project.h"
+ #include "store.h"
+ #include "trap.h"
++#ifdef __EMSCRIPTEN__
++#include "ui-input.h"
++#endif
+ 
+ /**
+  * Go up one level
+@@ -1074,6 +1077,9 @@ void move_player(int dir, bool disarm)
+ 			/* Camouflaged monster wakes up and becomes aware */
+ 			monster_wake(mon, false, 100);
+ 		} else {
++#ifdef __EMSCRIPTEN__
++			web_mark_walk_attack();
++#endif
+ 			py_attack(player, grid);
+ 		}
+ 	} else if (((trap && disarm) || door) && square_isknown(cave, grid)) {
 diff --git a/src/cmd-core.c b/src/cmd-core.c
-index b2ac4fc..09d4d77 100644
+index b2ac4fc..22a6d94 100644
 --- a/src/cmd-core.c
 +++ b/src/cmd-core.c
 @@ -35,6 +35,9 @@
@@ -2877,21 +2903,41 @@ index b2ac4fc..09d4d77 100644
  	{ CMD_WIZ_QUERY_SQUARE_FLAG, "query square flag", do_cmd_wiz_query_square_flag, false, false, 0 },
  	{ CMD_WIZ_QUIT_NO_SAVE, "quit without saving", do_cmd_wiz_quit_no_save, false, false, 0 },
  	{ CMD_WIZ_RECALL_MONSTER, "recall monster", do_cmd_wiz_recall_monster, false, false, 0 },
-@@ -261,6 +266,13 @@ static struct command last_command = {
+@@ -261,6 +266,23 @@ static struct command last_command = {
  static bool repeat_prev_allowed = false;
  static bool repeating = false;
  
 +#ifdef __EMSCRIPTEN__
-+const struct command *web_repeat_command(void)
++static bool repeat_walk_attacked;
++
++const char *web_repeat_label(void)
 +{
 +	if (!repeat_prev_allowed) return NULL;
-+	return last_command_idx >= 0 ? &cmd_queue[last_command_idx] : &last_command;
++	const struct command *cmd = last_command_idx >= 0 ? &cmd_queue[last_command_idx] : &last_command;
++	return cmd->code == CMD_WALK && repeat_walk_attacked ? "hit" : cmd_verb(cmd->code);
++}
++
++void web_mark_walk_attack(void)
++{
++	int idx = prev_cmd_idx(cmd_tail);
++	if (idx == last_command_idx && cmd_queue[idx].code == CMD_WALK)
++		repeat_walk_attacked = true;
 +}
 +#endif
  
  struct command *cmdq_peek(void)
  {
-@@ -847,14 +859,21 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
+@@ -417,6 +439,9 @@ bool cmdq_pop(cmd_context c)
+ 	/* Now process it */
+ 	if (!cmd->background_command) {
+ 		last_command_idx = prev_cmd_idx(cmd_tail);
++#ifdef __EMSCRIPTEN__
++		repeat_walk_attacked = false;
++#endif
+ 	}
+ 	process_command(c, cmd);
+ 	return true;
+@@ -847,14 +872,21 @@ int cmd_get_string(struct command *cmd, const char *arg, const char **str,
  		return CMD_OK;
  
  	/* Introduce */
@@ -2914,7 +2960,7 @@ index b2ac4fc..09d4d77 100644
  		cmd_set_arg_string(cmd, arg, tmp);
  		if (cmd_get_arg_string(cmd, arg, str) == CMD_OK)
  			return CMD_OK;
-@@ -905,7 +924,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
+@@ -905,7 +937,14 @@ int cmd_get_direction(struct command *cmd, const char *arg, int *dir,
  	}
  
  	/* We need to do extra work */
@@ -2930,7 +2976,7 @@ index b2ac4fc..09d4d77 100644
  		cmd_set_arg_direction(cmd, arg, *dir);
  		return CMD_OK;
  	}
-@@ -961,7 +987,18 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
+@@ -961,7 +1000,18 @@ int cmd_get_target(struct command *cmd, const char *arg, int *target)
  			return CMD_OK;
  	}
  
