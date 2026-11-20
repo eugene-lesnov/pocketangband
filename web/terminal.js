@@ -365,6 +365,7 @@ let running = false;
 let runMode = false;
 let runningFromPad = false;
 let exploring = false;
+let exploreResting = false;
 let playingGame = false;
 let saving = false;
 let deletingSave = false;
@@ -1456,7 +1457,7 @@ function formatMessage({ text, count }) {
 }
 
 function updateJournal() {
-    const prompt = !hud.hidden && inputPrompt.textContent;
+    const prompt = exploreResting ? "Resting…" : !hud.hidden && inputPrompt.textContent;
     const action = (!prompt || context.newMessages) ? context.actionMessages : undefined;
     const lines = action?.slice(-2).map(formatMessage) ?? [];
     const text = [prompt, ...lines].filter(Boolean).join("\n");
@@ -1819,6 +1820,12 @@ function stop(message, failed) {
 
 function handleWorkerMessage({ data }) {
     switch (data.type) {
+        case "explore-rest":
+            if (exploring && pendingInput === data.request) {
+                exploreResting = data.resting;
+                updateJournal();
+            }
+            break;
         case "frame": {
             const view = views[data.surface];
             view.frame = data;
@@ -2113,6 +2120,7 @@ function clearPendingInput() {
     running = false;
     runningFromPad = false;
     exploring = false;
+    exploreResting = false;
     stopAction.hidden = true;
     stopAction.disabled = false;
 }

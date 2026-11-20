@@ -1737,8 +1737,8 @@ void web_run_direction(int direction)
     pace_run = true;
 }
 
-EM_JS(bool, take_interrupt, (bool exploring), {
-    return Module['takeInterrupt'](exploring);
+EM_JS(bool, take_interrupt, (bool exploring, bool resting), {
+    return Module['takeInterrupt'](exploring, resting);
 });
 
 void web_poll_interrupt(void)
@@ -1760,7 +1760,14 @@ void web_poll_interrupt(void)
         last_interrupt_poll = now;
         emscripten_sleep(1);
     }
-    if (take_interrupt(player->upkeep->exploring)) Term_keypress(ESCAPE, 0);
+    if (take_interrupt(player->upkeep->exploring, player_is_resting(player))) {
+        if (player->upkeep->exploring) {
+            disturb(player);
+            msg("Cancelled.");
+        } else {
+            Term_keypress(ESCAPE, 0);
+        }
+    }
 }
 
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview, int section,

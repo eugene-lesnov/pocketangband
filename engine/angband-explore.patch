@@ -1,5 +1,5 @@
 diff --git a/docs/command.rst b/docs/command.rst
-index 52e13dc..d1d5cb0 100644
+index 52e13dc..ed14f80 100644
 --- a/docs/command.rst
 +++ b/docs/command.rst
 @@ -157,16 +157,16 @@ Go down staircase (``>``)
@@ -18,14 +18,14 @@ index 52e13dc..d1d5cb0 100644
 -  path is calculated and what happens when following the path.
 +Start exploring (``p``)
 +  With the :ref:`Autoexplore Commands Option <autoexplore-commands-option>`
-+  enabled, explore follows known routes to the nearest unexplored areas of the
-+  current level. If you fail to pick a lock, explore skips that door until
-+  you see it open or see the terrain change. It crosses glyphs of warding and
-+  avoids damaging terrain, impassable rubble and known traps that can affect
-+  you. Seeing a monster, discovering a staircase or an item you would leave
-+  on the floor, or being disturbed returns control to you. Press ``p`` to
-+  continue, or Escape to stop while moving. Items on your route use the
-+  usual pickup rules.
++  enabled, explore rests as needed (like ``R &``) before following known
++  routes to the nearest unexplored areas of the current level. If you fail to
++  pick a lock, explore skips that door until you see it open or see the
++  terrain change. It crosses glyphs of warding and avoids damaging terrain,
++  impassable rubble and known traps that can affect you. Seeing a monster,
++  discovering a staircase or an item you would leave on the floor, or being
++  disturbed returns control to you. Press ``p`` to continue, or Escape to stop
++  while resting or moving. Items on your route use the usual pickup rules.
  
  Resting Commands
  ================
@@ -165,7 +165,7 @@ index 83bb47b..d4ce519 100644
  	int light;
  	int16_t mon;
 diff --git a/src/cmd-cave.c b/src/cmd-cave.c
-index 918fc80..4fe87c3 100644
+index 918fc80..d7f34bd 100644
 --- a/src/cmd-cave.c
 +++ b/src/cmd-cave.c
 @@ -203,6 +203,8 @@ static bool do_cmd_open_aux(struct loc grid)
@@ -216,13 +216,44 @@ index 918fc80..4fe87c3 100644
  			disturb(player);
  			/* No move made so no energy spent. */
  			player->upkeep->energy_use = 0;
-@@ -1499,47 +1511,66 @@ void do_cmd_navigate_up(struct command *cmd)
+@@ -1492,6 +1504,29 @@ void do_cmd_navigate_up(struct command *cmd)
+ 	msg("No known path to upstairs.");
+ }
+ 
++static bool rest_step(int count)
++{
++	if (!player_is_resting(player))
++		player->upkeep->update |= PU_BONUS;
++
++	player_resting_set_count(player, count);
++	if (!player_is_resting(player)) return false;
++
++	player_resting_step_turn(player);
++	handle_stuff(player);
++	return true;
++}
++
++static void continue_exploring(bool can_continue)
++{
++	struct player_upkeep *upkeep = player->upkeep;
++	if (!upkeep->exploring) return;
++	if (!can_continue || upkeep->generate_level || player->is_dead || cmdq_push(CMD_EXPLORE))
++		disturb(player);
++	else
++		cmdq_peek()->background_command = 1;
++}
++
+ /**
+  * Start exploring.
+  *
+@@ -1499,47 +1534,81 @@ void do_cmd_navigate_up(struct command *cmd)
   */
  void do_cmd_explore(struct command *cmd)
  {
 -	/* Do nothing if autoexplore commands disabled. */
 -	if (!OPT(player, autoexplore_commands)) {
 +	struct player_upkeep *upkeep = player->upkeep;
++	bool start_moving = !upkeep->running;
 +	const char *reason = NULL;
 +	struct loc next;
 +	struct monster *mon;
@@ -230,13 +261,9 @@ index 918fc80..4fe87c3 100644
 +
 +	if (!OPT(player, autoexplore_commands) || (cmd->background_command && !upkeep->exploring))
 +		return;
-+	if (player->timed[TMD_CONFUSED]) reason = "You cannot explore while confused.";
-+	else if (player->timed[TMD_IMAGE]) reason = "You cannot explore while hallucinating.";
-+	else if (player->timed[TMD_BLIND] || no_light(player)) reason = "You cannot see!";
-+	else if (player_has_monster_in_view(player)) reason = "Something is here.";
-+	if (reason) {
++	if (player_has_monster_in_view(player)) {
 +		if (upkeep->exploring) disturb(player);
-+		msg("%s", reason);
++		msg("Something is here.");
  		return;
  	}
 -
@@ -247,32 +274,50 @@ index 918fc80..4fe87c3 100644
 +		disturb(player);
  		return;
  	}
--
--
+ 
++	if (!upkeep->exploring) {
++		assert(!upkeep->steps);
++		upkeep->explore_stair[0] = '\0';
++		upkeep->explore_item[0] = '\0';
++		upkeep->exploring = true;
++	}
+ 
 -	/* If we're in a web, deal with that */
++	if (start_moving) {
++		if (!player_is_fully_rested(player)) {
++			continue_exploring(rest_step(REST_COMPLETE));
++			return;
++		}
++		if (player_is_resting(player)) {
++			player_resting_cancel(player, false);
++			upkeep->redraw |= PR_STATE;
++		}
++		upkeep->running = 1;
++		upkeep->running_firststep = true;
++		upkeep->update |= PU_TORCH;
++	}
++	if (player->timed[TMD_CONFUSED]) reason = "You cannot explore while confused.";
++	else if (player->timed[TMD_IMAGE]) reason = "You cannot explore while hallucinating.";
++	else if (player->timed[TMD_BLIND] || no_light(player)) reason = "You cannot see!";
++	if (reason) {
++		disturb(player);
++		msg("%s", reason);
++		return;
++	}
  	if (square_iswebbed(cave, player->grid)) {
 -		/* Clear the web, finish turn */
-+		if (upkeep->exploring) disturb(player);
++		disturb(player);
  		msg("You clear the web.");
  		square_destroy_trap(cave, player->grid);
 -		player->upkeep->energy_use = z_info->move_energy;
 +		upkeep->energy_use = z_info->move_energy;
  		return;
  	}
- 
+-
 -
 -	/* Screen for visible monsters */
 -	if (player_has_monster_in_view(player)) {
 -		msg("Something is here.");
-+	if (!upkeep->exploring) {
-+		assert(!upkeep->steps);
-+		upkeep->explore_stair[0] = '\0';
-+		upkeep->explore_item[0] = '\0';
-+		upkeep->exploring = true;
-+		upkeep->running = 1;
-+		upkeep->running_firststep = true;
-+		upkeep->update |= PU_TORCH;
-+	}
 +	dir = explore_direction(player);
 +	if (!dir) {
 +		disturb(player);
@@ -298,17 +343,43 @@ index 918fc80..4fe87c3 100644
  	}
  
 -	msg("No apparent path for exploration.");
++	if (start_moving) {
++		event_signal(EVENT_CHECK_INTERRUPT);
++		if (!upkeep->exploring) return;
++	}
 +	upkeep->energy_use = energy_per_move(player);
 +	move_player(dir, false);
-+	if (upkeep->exploring) {
-+		if (!upkeep->running || upkeep->generate_level || player->is_dead || cmdq_push(CMD_EXPLORE))
-+			disturb(player);
-+		else
-+			cmdq_peek()->background_command = 1;
-+	}
++	continue_exploring(upkeep->running != 0);
  }
  
  
+@@ -1633,8 +1702,6 @@ void do_cmd_rest(struct command *cmd)
+ 
+ 	/* Do some upkeep on the first turn of rest */
+ 	if (!player_is_resting(player)) {
+-		player->upkeep->update |= (PU_BONUS);
+-
+ 		/* If a number of turns was entered, remember it */
+ 		if (n > 1)
+ 			player_set_resting_repeat_count(player, n);
+@@ -1643,16 +1710,7 @@ void do_cmd_rest(struct command *cmd)
+ 			n = player_get_resting_repeat_count(player);
+ 	}
+ 
+-	/* Set the counter, and stop if told to */
+-	player_resting_set_count(player, n);
+-	if (!player_is_resting(player))
+-		return;
+-
+-	/* Take a turn */
+-	player_resting_step_turn(player);
+-
+-	/* Redraw the state if requested */
+-	handle_stuff(player);
++	if (!rest_step(n)) return;
+ 
+ 	/* Prepare to continue, or cancel and clean up */
+ 	if (player_resting_count(player) > 0) {
 diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
 index c122ae1..9e5491e 100644
 --- a/src/cmd-pickup.c
@@ -573,10 +644,45 @@ index 7679b38..c02a4cb 100644
  
  #endif /* !PLAYER_PATH_H */
 diff --git a/src/player-util.c b/src/player-util.c
-index 3da8c22..bd6c23b 100644
+index 3da8c22..319da61 100644
 --- a/src/player-util.c
 +++ b/src/player-util.c
-@@ -1618,6 +1618,7 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+@@ -1488,6 +1488,18 @@ void player_resting_step_turn(struct player *p)
+ 	player_turns_rested++;
+ }
+ 
++bool player_is_fully_rested(const struct player *p)
++{
++	return (p->chp == p->mhp) &&
++		(p->csp == p->msp || player_has(p, PF_COMBAT_REGEN)) &&
++		!p->timed[TMD_BLIND] && !p->timed[TMD_CONFUSED] &&
++		!p->timed[TMD_POISONED] && !p->timed[TMD_AFRAID] &&
++		!p->timed[TMD_TERROR] && !p->timed[TMD_STUN] &&
++		!p->timed[TMD_CUT] && !p->timed[TMD_SLOW] &&
++		!p->timed[TMD_PARALYZED] && !p->timed[TMD_IMAGE] &&
++		!p->word_recall && !p->deep_descent;
++}
++
+ /**
+  * Handle the conditions for conditional resting (resting with the REST_
+  * constants).
+@@ -1502,14 +1514,7 @@ void player_resting_complete_special(struct player *p)
+ 			/* Stop resting */
+ 			disturb(p);
+ 	} else if (p->upkeep->resting == REST_COMPLETE) {
+-		if ((p->chp == p->mhp) &&
+-			(p->csp == p->msp || player_has(p, PF_COMBAT_REGEN)) &&
+-			!p->timed[TMD_BLIND] && !p->timed[TMD_CONFUSED] &&
+-			!p->timed[TMD_POISONED] && !p->timed[TMD_AFRAID] &&
+-			!p->timed[TMD_TERROR] && !p->timed[TMD_STUN] &&
+-			!p->timed[TMD_CUT] && !p->timed[TMD_SLOW] &&
+-			!p->timed[TMD_PARALYZED] && !p->timed[TMD_IMAGE] &&
+-			!p->word_recall && !p->deep_descent)
++		if (!p->upkeep->exploring && player_is_fully_rested(p))
+ 			/* Stop resting */
+ 			disturb(p);
+ 	} else if (p->upkeep->resting == REST_SOME_POINTS) {
+@@ -1618,6 +1623,7 @@ void player_handle_post_move(struct player *p, bool eval_trap,
  		event_remove_handler_type(EVENT_LEAVE_STORE);
  	} else {
  		if (is_involuntary) {
@@ -584,7 +690,7 @@ index 3da8c22..bd6c23b 100644
  			cmdq_flush();
  		}
  		square_know_pile(cave, p->grid, NULL);
-@@ -1644,6 +1645,8 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+@@ -1644,17 +1650,20 @@ void player_handle_post_move(struct player *p, bool eval_trap,
   */
  void disturb(struct player *p)
  {
@@ -593,7 +699,11 @@ index 3da8c22..bd6c23b 100644
  	/* Cancel repeated commands */
  	cmd_cancel_repeat();
  
-@@ -1654,7 +1657,8 @@ void disturb(struct player *p)
+ 	/* Cancel Resting */
+ 	if (player_is_resting(p)) {
+-		player_resting_cancel(p, true);
++		player_resting_cancel(p, !was_exploring);
+ 		p->upkeep->redraw |= PR_STATE;
  	}
  
  	/* Cancel running */
@@ -603,7 +713,7 @@ index 3da8c22..bd6c23b 100644
  		p->upkeep->running = 0;
  		mem_free(p->upkeep->steps);
  		p->upkeep->steps = NULL;
-@@ -1672,6 +1676,13 @@ void disturb(struct player *p)
+@@ -1672,6 +1681,13 @@ void disturb(struct player *p)
  
  	/* Flush input */
  	event_signal(EVENT_INPUT_FLUSH);
@@ -617,6 +727,18 @@ index 3da8c22..bd6c23b 100644
  }
  
  /**
+diff --git a/src/player-util.h b/src/player-util.h
+index a7e39a1..50024f1 100644
+--- a/src/player-util.h
++++ b/src/player-util.h
+@@ -109,6 +109,7 @@ void player_resting_set_count(struct player *p, int16_t count);
+ void player_resting_cancel(struct player *p, bool disturb);
+ bool player_resting_can_regenerate(const struct player *p);
+ void player_resting_step_turn(struct player *p);
++bool player_is_fully_rested(const struct player *p);
+ void player_resting_complete_special(struct player *p);
+ int player_get_resting_repeat_count(struct player *p);
+ void player_set_resting_repeat_count(struct player *p, int16_t count);
 diff --git a/src/player.h b/src/player.h
 index 36a6151..8ec8aa1 100644
 --- a/src/player.h

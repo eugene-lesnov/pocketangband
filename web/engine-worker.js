@@ -9,6 +9,7 @@ let request = 0;
 let backgroundSavePending = false;
 let interruptPending = false;
 let runningRequest;
+let exploreResting = false;
 let checkpointTimer;
 let readMessageRecall;
 
@@ -209,7 +210,12 @@ async function play(afterRun) {
         takeInput() {
             return input.shift();
         },
-        takeInterrupt(exploring) {
+        takeInterrupt(exploring, resting) {
+            const restingBeforeExplore = !!(exploring && resting);
+            if (exploreResting !== restingBeforeExplore) {
+                exploreResting = restingBeforeExplore;
+                self.postMessage({ type: "explore-rest", resting: exploreResting, request: runningRequest });
+            }
             const pending = interruptPending || (exploring && backgroundSavePending);
             interruptPending = false;
             return pending;
@@ -217,6 +223,7 @@ async function play(afterRun) {
         waitForInput(mode, region, playing, context, menu) {
             interruptPending = false;
             runningRequest = undefined;
+            exploreResting = false;
             if (!playing) backgroundSavePending = false;
             const checkpoint = !checkpointStarted || (currentTurns !== savedTurns &&
                 (currentTurns - attemptedTurns >= 10 || Date.now() - saveAttempt >= 15_000));
