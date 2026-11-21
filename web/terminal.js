@@ -1563,11 +1563,13 @@ function updateScreenContents() {
     updateDetailsScreen();
     helpScreen.hidden = mode !== "help";
     const textEntry = isTextEntry(mode);
+    const writingText = mode === "text";
     if (mode !== "character") characterNameEditor.hidden = true;
-    updateTextViewport();
+    main.classList.toggle("text-entry", writingText);
+    main.classList.toggle("inscribing", writingText && !!context.inscription);
     birthStatsScreen.hidden = !birthStats || !!openPanel;
     nameScreen.hidden = mode !== "name";
-    textScreen.hidden = mode !== "text";
+    textScreen.hidden = !writingText;
 
     const fullScreen = textEntry || !detailsScreen.hidden || !visibleListScreen.hidden || character || splash ||
         birthStats || victory || results || !helpScreen.hidden;
@@ -2212,7 +2214,6 @@ function editCharacterName(open) {
         characterNameValue.setCustomValidity("");
     }
     characterNameEditor.hidden = !open;
-    updateTextViewport();
     updateControls();
     (open ? characterNameValue : characterNameEdit).focus({ preventScroll: true });
 }
@@ -2339,7 +2340,12 @@ function editBirthHistory(open) {
     }
     birthHistoryEditor.hidden = !open;
     updateControls();
-    (open ? birthHistoryValue : birthHistoryEdit).focus();
+    if (open) {
+        birthHistoryValue.focus({ preventScroll: true });
+        birthHistoryEditor.scrollIntoView({ block: "nearest" });
+    } else {
+        birthHistoryEdit.focus();
+    }
 }
 
 birthHistoryEdit.addEventListener("click", () => editBirthHistory(true));
@@ -2363,21 +2369,22 @@ document.querySelector("#birth-history-done").addEventListener("click", () => {
     sendInput({ type: "submit-history", value });
 });
 
-function updateTextViewport() {
-    main.classList.toggle("text-entry", mode === "text");
-    main.classList.toggle("inscribing", mode === "text" && !!context.inscription);
-    main.classList.toggle("text-viewport", !!context.birthStats || isTextEntry(mode) || !characterNameEditor.hidden);
-    if (main.classList.contains("text-viewport") && window.visualViewport) {
-        main.style.setProperty("--text-viewport-height", `${window.visualViewport.height}px`);
-        main.style.setProperty("--text-viewport-top", `${window.visualViewport.offsetTop}px`);
-    } else {
-        main.style.removeProperty("--text-viewport-height");
-        main.style.removeProperty("--text-viewport-top");
-    }
+const visualViewport = window.visualViewport;
+if (visualViewport) {
+    const rootStyle = document.documentElement.style;
+    const updateVisibleViewport = () => {
+        rootStyle.setProperty("--visible-viewport-height", `${visualViewport.height}px`);
+        rootStyle.setProperty("--visible-viewport-top", `${visualViewport.offsetTop}px`);
+    };
+    visualViewport.addEventListener("resize", () => {
+        updateVisibleViewport();
+        if (document.activeElement === birthHistoryValue) {
+            birthHistoryEditor.scrollIntoView({ block: "nearest" });
+        }
+    });
+    visualViewport.addEventListener("scroll", updateVisibleViewport);
+    updateVisibleViewport();
 }
-
-window.visualViewport?.addEventListener("resize", updateTextViewport);
-window.visualViewport?.addEventListener("scroll", updateTextViewport);
 
 let buttonPress;
 const inputButton = "button[data-key], button[data-input]";
@@ -2890,6 +2897,13 @@ function knowledgeResults(rows, query) {
     return { visible, count };
 }
 
+function scrollMenuRowIntoView(row, scrollArea) {
+    const bounds = row.getBoundingClientRect();
+    const screen = scrollArea.getBoundingClientRect();
+    if (bounds.top < screen.top) scrollArea.scrollTop += bounds.top - screen.top;
+    else if (bounds.bottom > screen.bottom) scrollArea.scrollTop += bounds.bottom - screen.bottom;
+}
+
 function renderMenu(state, description = state?.description ?? "") {
     const { screen: menuScreen, description: menuDescription, rows: menuRows,
         sections: menuSections, summary: menuSummary, items: menuItems, empty: menuEmpty } = activeList;
@@ -3088,10 +3102,7 @@ function renderMenu(state, description = state?.description ?? "") {
     }
     scrollArea.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
-        const bounds = current.getBoundingClientRect();
-        const screen = scrollArea.getBoundingClientRect();
-        if (bounds.top < screen.top) scrollArea.scrollTop += bounds.top - screen.top;
-        else if (bounds.bottom > screen.bottom) scrollArea.scrollTop += bounds.bottom - screen.bottom;
+        scrollMenuRowIntoView(current, scrollArea);
     }
     if (focusedCode && !differentList && !focused?.isConnected) {
         const button = focused.dataset.input === "menu-row" && state.cursor !== previous.cursor ? current :
@@ -3241,9 +3252,18 @@ function updatePickerOverflow() {
     pickerDescriptionShadow.hidden = !moreText;
 }
 
-const pickerResize = new ResizeObserver(updatePickerOverflow);
-for (const area of [actionsScreen, pickerList.screen, pickerList.items, pickerList.rows, pickerList.description]) {
-    pickerResize.observe(area);
+const menuResize = new ResizeObserver((entries) => {
+    const { rows, scrollArea } = activeList;
+    const focused = document.activeElement;
+    if (rows.contains(focused) && focused.matches('[aria-current="true"]') && scrollArea.clientHeight &&
+        entries.some(({ target }) => target === scrollArea)) {
+        scrollMenuRowIntoView(focused, scrollArea);
+    }
+    updatePickerOverflow();
+});
+for (const area of [pageList.screen, pageList.items, actionsScreen,
+    pickerList.screen, pickerList.items, pickerList.rows, pickerList.description]) {
+    menuResize.observe(area);
 }
 picker.addEventListener("scroll", updatePickerOverflow, { capture: true, passive: true });
 
