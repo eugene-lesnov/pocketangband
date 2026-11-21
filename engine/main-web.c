@@ -1743,9 +1743,12 @@ EM_JS(bool, take_interrupt, (bool exploring, bool resting), {
 
 void web_poll_interrupt(void)
 {
-    if (!player->upkeep->running && !player_is_resting(player) && cmd_get_nrepeats() <= 0) return;
+    bool exploring = player->upkeep->exploring;
+    bool resting = player_is_resting(player) &&
+            (!exploring || !player_is_fully_rested(player));
+    if (!exploring && !player->upkeep->running && !resting && cmd_get_nrepeats() <= 0) return;
     double now = emscripten_get_now();
-    if ((pace_run || player->upkeep->exploring) && player->upkeep->running) {
+    if ((pace_run && player->upkeep->running) || (exploring && !resting)) {
         if (web_has_overhead_map()) {
             term *map = angband_term[WEB_MAP_TERM];
             handle_stuff(player);
@@ -1760,7 +1763,7 @@ void web_poll_interrupt(void)
         last_interrupt_poll = now;
         emscripten_sleep(1);
     }
-    if (take_interrupt(player->upkeep->exploring, player_is_resting(player))) {
+    if (take_interrupt(player->upkeep->exploring, resting)) {
         if (player->upkeep->exploring) {
             disturb(player);
             msg("Cancelled.");

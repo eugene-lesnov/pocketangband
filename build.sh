@@ -53,7 +53,7 @@ else
         fi
     fi
     git -C "$angband_repo" archive "$angband_revision" -- \
-        ':(glob)src/*.c' ':(glob)src/*.h' src/Makefile.src ':!src/main-*.c' ':!src/snd-sdl.c' \
+        ':(glob)src/*.c' ':(glob)src/*.h' src/Makefile.src src/Makefile.inc ':!src/main-*.c' ':!src/snd-sdl.c' \
         ':(glob)lib/gamedata/*.txt' ':(glob)lib/customize/*.prf' \
         ':(glob)lib/screens/*.txt' ':(glob)lib/help/*.txt' lib/tiles/list.txt \
         ':(glob)lib/tiles/'{old,adam-bolt,gervais}'/*.prf' \
@@ -71,6 +71,7 @@ else
             fi
             git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
                 case "$path" in
+                    src/Makefile.inc) printf '# %s\n\n' "$notice" > "$path.noticed" ;;
                     src/*) printf '/* %s */\n\n' "$notice" > "$path.noticed" ;;
                     docs/*) printf '.. %s\n\n' "$notice" > "$path.noticed" ;;
                     lib/help/*) printf '\n%s\n' "$notice" >> "$path"; continue ;;
