@@ -1,8 +1,8 @@
 diff --git a/docs/command.rst b/docs/command.rst
-index 52e13dc..5d858ba 100644
+index 52e13dc..7c482d2 100644
 --- a/docs/command.rst
 +++ b/docs/command.rst
-@@ -157,16 +157,19 @@ Go down staircase (``>``)
+@@ -157,16 +157,20 @@ Go down staircase (``>``)
    :ref:`Pathfinding <pathfinding-player>` has more information about how the
    path is calculated and what happens when following the path.
  
@@ -25,10 +25,11 @@ index 52e13dc..5d858ba 100644
 +  until you see it open or the terrain change. Routes avoid damaging terrain,
 +  impassable rubble, and known traps that can affect you.
 +
-+  Exploration stops when you see a monster, discover a staircase or an item
-+  you would leave on the floor, or are otherwise disturbed. Items on your
-+  route use the usual pickup rules. Press Escape to interrupt resting or
-+  movement, and ``p`` to explore again.
++  Exploration stops with "Something is here." when you notice a monster,
++  staircase, trap, secret door, or item you would leave on the floor. Several
++  discoveries on the same step give one message. Items on your route use the
++  usual pickup rules. Other disturbances can also stop exploration. Press
++  Escape to interrupt resting or movement, and ``p`` to explore again.
  
  Resting Commands
  ================
@@ -47,7 +48,7 @@ index 989aef8..5c378a2 100644
  Use sound ``use_sound``
    Turns on sound effects, if your system supports them.
 diff --git a/docs/playing.rst b/docs/playing.rst
-index f37148c..c87379b 100644
+index f37148c..67a7790 100644
 --- a/docs/playing.rst
 +++ b/docs/playing.rst
 @@ -167,8 +167,8 @@ option is off (that is the default), the commands act as described above.
@@ -57,7 +58,7 @@ index f37148c..c87379b 100644
 -at that kind of staircase. ``p`` will move to the nearest unexplored location
 -when the autoexplore_commands option is on.
 +at that kind of staircase. ``p`` explores the level until you are disturbed,
-+you discover a staircase or an item to examine, or no route remains.
++you discover something of interest, or no route remains.
  
  .. index::
     single: roguelike keyset
@@ -68,7 +69,7 @@ index f37148c..c87379b 100644
 -at that kind of staircase. ``p`` will move to the nearest unexplored location
 -when the autoexplore_commands option is on.
 +at that kind of staircase. ``p`` explores the level until you are disturbed,
-+you discover a staircase or an item to examine, or no route remains.
++you discover something of interest, or no route remains.
  
  .. _disturb-player:
  .. index::
@@ -95,7 +96,7 @@ index f37148c..c87379b 100644
  Following a path can automatically open a door or dig out impassable rubble
  that is in the path.  It will only do so if you know the terrain in all the
 diff --git a/lib/help/commands.txt b/lib/help/commands.txt
-index 5a3ebe9..dc8fb21 100644
+index 5a3ebe9..93b2044 100644
 --- a/lib/help/commands.txt
 +++ b/lib/help/commands.txt
 @@ -12,8 +12,8 @@ is the default), the commands act as described below.  When that option
@@ -105,12 +106,12 @@ index 5a3ebe9..dc8fb21 100644
 -kind of staircase.  'p' will move to the nearest unexplored location
 -when the autoexplore_commands option is on.
 +kind of staircase.  'p' explores the level until you are disturbed,
-+you discover a staircase or an item to examine, or no route remains.
++you discover something of interest, or no route remains.
  
    a    Aim a wand                      A    Activate an object
    b    Browse a book                   B    -
 diff --git a/lib/help/r_comm.txt b/lib/help/r_comm.txt
-index 3b16564..dee352f 100644
+index 3b16564..0cb66a6 100644
 --- a/lib/help/r_comm.txt
 +++ b/lib/help/r_comm.txt
 @@ -12,8 +12,8 @@ is the default), the commands act as described below.  When that option
@@ -120,7 +121,7 @@ index 3b16564..dee352f 100644
 -kind of staircase.  'p' will move to the nearest unexplored location
 -when the autoexplore_commands option is on.
 +kind of staircase.  'p' explores the level until you are disturbed,
-+you discover a staircase or an item to examine, or no route remains.
++you discover something of interest, or no route remains.
  
    a    Zap a rod (Activate)            A    Activate an object
    b    (walk - south west)             B    (run - south west)
@@ -138,10 +139,10 @@ index cf0ff40..fa23d02 100644
   list-ignore-types.h obj-knowledge.h obj-pile.h obj-slays.h monster.h \
   target.h mon-predicate.h mon-timed.h list-mon-timed.h mon-blows.h \
 diff --git a/src/cave-square.c b/src/cave-square.c
-index 9bac394..e2b27a8 100644
+index 9bac394..ac12fe2 100644
 --- a/src/cave-square.c
 +++ b/src/cave-square.c
-@@ -1273,8 +1273,24 @@ void square_set_feat(struct chunk *c, struct loc grid, int feat)
+@@ -1273,8 +1273,20 @@ void square_set_feat(struct chunk *c, struct loc grid, int feat)
   */
  static void square_set_known_feat(struct chunk *c, struct loc grid, int feat)
  {
@@ -154,12 +155,8 @@ index 9bac394..e2b27a8 100644
 +		return;
 +
 +	if (feat != FEAT_NONE && player->upkeep->exploring &&
-+			!player->upkeep->explore_stair[0] && square_isstairs(c, grid) &&
-+			square_isseen(c, grid)) {
-+		strnfmt(player->upkeep->explore_stair,
-+				sizeof(player->upkeep->explore_stair), "%s%s",
-+				square_apparent_look_prefix(c, grid),
-+				square_apparent_name(c, grid));
++			square_isstairs(c, grid) && square_isseen(c, grid)) {
++		player->upkeep->explore_discovery = true;
 +	}
 +	sqinfo_off(known->info, SQUARE_EXPLORE_LOCKED);
 +	known->explore_neighbors = 0;
@@ -180,26 +177,28 @@ index 83bb47b..d4ce519 100644
  	int light;
  	int16_t mon;
 diff --git a/src/cmd-cave.c b/src/cmd-cave.c
-index 918fc80..f84b504 100644
+index 918fc80..b7edfab 100644
 --- a/src/cmd-cave.c
 +++ b/src/cmd-cave.c
-@@ -1068,7 +1068,15 @@ void move_player(int dir, bool disarm)
+@@ -1068,7 +1068,17 @@ void move_player(int dir, bool disarm)
  	/* Many things can happen on movement */
  	if (m_idx > 0) {
  		/* Attack monsters */
 +		if (player->upkeep->exploring && monster_is_obvious(mon)) {
++			player->upkeep->explore_discovery = true;
 +			disturb(player);
-+			msg("Something is here.");
 +			player->upkeep->energy_use = 0;
 +			return;
 +		}
  		if (monster_is_camouflaged(mon)) {
-+			if (player->upkeep->exploring)
++			if (player->upkeep->exploring) {
++				player->upkeep->explore_discovery = true;
 +				disturb(player);
++			}
  			become_aware(cave, mon);
  
  			/* Camouflaged monster wakes up and becomes aware */
-@@ -1076,6 +1084,13 @@ void move_player(int dir, bool disarm)
+@@ -1076,6 +1086,13 @@ void move_player(int dir, bool disarm)
  		} else {
  			py_attack(player, grid);
  		}
@@ -213,7 +212,7 @@ index 918fc80..f84b504 100644
  	} else if (((trap && disarm) || door) && square_isknown(cave, grid)) {
  		/* Auto-repeat if not already repeating */
  		if (cmd_get_nrepeats() == 0)
-@@ -1147,6 +1162,8 @@ void move_player(int dir, bool disarm)
+@@ -1147,6 +1164,8 @@ void move_player(int dir, bool disarm)
  		if (player->upkeep->running
  				&& !player->upkeep->running_firststep
  				&& old_dtrap && !new_dtrap) {
@@ -222,7 +221,7 @@ index 918fc80..f84b504 100644
  			disturb(player);
  			/* No move made so no energy spent. */
  			player->upkeep->energy_use = 0;
-@@ -1492,54 +1509,115 @@ void do_cmd_navigate_up(struct command *cmd)
+@@ -1492,54 +1511,115 @@ void do_cmd_navigate_up(struct command *cmd)
  	msg("No known path to upstairs.");
  }
  
@@ -286,7 +285,7 @@ index 918fc80..f84b504 100644
 +		event_signal(EVENT_CHECK_INTERRUPT);
 +		if (!upkeep->exploring)
 +			return;
-+	} else if (upkeep->explore_stair[0] || upkeep->explore_item[0]) {
++	} else if (upkeep->explore_discovery) {
 +		disturb(player);
  		return;
  	}
@@ -367,7 +366,7 @@ index 918fc80..f84b504 100644
  }
  
  
-@@ -1633,8 +1711,6 @@ void do_cmd_rest(struct command *cmd)
+@@ -1633,8 +1713,6 @@ void do_cmd_rest(struct command *cmd)
  
  	/* Do some upkeep on the first turn of rest */
  	if (!player_is_resting(player)) {
@@ -376,7 +375,7 @@ index 918fc80..f84b504 100644
  		/* If a number of turns was entered, remember it */
  		if (n > 1)
  			player_set_resting_repeat_count(player, n);
-@@ -1643,17 +1719,9 @@ void do_cmd_rest(struct command *cmd)
+@@ -1643,17 +1721,9 @@ void do_cmd_rest(struct command *cmd)
  			n = player_get_resting_repeat_count(player);
  	}
  
@@ -396,7 +395,7 @@ index 918fc80..f84b504 100644
  	if (player_resting_count(player) > 0) {
  		cmdq_push(CMD_REST);
 diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
-index c122ae1..bb1500a 100644
+index c122ae1..d917876 100644
 --- a/src/cmd-pickup.c
 +++ b/src/cmd-pickup.c
 @@ -125,11 +125,14 @@ static void player_pickup_gold(struct player *p)
@@ -479,6 +478,16 @@ index c122ae1..bb1500a 100644
  			if (auto_num) {
  				/* Pick up the object (as much as possible) with message */
  				player_pickup_aux(p, obj, auto_num, true);
+@@ -481,7 +488,8 @@ void do_cmd_autopickup(struct command *cmd)
+ 		player->upkeep->energy_use = z_info->move_energy;
+ 
+ 	/* Look at or feel what's left */
+-	event_signal(EVENT_SEEFLOOR);
++	if (!player->upkeep->explore_discovery)
++		event_signal(EVENT_SEEFLOOR);
+ 
+ 	/* Redraw the object list using the upkeep flag so that the update can be
+ 	 * somewhat coalesced. Use event_signal(EVENT_ITEMLIST to force update. */
 diff --git a/src/cmds.h b/src/cmds.h
 index 8e48662..d7362c4 100644
 --- a/src/cmds.h
@@ -492,10 +501,22 @@ index 8e48662..d7362c4 100644
  void do_cmd_pickup(struct command *cmd);
  void do_cmd_autopickup(struct command *cmd);
 diff --git a/src/game-world.c b/src/game-world.c
-index d384de8..47f9f9d 100644
+index d384de8..3023eb6 100644
 --- a/src/game-world.c
 +++ b/src/game-world.c
-@@ -1061,6 +1061,9 @@ void on_new_level(void)
+@@ -981,8 +981,10 @@ void process_player(void)
+ 		}
+ 
+ 		/* Get a command from the queue if there is one */
+-		if (!cmdq_pop(CTX_GAME))
++		if (!cmdq_pop(CTX_GAME)) {
++			player->upkeep->explore_discovery = false;
+ 			break;
++		}
+ 
+ 		if (!player->upkeep->playing)
+ 			break;
+@@ -1061,6 +1063,9 @@ void on_new_level(void)
   * Housekeeping on leaving a level
   */
  static void on_leave_level(void) {
@@ -515,51 +536,46 @@ index 5cada7f..f72ae5e 100644
  SQUARE(CLOSE_PLAYER,	"square is seen and in player's light radius or UNLIGHT detection radius")
 +SQUARE(EXPLORE_LOCKED,	"exploration failed to open the door")
 diff --git a/src/mon-util.c b/src/mon-util.c
-index 1c8033b..943d0b1 100644
+index 1c8033b..62d1030 100644
 --- a/src/mon-util.c
 +++ b/src/mon-util.c
-@@ -230,6 +230,15 @@ static void path_analyse(struct chunk *c, struct loc grid)
- 	}
- }
- 
-+static void notice_monster_while_exploring(const struct monster *mon)
-+{
-+	char name[80];
-+
-+	monster_desc(name, sizeof(name), mon, MDESC_IND_VIS);
-+	disturb(player);
-+	msg("You see %s.", name);
-+}
-+
- /**
-  * This function updates the monster record of the given monster
-  *
-@@ -453,8 +462,11 @@ void update_mon(struct monster *mon, struct chunk *c, bool full)
+@@ -453,8 +453,12 @@ void update_mon(struct monster *mon, struct chunk *c, bool full)
  			mflag_on(mon->mflag, MFLAG_VIEW);
  
  			/* Disturb on appearance */
 -			if (OPT(player, disturb_near))
 +			if (player->upkeep->exploring && monster_is_obvious(mon)) {
-+				notice_monster_while_exploring(mon);
-+			} else if (OPT(player, disturb_near)) {
++				player->upkeep->explore_discovery = true;
  				disturb(player);
++			} else if (OPT(player, disturb_near)) {
++				disturb(player);
 +			}
  
  			/* Re-draw monster window */
  			player->upkeep->redraw |= PR_MONLIST;
-@@ -714,6 +726,10 @@ void become_aware(struct chunk *c, struct monster *mon)
+@@ -714,6 +718,11 @@ void become_aware(struct chunk *c, struct monster *mon)
  
  	if (mflag_has(mon->mflag, MFLAG_CAMOUFLAGE)) {
  		mflag_off(mon->mflag, MFLAG_CAMOUFLAGE);
 +		if (c == cave && player->upkeep->exploring &&
 +				monster_is_obvious(mon) && monster_is_in_view(mon)) {
-+			notice_monster_while_exploring(mon);
++			player->upkeep->explore_discovery = true;
++			disturb(player);
 +		}
  
  		/* Learn about mimicry */
  		if (rf_has(mon->race->flags, RF_UNAWARE))
+@@ -726,7 +735,7 @@ void become_aware(struct chunk *c, struct monster *mon)
+ 			object_desc(o_name, sizeof(o_name), obj, ODESC_BASE, player);
+ 
+ 			/* Print a message */
+-			if (square_isseen(c, obj->grid))
++			if (square_isseen(c, obj->grid) && !player->upkeep->explore_discovery)
+ 				msg("The %s was really a monster!", o_name);
+ 
+ 			/* Clear the mimicry */
 diff --git a/src/obj-knowledge.c b/src/obj-knowledge.c
-index f87027f..8cbcb3c 100644
+index f87027f..d9eb067 100644
 --- a/src/obj-knowledge.c
 +++ b/src/obj-knowledge.c
 @@ -18,6 +18,7 @@
@@ -574,21 +590,20 @@ index f87027f..8cbcb3c 100644
  {
  	struct object *known_obj = p->cave->objects[obj->oidx];
  	struct loc grid = obj->grid;
-+	bool discovery = p->upkeep->exploring && !p->upkeep->explore_item[0]
++	bool discovery = p->upkeep->exploring && !p->upkeep->explore_discovery
 +		&& (!known_obj || known_obj->kind != obj->kind
 +			|| !loc_eq(known_obj->grid, grid));
  
  	/* Make new known objects, fully know sensed ones, relocate old ones */
  	if (known_obj == NULL) {
-@@ -948,6 +952,12 @@ void object_see(struct player *p, struct object *obj)
+@@ -948,6 +952,11 @@ void object_see(struct player *p, struct object *obj)
  			pile_insert_end(&p->cave->squares[grid.y][grid.x].obj, known_obj);
  		}
  	}
 +
 +	if (discovery && square_isseen(cave, grid) && !tval_is_money(obj) &&
 +			!ignore_item_ok(p, obj) && auto_pickup_okay(p, obj) < obj->number) {
-+		object_desc(p->upkeep->explore_item, sizeof(p->upkeep->explore_item),
-+				obj, ODESC_PREFIX | ODESC_BASE, p);
++		p->upkeep->explore_discovery = true;
 +	}
  }
  
@@ -819,7 +834,7 @@ index 7679b38..c02a4cb 100644
  
  #endif /* !PLAYER_PATH_H */
 diff --git a/src/player-util.c b/src/player-util.c
-index 3da8c22..87f64f1 100644
+index 3da8c22..9bae226 100644
 --- a/src/player-util.c
 +++ b/src/player-util.c
 @@ -1488,6 +1488,18 @@ void player_resting_step_turn(struct player *p)
@@ -867,7 +882,21 @@ index 3da8c22..87f64f1 100644
  	/* Handle store doors, or notice objects */
  	if (square_isshop(cave, p->grid)) {
  		if (player_is_shapechanged(p)) {
-@@ -1644,17 +1652,20 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+@@ -1634,6 +1642,13 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+ 	search(p);
+ }
+ 
++bool notice_explore_discovery(struct player *p)
++{
++	if (p->upkeep->exploring)
++		p->upkeep->explore_discovery = true;
++	return p->upkeep->explore_discovery;
++}
++
+ /*
+  * Something has happened to disturb the player.
+  *
+@@ -1644,17 +1659,20 @@ void player_handle_post_move(struct player *p, bool eval_trap,
   */
  void disturb(struct player *p)
  {
@@ -890,27 +919,38 @@ index 3da8c22..87f64f1 100644
  		p->upkeep->running = 0;
  		mem_free(p->upkeep->steps);
  		p->upkeep->steps = NULL;
-@@ -1672,6 +1683,18 @@ void disturb(struct player *p)
+@@ -1672,6 +1690,9 @@ void disturb(struct player *p)
  
  	/* Flush input */
  	event_signal(EVENT_INPUT_FLUSH);
 +
-+	if (was_exploring) {
-+		char *stair = p->upkeep->explore_stair;
-+		char *item = p->upkeep->explore_item;
-+
-+		if (*stair || *item) {
-+			msg("You see %s%s%s.", stair,
-+					(*stair && *item) ? " and " : "", item);
-+			*stair = '\0';
-+			*item = '\0';
-+		}
-+	}
++	if (was_exploring && p->upkeep->explore_discovery)
++		msg("Something is here.");
  }
  
  /**
+@@ -1693,7 +1714,8 @@ void search(struct player *p)
+ 
+ 			/* Secret doors */
+ 			if (square_issecretdoor(cave, grid)) {
+-				msg("You have found a secret door.");
++				if (!notice_explore_discovery(p))
++					msg("You have found a secret door.");
+ 				place_closed_door(cave, grid);
+ 				disturb(p);
+ 			}
+@@ -1706,7 +1728,8 @@ void search(struct player *p)
+ 				}
+ 
+ 				if (obj->known->pval != obj->pval) {
+-					msg("You have discovered a trap on the chest!");
++					if (!notice_explore_discovery(p))
++						msg("You have discovered a trap on the chest!");
+ 					obj->known->pval = obj->pval;
+ 					disturb(p);
+ 				}
 diff --git a/src/player-util.h b/src/player-util.h
-index a7e39a1..50024f1 100644
+index a7e39a1..1690fb4 100644
 --- a/src/player-util.h
 +++ b/src/player-util.h
 @@ -109,6 +109,7 @@ void player_resting_set_count(struct player *p, int16_t count);
@@ -921,22 +961,42 @@ index a7e39a1..50024f1 100644
  void player_resting_complete_special(struct player *p);
  int player_get_resting_repeat_count(struct player *p);
  void player_set_resting_repeat_count(struct player *p, int16_t count);
+@@ -118,6 +119,7 @@ bool player_is_immune(const struct player *p, int element);
+ void player_place(struct chunk *c, struct player *p, struct loc grid);
+ void player_handle_post_move(struct player *p, bool eval_trap,
+ 		bool is_involuntary);
++bool notice_explore_discovery(struct player *p);
+ void disturb(struct player *p);
+ void search(struct player *p);
+ bool player_has_monster_in_view(const struct player *p);
 diff --git a/src/player.h b/src/player.h
-index 36a6151..8ec8aa1 100644
+index 36a6151..1cb5cac 100644
 --- a/src/player.h
 +++ b/src/player.h
-@@ -481,6 +481,9 @@ struct player_upkeep {
+@@ -481,6 +481,8 @@ struct player_upkeep {
  
  	int running;			/* Running counter */
  	bool running_firststep;		/* Is this our first step running or following a precomputed path? */
 +	bool exploring;
-+	char explore_stair[80];
-+	char explore_item[128];
++	bool explore_discovery;
  
  	struct object **quiver;	/* Quiver objects */
  	struct object **inven;	/* Inventory objects */
+diff --git a/src/trap.c b/src/trap.c
+index c8d9e76..e46cb8f 100644
+--- a/src/trap.c
++++ b/src/trap.c
+@@ -435,7 +435,7 @@ bool square_reveal_trap(struct chunk *c, struct loc grid, bool always,
+     /* We found at least one trap */
+     if (found_trap) {
+ 		/* We want to talk about it */
+-		if (domsg) {
++		if (domsg && (c != cave || !notice_explore_discovery(player))) {
+ 			if (found_trap == 1)
+ 				msg("You have found a trap.");
+ 			else
 diff --git a/src/ui-game.c b/src/ui-game.c
-index 0f97d18..468025b 100644
+index 0f97d18..14b71f4 100644
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
 @@ -622,13 +622,13 @@ errr textui_get_cmd(cmd_context context)
@@ -955,3 +1015,11 @@ index 0f97d18..468025b 100644
  	    cmd_get_nrepeats() > 0 ||
  	    (player_is_resting(player) && !(turn & 0x7F))) {
  		ui_event e;
+@@ -641,6 +641,7 @@ void check_for_player_interrupt(game_event_type type, game_event_data *data,
+ 		if (e.type != EVT_NONE) {
+ 			/* Flush and disturb */
+ 			event_signal(EVENT_INPUT_FLUSH);
++			player->upkeep->explore_discovery = false;
+ 			disturb(player);
+ 			msg("Cancelled.");
+ 		}

@@ -1765,6 +1765,7 @@ void web_poll_interrupt(void)
     }
     if (take_interrupt(player->upkeep->exploring, resting)) {
         if (player->upkeep->exploring) {
+            player->upkeep->explore_discovery = false;
             disturb(player);
             msg("Cancelled.");
         } else {
