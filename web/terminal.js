@@ -1085,7 +1085,7 @@ function updateMenuControls(disabled, choosing) {
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
-    setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
+    setActions(menuActions, !!menu && menuActions.childElementCount > 0 && !openPanel, disabled);
     activeList.rows.disabled = activeList.sections.disabled = disabled;
 }
 
@@ -3013,6 +3013,7 @@ function renderMenu(state, description = state?.description ?? "") {
     }));
     menuEmpty.hidden = rows.length > 0;
     menuEmpty.textContent = query ? "No matches." : "No items.";
+    const randomCharacter = mode === "save-slots" && state.actions.find((action) => action.key === keyCode("@"));
     const focused = document.activeElement?.closest("button[data-input]");
     const focusedCode = focused && (menuRows.contains(focused) || outcomeActions.contains(focused)) ?
         focused.dataset.value : undefined;
@@ -3124,7 +3125,15 @@ function renderMenu(state, description = state?.description ?? "") {
             if (button === current) groupRows.open = true;
             continue;
         }
-        if (mode === "save-slots" && row.index > 0 && row.enabled) {
+        if (randomCharacter && row.index === 0 && row.enabled) {
+            const controls = document.createElement("div");
+            controls.className = "new-game-row";
+            button.replaceChildren(description);
+            const random = makeKey("@", randomCharacter.label);
+            setKeyHint(random);
+            controls.append(button, random);
+            choices.push(controls);
+        } else if (mode === "save-slots" && row.index > 0 && row.enabled) {
             const controls = document.createElement("div");
             controls.className = "save-slot-row";
             const remove = makeInput("delete-save", row.index, `Delete save: ${label}`);
@@ -3140,7 +3149,7 @@ function renderMenu(state, description = state?.description ?? "") {
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
     const focusedAction = menuActions.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
-    menuActions.replaceChildren(...state.actions.map((action) => {
+    menuActions.replaceChildren(...state.actions.filter((action) => action !== randomCharacter).map((action) => {
         const button = state.store ? makeInput("store-action", action.key, action.label) :
             makeKey(String.fromCharCode(action.key), action.label);
         const key = keyFromCode(action.key);

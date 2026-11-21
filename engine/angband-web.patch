@@ -216,7 +216,7 @@ diff --git a/src/main.c b/src/main.c
  	/* Play the game */
  	play_game((select_game) ?
 diff --git a/src/ui-game.c b/src/ui-game.c
-index 0f97d18..4026c49 100644
+index 14b71f4..c6b6f5f 100644
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
 @@ -181,7 +181,9 @@ struct cmd_info cmd_info[] =
@@ -315,7 +315,7 @@ index 0f97d18..4026c49 100644
  		ui_event e;
  
  		/* Do not wait */
-@@ -758,6 +790,34 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -759,6 +791,34 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
  	mem_free(entries);
  }
  
@@ -350,7 +350,7 @@ index 0f97d18..4026c49 100644
  /**
   * Help play_game():  implement the savefile selection menu.
   *
-@@ -765,10 +825,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
+@@ -766,10 +826,16 @@ static void cleanup_savefile_selection_strings(char **entries, int count)
   * by an earlier one could not be loaded.
   * \param new_game points to a boolean.  The pointed to value at entry is not
   * used.  At exit *new_game will be true if the user selected to start a new
@@ -369,17 +369,19 @@ index 0f97d18..4026c49 100644
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -868,6 +934,9 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -869,6 +935,11 @@ static void select_savefile(bool retry, bool *new_game)
  	menu_layout(m, &m_region);
  	m->cursor = default_entry;
  	m->flags |= MN_DBL_TAP;
 +#ifdef __EMSCRIPTEN__
 +	m->cursor = web_set_save_slots((const char *const *)names, count, m->cursor);
++	if (allow_new_game)
++		m->switch_keys = "@";
 +#endif
  
  	screen_save();
  	prt("Select the save to use (movement keys and enter or mouse) or quit",
-@@ -875,11 +944,25 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -876,11 +947,31 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -391,6 +393,12 @@ index 0f97d18..4026c49 100644
 +			int slot = selection.key.code;
 +			if (slot <= 0 || slot >= count || !web_delete_save(names[slot]))
 +				continue;
++		} else if (selection.type == EVT_KBRD) {
++			if (!allow_new_game || selection.key.code != '@')
++				continue;
++			m->cursor = 0;
++			selection.type = EVT_SELECT;
++			web_request_random_character();
 +		}
 +#endif
 +		break;
@@ -406,7 +414,7 @@ index 0f97d18..4026c49 100644
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -890,12 +973,22 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -891,12 +982,22 @@ static void select_savefile(bool retry, bool *new_game)
  	}
  
  	menu_free(m);
@@ -429,7 +437,7 @@ index 0f97d18..4026c49 100644
  }
  
  /**
-@@ -910,6 +1003,12 @@ void play_game(enum game_mode_type mode)
+@@ -911,6 +1012,12 @@ void play_game(enum game_mode_type mode)
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -442,7 +450,7 @@ index 0f97d18..4026c49 100644
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -920,7 +1019,9 @@ void play_game(enum game_mode_type mode)
+@@ -921,7 +1028,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -453,7 +461,7 @@ index 0f97d18..4026c49 100644
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -946,6 +1047,14 @@ void play_game(enum game_mode_type mode)
+@@ -947,6 +1056,14 @@ void play_game(enum game_mode_type mode)
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -468,7 +476,7 @@ index 0f97d18..4026c49 100644
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1010,6 +1119,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1011,6 +1128,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -488,7 +496,7 @@ index 0f97d18..4026c49 100644
  /**
   * Save the game.
   */
-@@ -1032,7 +1154,7 @@ bool save_game_checked(void)
+@@ -1033,7 +1163,7 @@ bool save_game_checked(void)
  	disturb(player);
  
  	/* Clear messages */
@@ -497,7 +505,7 @@ index 0f97d18..4026c49 100644
  
  	/* Handle stuff */
  	handle_stuff(player);
-@@ -1046,11 +1168,25 @@ bool save_game_checked(void)
+@@ -1047,11 +1177,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -524,7 +532,7 @@ index 0f97d18..4026c49 100644
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1064,23 +1200,6 @@ bool save_game_checked(void)
+@@ -1065,23 +1209,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -548,7 +556,7 @@ index 0f97d18..4026c49 100644
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1094,10 +1213,8 @@ bool save_game_checked(void)
+@@ -1095,10 +1222,8 @@ bool save_game_checked(void)
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -561,7 +569,7 @@ index 0f97d18..4026c49 100644
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1129,17 +1246,26 @@ void close_game(bool prompt_failed_save)
+@@ -1130,17 +1255,26 @@ void close_game(bool prompt_failed_save)
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -589,7 +597,7 @@ index 0f97d18..4026c49 100644
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1149,6 +1275,10 @@ void close_game(bool prompt_failed_save)
+@@ -1150,6 +1284,10 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -600,7 +608,7 @@ index 0f97d18..4026c49 100644
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1157,6 +1287,7 @@ void close_game(bool prompt_failed_save)
+@@ -1158,6 +1296,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -680,9 +688,10 @@ diff --git a/src/player-birth.c b/src/player-birth.c
  
  			if (update_display) {
 diff --git a/src/ui-birth.c b/src/ui-birth.c
+index 375413f..90c957c 100644
 --- a/src/ui-birth.c
 +++ b/src/ui-birth.c
-@@ -120,6 +120,10 @@ static enum birth_stage textui_birth_qui
+@@ -120,6 +120,10 @@ static enum birth_stage textui_birth_quickstart(void)
  			next = BIRTH_RACE_CHOICE;
  		} else if (ke.code == KTRL('X')) {
  			quit(NULL);
@@ -693,11 +702,18 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		} else if ( !arg_force_name && (ke.code == 'C' || ke.code == 'c')) {
  			next = BIRTH_NAME_CHOICE;
  		} else if (ke.code == '=') {
-@@ -391,6 +395,37 @@ static void class_help(int i, void *db,
+@@ -391,6 +395,43 @@ static void class_help(int i, void *db, const region *l)
  	text_out_indent = 0;
  }
  
 +#ifdef __EMSCRIPTEN__
++static bool web_random_character_requested;
++
++void web_request_random_character(void)
++{
++	web_random_character_requested = true;
++}
++
 +static void web_render_birth_choices(struct menu *menu)
 +{
 +	const struct birthmenu_data *data = menu_priv(menu);
@@ -720,18 +736,17 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
 +		}
 +		web_add_menu_row(i, data->items[i], detail, NULL, 0, true);
 +	}
-+	web_menu_action('=', "Birth options");
 +	web_menu_action('?', "Help");
++	web_menu_action('=', "Birth options");
 +	if (data->allow_random)
 +		web_menu_action('*', race ? "Random race" : "Random class");
-+	web_menu_action('@', "Random character");
 +}
 +#endif
 +
  /**
   * Display and handle user interaction with a context menu appropriate for the
   * current stage.  That way actions available with certain keys are also
-@@ -501,11 +536,13 @@ static void init_birth_menu(struct menu
+@@ -501,11 +542,13 @@ static void init_birth_menu(struct menu *menu, int n_choices,
  	/* Initialise a basic menu */
  	menu_init(menu, MN_SKIN_SCROLL, &birth_iter);
  
@@ -748,7 +763,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Copy across the game's suggested initial selection, etc. */
  	menu->cursor = initial_choice;
-@@ -865,6 +902,36 @@ static enum birth_stage menu_question(en
+@@ -865,6 +908,36 @@ static enum birth_stage menu_question(enum birth_stage current,
   * ------------------------------------------------------------------------
   * The rolling bit of the roller.
   * ------------------------------------------------------------------------ */
@@ -785,7 +800,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  static enum birth_stage roller_command(bool first_call)
  {
  	enum {
-@@ -906,7 +973,23 @@ static enum birth_stage roller_command(b
+@@ -906,7 +979,23 @@ static enum birth_stage roller_command(bool first_call)
  	 * events to look like keystrokes.
  	 */
  	while (1) {
@@ -809,7 +824,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1026,6 +1109,34 @@ static enum birth_stage roller_command(b
+@@ -1026,6 +1115,34 @@ static enum birth_stage roller_command(bool first_call)
   */
  static int buysell[STAT_MAX];
  
@@ -844,7 +859,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  /**
   * This is called whenever a stat changes.  We take the easy road, and just
   * redisplay them all using the standard function.
-@@ -1062,6 +1173,11 @@ static void point_based_points(game_even
+@@ -1062,6 +1179,11 @@ static void point_based_points(game_event_type type, game_event_data *data,
  	const int *inc = data->birthpoints.inc_points;
  	int remaining = data->birthpoints.remaining;
  
@@ -856,7 +871,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	/* Display the costs header */
  	put_str("Cost", COSTS_ROW - 1, COSTS_COL);
  	
-@@ -1071,7 +1187,7 @@ static void point_based_points(game_even
+@@ -1071,7 +1193,7 @@ static void point_based_points(game_event_type type, game_event_data *data,
  		if (spent[i] > 0) {
  			buysell[i] |= 1;
  		}
@@ -865,7 +880,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  			buysell[i] |= 2;
  		}
  		/* Display cost */
-@@ -1139,7 +1255,30 @@ static enum birth_stage point_based_comm
+@@ -1139,7 +1261,30 @@ static enum birth_stage point_based_command(void)
  	 * to look like keystrokes.
  	 */
  	while (1) {
@@ -896,7 +911,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		if (in.type == EVT_KBRD || in.type == EVT_MOUSE) {
  			break;
  		}
-@@ -1385,7 +1524,24 @@ static int edit_text(char *buffer, int b
+@@ -1385,7 +1530,24 @@ static int edit_text(char *buffer, int buflen) {
  		get_screen_loc(cursor, &x, &y, n_lines, line_starts, line_lengths);
  		Term_gotoxy(1 + x, 19 + y);
  
@@ -921,7 +936,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  		switch (ke.code) {
  			case ESCAPE:
  				return -1;
-@@ -1533,7 +1689,16 @@ static enum birth_stage get_history_comm
+@@ -1533,7 +1695,16 @@ static enum birth_stage get_history_command(void)
  
  	/* Ask for some history */
  	prt("Accept character history? [y/n]", 0, 0);
@@ -938,7 +953,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  	/* Quit, go back, change history, or accept */
  	if (ke.code == KTRL('X')) {
-@@ -1566,16 +1731,20 @@ static enum birth_stage get_history_command(void)
+@@ -1566,16 +1737,20 @@ static enum birth_stage get_history_command(void)
   * ------------------------------------------------------------------------ */
  static enum birth_stage get_confirm_command(void)
  {
@@ -963,17 +978,24 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  	
  	/* Start over */
  	if (ke.code == 'S' || ke.code == 's') {
-@@ -1633,6 +1802,9 @@
+@@ -1633,6 +1808,16 @@ int textui_do_birth(void)
  			case BIRTH_RESET:
  			{
  				cmdq_push(CMD_BIRTH_RESET);
 +#ifdef __EMSCRIPTEN__
 +				web_birth_name[0] = '\0';
++				if (web_random_character_requested) {
++					web_random_character_requested = false;
++					cmdq_execute(CTX_BIRTH);
++					finish_with_random_choices(BIRTH_RACE_CHOICE);
++					next = BIRTH_FINAL_CONFIRM;
++					break;
++				}
 +#endif
  
  				roller = BIRTH_RESET;
  				
-@@ -1676,8 +1848,13 @@ int textui_do_birth(void)
+@@ -1676,8 +1861,13 @@ int textui_do_birth(void)
  
  				next = menu_question(current_stage, menu, command);
  
@@ -988,7 +1010,7 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				/* Make sure the character gets reset before quickstarting */
  				if (next == BIRTH_QUICKSTART) 
-@@ -1739,8 +1916,13 @@
+@@ -1739,8 +1929,13 @@ int textui_do_birth(void)
  					display_player(0);
  
  				next = get_history_command();
@@ -1003,12 +1025,14 @@ diff --git a/src/ui-birth.c b/src/ui-birth.c
  
  				break;
  			}
-@@ -1753,6 +1935,11 @@ int textui_do_birth(void)
+@@ -1753,6 +1948,13 @@ int textui_do_birth(void)
  				next = get_confirm_command();
 -				if (next == BIRTH_BACK)
 +				if (next == BIRTH_BACK) {
  					next = BIRTH_HISTORY_CHOICE;
 +#ifdef __EMSCRIPTEN__
++					if (prev == BIRTH_RESET)
++						web_cancel_birth();
 +					if (prev == BIRTH_POINTBASED || prev == BIRTH_ROLLER)
 +						next = prev;
 +#endif
@@ -1539,10 +1563,10 @@ index ec19a5b..a77ce42 100644
  			bool keymap_ok = true;
  			switch (ke.key.code) {
 diff --git a/src/ui-input.h b/src/ui-input.h
-index 956ef26..c566168 100644
+index 956ef26..28c9bd8 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,136 @@
+@@ -24,6 +24,137 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1608,6 +1632,7 @@ index 956ef26..c566168 100644
 +void web_show_help(bool roguelike);
 +void web_show_splash(bool startup);
 +void web_cancel_birth(void);
++void web_request_random_character(void);
 +void web_finish_run(bool new_game);
 +void web_set_outcome(const char *kind, const char *name, const char *race,
 +	const char *class_name, int level, int depth, int32_t exp, int32_t gold,
@@ -1679,7 +1704,7 @@ index 956ef26..c566168 100644
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +197,10 @@ struct command_list
+@@ -67,6 +198,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1690,7 +1715,7 @@ index 956ef26..c566168 100644
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +226,7 @@ ui_event inkey_m(void);
+@@ -92,6 +227,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1698,7 +1723,7 @@ index 956ef26..c566168 100644
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +237,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +238,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -1707,6 +1732,7 @@ index 956ef26..c566168 100644
  			  char fallback);
  extern bool (*get_file)(const char *suggested_name, char *path, size_t len);
 diff --git a/src/ui-menu.c b/src/ui-menu.c
+index a934411..737269f 100644
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
 @@ -769,6 +769,12 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
@@ -1722,7 +1748,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  	assert(menu->active.width != 0 && menu->active.page_rows != 0);
  
-@@ -782,7 +788,67 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -782,7 +788,69 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
@@ -1754,6 +1780,8 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
 +					web_add_menu_row(pos, entries[oid].name, NULL, NULL, key,
 +						!(entries[oid].flags & MN_ACT_GRAYED));
 +			}
++			if (save_slots && menu->switch_keys)
++				web_menu_action('@', "Random character");
 +		}
 +		if (web_rows && menu->web_title) web_set_menu_selection_title(menu->web_title);
 +#endif
@@ -1790,7 +1818,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -798,7 +864,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -798,7 +866,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  				continue;
  
  			/* Switch key */
@@ -1799,7 +1827,7 @@ diff --git a/src/ui-menu.c b/src/ui-menu.c
  				strchr(menu->switch_keys, (char)in.key.code)) {
  				menu_handle_action(menu, &in);
  				if (popup)
-@@ -1052,10 +1118,32 @@ static const menu_iter dynamic_iter = {
+@@ -1052,10 +1120,32 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
  
