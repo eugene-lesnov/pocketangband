@@ -30,7 +30,7 @@ self.addEventListener("message", ({ data }) => {
         return;
     }
     if (data.type === "message-recall") {
-        if (readMessageRecall) readMessageRecall(data.recall, data.firstSequence !== undefined, data.firstSequence ?? 0);
+        if (readMessageRecall) readMessageRecall(data.recall);
         else self.postMessage({ type: "message-recall", recall: data.recall });
         return;
     }

@@ -182,14 +182,12 @@ void web_mark_messages_displayed(void)
     action_messages_pending = false;
 }
 
-EM_JS(void, append_action_message, (const char *message, int type, const char *color,
-        bool recorded, uint32_t sequence), {
+EM_JS(void, append_action_message, (const char *message, int type, const char *color), {
     const entries = Module['actionMessages'];
     const text = UTF8ToString(message);
     const previous = entries.at(-1);
     if (previous?.text === text && previous.type === type) previous.count++;
-    else entries.push({ text, type, count: 1, color: UTF8ToString(color),
-        sequence: recorded ? sequence : undefined });
+    else entries.push({ text, type, count: 1, color: UTF8ToString(color) });
 });
 
 bool web_capture_action_message(const char *message, int type)
@@ -199,7 +197,7 @@ bool web_capture_action_message(const char *message, int type)
     web_clear_displayed_messages();
     char color[8];
     web_text_color(color, sizeof(color), message_type_color(type));
-    append_action_message(message, type, color, streq(message, message_str(0)), web_message_sequence());
+    append_action_message(message, type, color);
     action_messages_pending = true;
     return true;
 }
@@ -1125,27 +1123,22 @@ EM_JS(void, start_message_recall, (void), {
     Module['messageRecall'] = [];
 });
 
-EM_JS(void, add_recalled_message, (const char *text, int count, const char *color, int recent), {
-    Module['messageRecall'].push({ text: UTF8ToString(text), count, color: UTF8ToString(color), recent });
+EM_JS(void, add_recalled_message, (const char *text, int count, const char *color), {
+    Module['messageRecall'].push({ text: UTF8ToString(text), count, color: UTF8ToString(color) });
 });
 
 EM_JS(void, finish_message_recall, (unsigned int request), {
-    Module['sendMessageRecall'](request, Module['messageRecall'].reverse());
+    Module['sendMessageRecall'](request, Module['messageRecall']);
     Module['messageRecall'] = undefined;
 });
 
-EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request, bool from_series, uint32_t first_sequence)
+EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request)
 {
-    uint32_t remaining = from_series ? web_message_sequence() - first_sequence + 1 : 0;
     start_message_recall();
-    for (int i = 0, n = messages_num(); i < n; ++i) {
+    for (int age = messages_num() - 1; age >= 0; --age) {
         char color[8];
-        const char *text = message_str(i);
-        int count = message_count(i);
-        int recent = MIN(remaining, (uint32_t)count);
-        web_text_color(color, sizeof(color), message_color(i));
-        add_recalled_message(text, count, color, recent);
-        remaining -= recent;
+        web_text_color(color, sizeof(color), message_color(age));
+        add_recalled_message(message_str(age), message_count(age), color);
     }
     finish_message_recall(request);
 }

@@ -3349,25 +3349,12 @@ function renderMessageRecall() {
     const query = messageSearch.value.trim();
     const pattern = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu") : null;
     const items = [];
-    let seriesStart;
-    const entries = pattern ? recalledMessages : recalledMessages.flatMap(entry => {
-        if (!entry.recent || entry.recent === entry.count) return entry;
-        return [{ ...entry, count: entry.count - entry.recent, recent: 0 }, { ...entry, count: entry.recent }];
-    });
-    for (const entry of entries) {
+    for (const entry of recalledMessages) {
         const line = formatMessage(entry);
         const matches = pattern ? [...line.matchAll(pattern)] : [];
         if (pattern && !matches.length) continue;
         const item = document.createElement("li");
         if (entry.color) item.style.color = entry.color;
-        if (!pattern && entry.recent && !seriesStart) {
-            seriesStart = item;
-            item.className = "series-start";
-            const heading = document.createElement("span");
-            heading.className = "series-heading";
-            heading.textContent = "Recent messages";
-            item.append(heading);
-        }
         let end = 0;
         for (const match of matches) {
             const highlighted = document.createElement("mark");
@@ -3382,8 +3369,7 @@ function renderMessageRecall() {
     messageSearchStatus.hidden = !pattern && items.length > 0;
     messageSearchStatus.textContent = pattern ?
         `${items.length} ${items.length === 1 ? "match" : "matches"}` : "No messages.";
-    if (seriesStart) seriesStart.scrollIntoView({ block: "start" });
-    else messages.scrollTop = messages.scrollHeight;
+    messages.scrollTop = messages.scrollHeight;
     updateMessageFade();
 }
 
@@ -3440,8 +3426,7 @@ function openMessageRecall(inputRequest) {
     messages.replaceChildren();
     messageDialog.showModal();
     messages.focus({ preventScroll: true });
-    const firstSequence = inputRequest === undefined ? context.actionMessages?.[0]?.sequence : undefined;
-    worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest, firstSequence });
+    worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest });
 }
 
 journal.addEventListener("click", () => openMessageRecall());
