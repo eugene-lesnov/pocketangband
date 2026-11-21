@@ -73,6 +73,7 @@ const knowledgeLimits = new Map();
 const messageSearchToggle = document.querySelector("#message-search-toggle");
 const messageSearch = document.querySelector("#message-search");
 const messageSearchStatus = document.querySelector("#message-search-status");
+const earlierMessages = document.querySelector("#earlier-messages");
 const latestMessage = document.querySelector("#latest-message");
 const messagePause = document.querySelector("#message-pause");
 const pausedMessage = document.querySelector("#paused-message");
@@ -396,6 +397,8 @@ let graphicsRestored = false;
 let messageRecallRequest = 0;
 let messageRecallInput;
 let recalledMessages = [];
+let journalEntries;
+let journalPrompt = "";
 const preferencesKey = "pocketangband-touch";
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
     fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
@@ -1386,11 +1389,14 @@ function showMessagePause(data) {
         const store = data.menu.store;
         if (!store.home) activeList.summary.textContent = `Gold Remaining: ${store.gold} au`;
     }
-    pausedMessage.textContent = data.context.pausedMessages?.map(formatMessage).join(" ") ??
-        terminalLine(0).replace(/\s*-more-\s*$/, "");
+    if (data.context.pausedMessages?.length) {
+        pausedMessage.replaceChildren(...data.context.pausedMessages.map(journalEntry));
+    } else {
+        pausedMessage.textContent = terminalLine(0).replace(/\s*-more-\s*$/, "");
+    }
     if (data.world) renderMonsterHealth(data.world.monsterHealth);
     messagePause.hidden = false;
-    pausedMessage.scrollTop = pausedMessage.scrollHeight;
+    pausedMessage.scrollTop = 0;
     for (const element of pausedControls) element.inert = true;
     continueMessage.disabled = false;
     continueMessage.focus({ preventScroll: true });
@@ -1447,9 +1453,9 @@ function updatePrompt() {
     const showResult = context.actionMessages?.length && !openPanel &&
         (context.newMessages || (!activeList.screen.hidden && (menu?.store || menu?.pickup)));
     const showJournal = !hud.hidden || showResult || mainView.classList.contains("shop-view");
-    const journalText = updateJournal();
+    const hasMessages = updateJournal();
     journal.hidden = !!context.listPreview || !showJournal || saveNotice ||
-        (menu?.title === "Screen dump" && !journalText);
+        (menu?.title === "Screen dump" && !hasMessages);
     if (journal.hidden && messageDialog.open && messageRecallInput === undefined) messageDialog.close();
 }
 
@@ -1457,15 +1463,60 @@ function formatMessage({ text, count }) {
     return count > 1 ? `${text} (×${count})` : text;
 }
 
-function updateJournal() {
-    const prompt = exploreResting ? "Resting…" : !hud.hidden && inputPrompt.textContent;
-    const action = (!prompt || context.newMessages) ? context.actionMessages : undefined;
-    const lines = action?.slice(-2).map(formatMessage) ?? [];
-    const text = [prompt, ...lines].filter(Boolean).join("\n");
-    if (latestMessage.textContent !== text) latestMessage.textContent = text;
-    journal.classList.toggle("prompt", !!prompt);
-    return text;
+function journalEntry({ text, count, color }) {
+    const row = document.createElement("span");
+    row.className = "journal-entry";
+    const label = document.createElement("span");
+    label.className = "journal-text";
+    label.textContent = text;
+    if (color) label.style.color = color;
+    row.append(label);
+    if (count > 1) {
+        const repeat = document.createElement("span");
+        repeat.className = "journal-repeat";
+        repeat.textContent = `×${count}`;
+        row.append(repeat);
+    }
+    return row;
 }
+
+function showEarlierMessages(count) {
+    earlierMessages.hidden = !count;
+    earlierMessages.textContent = count ? `↑ ${count}` : "";
+    earlierMessages.setAttribute("aria-label", count ? `${count} earlier ${count === 1 ? "message" : "messages"}` : "");
+}
+
+function renderJournal() {
+    if (journalPrompt || !journalEntries?.length) {
+        showEarlierMessages(0);
+        if (latestMessage.childElementCount || latestMessage.textContent !== journalPrompt) {
+            latestMessage.textContent = journalPrompt;
+        }
+        return;
+    }
+    const lines = Number(getComputedStyle(journal).getPropertyValue("--journal-lines"));
+    let first = Math.max(0, journalEntries.length - lines);
+    latestMessage.replaceChildren(...journalEntries.slice(first).map(journalEntry));
+    showEarlierMessages(first);
+    while (latestMessage.childElementCount > 1 && latestMessage.scrollHeight > latestMessage.clientHeight) {
+        latestMessage.firstElementChild.remove();
+        showEarlierMessages(++first);
+    }
+}
+
+function updateJournal() {
+    const prompt = exploreResting ? "Resting…" : hud.hidden ? "" : inputPrompt.textContent;
+    const entries = !prompt && context.actionMessages?.length ? context.actionMessages : undefined;
+    if (prompt !== journalPrompt || entries !== journalEntries) {
+        journalPrompt = prompt;
+        journalEntries = entries;
+        journal.classList.toggle("prompt", !!prompt);
+        renderJournal();
+    }
+    return !!prompt || !!entries?.length;
+}
+
+new ResizeObserver(renderJournal).observe(journal);
 
 function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
@@ -3290,12 +3341,25 @@ function renderMessageRecall() {
     const query = messageSearch.value.trim();
     const pattern = query ? new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu") : null;
     const items = [];
-    for (const entry of recalledMessages) {
+    let seriesStart;
+    const entries = pattern ? recalledMessages : recalledMessages.flatMap(entry => {
+        if (!entry.recent || entry.recent === entry.count) return entry;
+        return [{ ...entry, count: entry.count - entry.recent, recent: 0 }, { ...entry, count: entry.recent }];
+    });
+    for (const entry of entries) {
         const line = formatMessage(entry);
         const matches = pattern ? [...line.matchAll(pattern)] : [];
         if (pattern && !matches.length) continue;
         const item = document.createElement("li");
         if (entry.color) item.style.color = entry.color;
+        if (!pattern && entry.recent && !seriesStart) {
+            seriesStart = item;
+            item.className = "series-start";
+            const heading = document.createElement("span");
+            heading.className = "series-heading";
+            heading.textContent = "Recent messages";
+            item.append(heading);
+        }
         let end = 0;
         for (const match of matches) {
             const highlighted = document.createElement("mark");
@@ -3310,7 +3374,8 @@ function renderMessageRecall() {
     messageSearchStatus.hidden = !pattern && items.length > 0;
     messageSearchStatus.textContent = pattern ?
         `${items.length} ${items.length === 1 ? "match" : "matches"}` : "No messages.";
-    messages.scrollTop = messages.scrollHeight;
+    if (seriesStart) seriesStart.scrollIntoView({ block: "start" });
+    else messages.scrollTop = messages.scrollHeight;
     updateMessageFade();
 }
 
@@ -3367,7 +3432,8 @@ function openMessageRecall(inputRequest) {
     messages.replaceChildren();
     messageDialog.showModal();
     messages.focus({ preventScroll: true });
-    worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest });
+    const firstSequence = inputRequest === undefined ? context.actionMessages?.[0]?.sequence : undefined;
+    worker.postMessage({ type: "message-recall", recall: ++messageRecallRequest, firstSequence });
 }
 
 journal.addEventListener("click", () => openMessageRecall());

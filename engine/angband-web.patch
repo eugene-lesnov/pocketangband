@@ -7163,3 +7163,49 @@ index 10e10e0..44e8314 100644
  	screen_load();
 +#endif
  }
+diff --git a/src/message.c b/src/message.c
+--- a/src/message.c
++++ b/src/message.c
+@@ -57,9 +57,19 @@
+ 	msgcolor_t *colors;
+ 	uint32_t count;
+ 	uint32_t max;
++#ifdef __EMSCRIPTEN__
++	uint32_t sequence;
++#endif
+ } msgqueue_t;
+ 
+ static msgqueue_t *messages = NULL;
++
++#ifdef __EMSCRIPTEN__
++uint32_t web_message_sequence(void)
++{
++	return messages->sequence;
++}
++#endif
+ 
+ /**
+  * ------------------------------------------------------------------------
+@@ -125,6 +135,9 @@
+ {
+ 	message_t *m;
+ 
++#ifdef __EMSCRIPTEN__
++	++messages->sequence;
++#endif
+ 	if (messages->head &&
+ 	    messages->head->type == type &&
+ 	    streq(messages->head->str, str) &&
+diff --git a/src/message.h b/src/message.h
+--- a/src/message.h
++++ b/src/message.h
+@@ -45,6 +45,9 @@
+ void messages_init(void);
+ void messages_free(void);
+ uint16_t messages_num(void);
++#ifdef __EMSCRIPTEN__
++uint32_t web_message_sequence(void);
++#endif
+ void message_add(const char *str, uint16_t type);
+ const char *message_str(uint16_t age);
+ uint16_t message_count(uint16_t age);

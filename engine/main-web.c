@@ -65,6 +65,7 @@ static cmd_code direction_command;
 static bool pace_run;
 static bool background_save;
 static bool action_messages_pending;
+static void web_text_color(char *buffer, size_t size, int attr);
 static const char *const input_modes[] = {
     [WEB_INPUT_TERMINAL] = "terminal",
     [WEB_INPUT_COMMAND] = "command",
@@ -181,12 +182,14 @@ void web_mark_messages_displayed(void)
     action_messages_pending = false;
 }
 
-EM_JS(void, append_action_message, (const char *message, int type), {
+EM_JS(void, append_action_message, (const char *message, int type, const char *color,
+        bool recorded, uint32_t sequence), {
     const entries = Module['actionMessages'];
     const text = UTF8ToString(message);
     const previous = entries.at(-1);
     if (previous?.text === text && previous.type === type) previous.count++;
-    else entries.push({ text, type, count: 1 });
+    else entries.push({ text, type, count: 1, color: UTF8ToString(color),
+        sequence: recorded ? sequence : undefined });
 });
 
 bool web_capture_action_message(const char *message, int type)
@@ -194,7 +197,9 @@ bool web_capture_action_message(const char *message, int type)
     if (!player || !character_dungeon || player->is_dead || !player->upkeep->playing) return false;
     if (!*message) return true;
     web_clear_displayed_messages();
-    append_action_message(message, type);
+    char color[8];
+    web_text_color(color, sizeof(color), message_type_color(type));
+    append_action_message(message, type, color, streq(message, message_str(0)), web_message_sequence());
     action_messages_pending = true;
     return true;
 }
@@ -1120,22 +1125,27 @@ EM_JS(void, start_message_recall, (void), {
     Module['messageRecall'] = [];
 });
 
-EM_JS(void, add_recalled_message, (const char *text, int count, const char *color), {
-    Module['messageRecall'].push({ text: UTF8ToString(text), count, color: UTF8ToString(color) });
+EM_JS(void, add_recalled_message, (const char *text, int count, const char *color, int recent), {
+    Module['messageRecall'].push({ text: UTF8ToString(text), count, color: UTF8ToString(color), recent });
 });
 
 EM_JS(void, finish_message_recall, (unsigned int request), {
-    Module['sendMessageRecall'](request, Module['messageRecall']);
+    Module['sendMessageRecall'](request, Module['messageRecall'].reverse());
     Module['messageRecall'] = undefined;
 });
 
-EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request)
+EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request, bool from_series, uint32_t first_sequence)
 {
+    uint32_t remaining = from_series ? web_message_sequence() - first_sequence + 1 : 0;
     start_message_recall();
-    for (int i = messages_num() - 1; i >= 0; --i) {
+    for (int i = 0, n = messages_num(); i < n; ++i) {
         char color[8];
+        const char *text = message_str(i);
+        int count = message_count(i);
+        int recent = MIN(remaining, (uint32_t)count);
         web_text_color(color, sizeof(color), message_color(i));
-        add_recalled_message(message_str(i), message_count(i), color);
+        add_recalled_message(text, count, color, recent);
+        remaining -= recent;
     }
     finish_message_recall(request);
 }

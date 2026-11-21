@@ -263,9 +263,12 @@
                 <a id="download-result" download target="_blank" rel="noopener" hidden>Download file</a>
             </section>
             <p id="input-prompt" role="status" hidden></p>
-            <button id="journal" type="button" aria-label="Message recall" aria-describedby="latest-message"
+            <button id="journal" type="button" aria-label="Message recall" aria-describedby="earlier-messages latest-message"
                 aria-haspopup="dialog" aria-controls="message-dialog" hidden>
-                <span class="journal-preview"><span id="latest-message"></span></span>
+                <span class="journal-preview">
+                    <span id="earlier-messages" hidden></span>
+                    <span id="latest-message"></span>
+                </span>
             </button>
             <p id="save-status" class="status" role="status" hidden></p>
             <div id="message-pause" hidden>
