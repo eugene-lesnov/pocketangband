@@ -1,5 +1,5 @@
 diff --git a/docs/command.rst b/docs/command.rst
-index 52e13dc..2c49f09 100644
+index 52e13dc..c7dbb8d 100644
 --- a/docs/command.rst
 +++ b/docs/command.rst
 @@ -157,16 +157,22 @@ Go down staircase (``>``)
@@ -28,10 +28,10 @@ index 52e13dc..2c49f09 100644
 +  Exploration stops with "Something is here." when you notice a monster,
 +  staircase, trap, secret door, or item that requires a pickup decision.
 +  Several discoveries on the same step give one message. Items on your route
-+  use the usual pickup rules. If there is room for the quantity allowed by
-+  an auto-pickup inscription such as ``=g5``, exploration continues. Other
-+  disturbances can also stop exploration. Press Escape to interrupt resting
-+  or movement, and ``p`` to explore again.
++  use the usual pickup rules, including limits such as ``=g5``. Exploration
++  also stops if the next step would pass by a newly noticed item eligible
++  for automatic pickup. Other disturbances can also stop exploration.
++  Press Escape to interrupt resting or movement, and ``p`` to explore again.
  
  Resting Commands
  ================
@@ -179,7 +179,7 @@ index 83bb47b..d4ce519 100644
  	int light;
  	int16_t mon;
 diff --git a/src/cmd-cave.c b/src/cmd-cave.c
-index 918fc80..b7edfab 100644
+index 918fc80..4bcad29 100644
 --- a/src/cmd-cave.c
 +++ b/src/cmd-cave.c
 @@ -1068,7 +1068,17 @@ void move_player(int dir, bool disarm)
@@ -223,7 +223,7 @@ index 918fc80..b7edfab 100644
  			disturb(player);
  			/* No move made so no energy spent. */
  			player->upkeep->energy_use = 0;
-@@ -1492,54 +1511,115 @@ void do_cmd_navigate_up(struct command *cmd)
+@@ -1492,54 +1511,120 @@ void do_cmd_navigate_up(struct command *cmd)
  	msg("No known path to upstairs.");
  }
  
@@ -349,6 +349,12 @@ index 918fc80..b7edfab 100644
 -		player->upkeep->update |= (PU_TORCH);
 -		run_step(0);
 +	dir = explore_direction(player);
++	next = loc_sum(player->grid, ddgrid[dir]);
++	if (explore_pickup_blocks_step(player, next)) {
++		notice_explore_discovery(player);
++		disturb(player);
++		return;
++	}
 +	if (!dir) {
 +		disturb(player);
 +		msg("No apparent path for exploration.");
@@ -356,7 +362,6 @@ index 918fc80..b7edfab 100644
  	}
  
 -	msg("No apparent path for exploration.");
-+	next = loc_sum(player->grid, ddgrid[dir]);
 +	upkeep->energy_use = energy_per_move(player);
 +	move_player(dir, false);
 +	if (upkeep->steps && loc_eq(player->grid, next))
@@ -368,7 +373,7 @@ index 918fc80..b7edfab 100644
  }
  
  
-@@ -1633,8 +1713,6 @@ void do_cmd_rest(struct command *cmd)
+@@ -1633,8 +1718,6 @@ void do_cmd_rest(struct command *cmd)
  
  	/* Do some upkeep on the first turn of rest */
  	if (!player_is_resting(player)) {
@@ -377,7 +382,7 @@ index 918fc80..b7edfab 100644
  		/* If a number of turns was entered, remember it */
  		if (n > 1)
  			player_set_resting_repeat_count(player, n);
-@@ -1643,17 +1721,9 @@ void do_cmd_rest(struct command *cmd)
+@@ -1643,17 +1726,9 @@ void do_cmd_rest(struct command *cmd)
  			n = player_get_resting_repeat_count(player);
  	}
  
@@ -397,7 +402,7 @@ index 918fc80..b7edfab 100644
  	if (player_resting_count(player) > 0) {
  		cmdq_push(CMD_REST);
 diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
-index c122ae1..0dc2f75 100644
+index c122ae1..01f7895 100644
 --- a/src/cmd-pickup.c
 +++ b/src/cmd-pickup.c
 @@ -125,11 +125,14 @@ static void player_pickup_gold(struct player *p)
@@ -478,7 +483,7 @@ index c122ae1..0dc2f75 100644
  					if (!gear_obj) {
  						break;
  					}
-@@ -218,14 +221,21 @@ static int auto_pickup_okay(const struct object *obj)
+@@ -218,14 +221,69 @@ static int auto_pickup_okay(const struct object *obj)
  				if (pack_num >= max_num) {
  					return 0;
  				}
@@ -495,15 +500,63 @@ index c122ae1..0dc2f75 100644
 +}
 +
 +
-+bool auto_pickup_requires_stop(const struct player *p, const struct object *obj)
++void notice_explore_item(struct player *p, const struct object *obj)
 +{
 +	int wanted = auto_pickup_wanted(p, obj);
 +
-+	return wanted < 0 || (wanted > 0 && inven_carry_num(p, obj) < wanted);
++	if (wanted < 0 || (wanted > 0 && inven_carry_num(p, obj) < wanted)) {
++		notice_explore_discovery(p);
++	} else if (wanted > 0 && !loc_eq(obj->grid, p->grid)) {
++		if (!p->upkeep->explore_pickups)
++			p->upkeep->explore_pickups = point_set_new(8);
++		if (!point_set_contains(p->upkeep->explore_pickups, obj->grid))
++			add_to_point_set(p->upkeep->explore_pickups, obj->grid);
++	}
++}
++
++
++bool explore_pickup_blocks_step(struct player *p, struct loc next)
++{
++	struct point_set *pickups = p->upkeep->explore_pickups;
++	int remaining = 0;
++	int i;
++
++	if (!pickups)
++		return false;
++
++	for (i = 0; i < pickups->n; ++i) {
++		struct loc grid = pickups->pts[i];
++		const struct object *obj;
++		bool approaching;
++		bool has_pickup = false;
++
++		if (loc_eq(grid, p->grid))
++			continue;
++		if (!square_isseen(cave, grid))
++			return true;
++
++		approaching = distance(next, grid) < distance(p->grid, grid);
++		for (obj = square_object(cave, grid); obj; obj = obj->next) {
++			int wanted;
++
++			if (tval_is_money(obj) || ignore_item_ok(p, obj))
++				continue;
++			wanted = auto_pickup_wanted(p, obj);
++			if (wanted <= 0)
++				continue;
++			if (!approaching || inven_carry_num(p, obj) < wanted)
++				return true;
++			has_pickup = true;
++		}
++		if (has_pickup)
++			pickups->pts[remaining++] = grid;
++	}
++	pickups->n = remaining;
++	return false;
  }
  
  
-@@ -409,11 +419,15 @@ int do_autopickup(struct player *p)
+@@ -409,11 +467,15 @@ int do_autopickup(struct player *p)
  {
  	struct object *obj, *next;
  	uint8_t objs_picked_up = 0;
@@ -519,7 +572,7 @@ index c122ae1..0dc2f75 100644
  	/* Always pickup gold, effortlessly */
  	player_pickup_gold(p);
  
-@@ -424,13 +438,24 @@ int do_autopickup(struct player *p)
+@@ -424,13 +486,24 @@ int do_autopickup(struct player *p)
  
  		/* Ignore all hidden objects and non-objects */
  		if (!ignore_item_ok(p, obj)) {
@@ -547,7 +600,7 @@ index c122ae1..0dc2f75 100644
  			if (auto_num) {
  				/* Pick up the object (as much as possible) with message */
  				player_pickup_aux(p, obj, auto_num, true);
-@@ -481,7 +506,8 @@ void do_cmd_autopickup(struct command *cmd)
+@@ -481,7 +554,8 @@ void do_cmd_autopickup(struct command *cmd)
  		player->upkeep->energy_use = z_info->move_energy;
  
  	/* Look at or feel what's left */
@@ -558,14 +611,15 @@ index c122ae1..0dc2f75 100644
  	/* Redraw the object list using the upkeep flag so that the update can be
  	 * somewhat coalesced. Use event_signal(EVENT_ITEMLIST to force update. */
 diff --git a/src/cmds.h b/src/cmds.h
-index 8e48662..2fe91e3 100644
+index 8e48662..abaf0cf 100644
 --- a/src/cmds.h
 +++ b/src/cmds.h
-@@ -74,6 +74,7 @@ void do_cmd_study_book(struct command *cmd);
+@@ -74,6 +74,8 @@ void do_cmd_study_book(struct command *cmd);
  void do_cmd_study(struct command *cmd);
  
  /* cmd-pickup.c */
-+bool auto_pickup_requires_stop(const struct player *p, const struct object *obj);
++void notice_explore_item(struct player *p, const struct object *obj);
++bool explore_pickup_blocks_step(struct player *p, struct loc next);
  int do_autopickup(struct player *p);
  void do_cmd_pickup(struct command *cmd);
  void do_cmd_autopickup(struct command *cmd);
@@ -644,7 +698,7 @@ index 1c8033b..62d1030 100644
  
  			/* Clear the mimicry */
 diff --git a/src/obj-knowledge.c b/src/obj-knowledge.c
-index f87027f..7bd86a9 100644
+index f87027f..f92a426 100644
 --- a/src/obj-knowledge.c
 +++ b/src/obj-knowledge.c
 @@ -18,6 +18,7 @@
@@ -665,15 +719,14 @@ index f87027f..7bd86a9 100644
  
  	/* Make new known objects, fully know sensed ones, relocate old ones */
  	if (known_obj == NULL) {
-@@ -948,6 +952,11 @@ void object_see(struct player *p, struct object *obj)
+@@ -948,6 +952,10 @@ void object_see(struct player *p, struct object *obj)
  			pile_insert_end(&p->cave->squares[grid.y][grid.x].obj, known_obj);
  		}
  	}
 +
 +	if (discovery && square_isseen(cave, grid) && !tval_is_money(obj) &&
-+			!ignore_item_ok(p, obj) && auto_pickup_requires_stop(p, obj)) {
-+		p->upkeep->explore_discovery = true;
-+	}
++			!ignore_item_ok(p, obj))
++		notice_explore_item(p, obj);
  }
  
  /**
@@ -903,7 +956,7 @@ index 7679b38..c02a4cb 100644
  
  #endif /* !PLAYER_PATH_H */
 diff --git a/src/player-util.c b/src/player-util.c
-index 3da8c22..9bae226 100644
+index 3da8c22..cea8df4 100644
 --- a/src/player-util.c
 +++ b/src/player-util.c
 @@ -1488,6 +1488,18 @@ void player_resting_step_turn(struct player *p)
@@ -965,7 +1018,7 @@ index 3da8c22..9bae226 100644
  /*
   * Something has happened to disturb the player.
   *
-@@ -1644,17 +1659,20 @@ void player_handle_post_move(struct player *p, bool eval_trap,
+@@ -1644,17 +1659,24 @@ void player_handle_post_move(struct player *p, bool eval_trap,
   */
  void disturb(struct player *p)
  {
@@ -985,10 +1038,14 @@ index 3da8c22..9bae226 100644
 -	if (p->upkeep->running) {
 +	if (p->upkeep->running || was_exploring) {
 +		p->upkeep->exploring = false;
++		if (p->upkeep->explore_pickups) {
++			point_set_dispose(p->upkeep->explore_pickups);
++			p->upkeep->explore_pickups = NULL;
++		}
  		p->upkeep->running = 0;
  		mem_free(p->upkeep->steps);
  		p->upkeep->steps = NULL;
-@@ -1672,6 +1690,9 @@ void disturb(struct player *p)
+@@ -1672,6 +1694,9 @@ void disturb(struct player *p)
  
  	/* Flush input */
  	event_signal(EVENT_INPUT_FLUSH);
@@ -998,7 +1055,7 @@ index 3da8c22..9bae226 100644
  }
  
  /**
-@@ -1693,7 +1714,8 @@ void search(struct player *p)
+@@ -1693,7 +1718,8 @@ void search(struct player *p)
  
  			/* Secret doors */
  			if (square_issecretdoor(cave, grid)) {
@@ -1008,7 +1065,7 @@ index 3da8c22..9bae226 100644
  				place_closed_door(cave, grid);
  				disturb(p);
  			}
-@@ -1706,7 +1728,8 @@ void search(struct player *p)
+@@ -1706,7 +1732,8 @@ void search(struct player *p)
  				}
  
  				if (obj->known->pval != obj->pval) {
@@ -1038,16 +1095,30 @@ index a7e39a1..1690fb4 100644
  void disturb(struct player *p);
  void search(struct player *p);
  bool player_has_monster_in_view(const struct player *p);
+diff --git a/src/player.c b/src/player.c
+index 26e86e0..c767188 100644
+--- a/src/player.c
++++ b/src/player.c
+@@ -441,6 +441,8 @@ void player_cleanup_members(struct player *p)
+ 		mem_free(p->upkeep->quiver);
+ 		mem_free(p->upkeep->inven);
+ 		mem_free(p->upkeep->steps);
++		if (p->upkeep->explore_pickups)
++			point_set_dispose(p->upkeep->explore_pickups);
+ 		mem_free(p->upkeep);
+ 		p->upkeep = NULL;
+ 	}
 diff --git a/src/player.h b/src/player.h
-index 36a6151..1cb5cac 100644
+index 36a6151..b75b129 100644
 --- a/src/player.h
 +++ b/src/player.h
-@@ -481,6 +481,8 @@ struct player_upkeep {
+@@ -481,6 +481,9 @@ struct player_upkeep {
  
  	int running;			/* Running counter */
  	bool running_firststep;		/* Is this our first step running or following a precomputed path? */
 +	bool exploring;
 +	bool explore_discovery;
++	struct point_set *explore_pickups;
  
  	struct object **quiver;	/* Quiver objects */
  	struct object **inven;	/* Inventory objects */
