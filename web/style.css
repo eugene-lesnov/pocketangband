@@ -1137,8 +1137,11 @@ button.visible-list-row {
     font-size: 0.9375rem;
 }
 #outcome-actions button[aria-current="true"] { background: #4c3820; }
-#menu-actions.birth-actions button { min-width: 4rem; }
-#menu-actions.birth-actions button:only-child { flex-basis: 100%; }
+#menu-actions.birth-actions { flex-wrap: nowrap; }
+#menu-actions.birth-actions button {
+    min-width: var(--button-min-height);
+    padding-inline: 0.2rem;
+}
 #birth-preview, .menu-description {
     grid-area: prompt;
     min-width: 0;
