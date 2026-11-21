@@ -1085,7 +1085,7 @@ function updateMenuControls(disabled, choosing) {
     terminalKeys.classList.toggle("options-controls", Boolean(menu?.options));
     setActions(actionsScreen, !!openPanel && openPanel !== "character",
         disabled || (openPanel === "tiles" && actionsScreen.contains(loadingTiles ?? null)));
-    setActions(menuActions, !!menu && menuActions.childElementCount > 0 && !openPanel, disabled);
+    setActions(menuActions, !!menu?.actions.length && !openPanel, disabled);
     activeList.rows.disabled = activeList.sections.disabled = disabled;
 }
 
@@ -1152,7 +1152,7 @@ function targetActionLabel() {
     return `${context.verb} On`;
 }
 
-function getConfirmAction(selectedRow, closesScreen) {
+function getConfirmAction(closesScreen) {
     if (!unavailableScreen.hidden) return ["Escape", "Back"];
     if (context.browseKey) return [context.browseKey, "Browse"];
     if (context.resultsList?.action) return [context.resultsList.action.key, context.resultsList.action.label];
@@ -1173,7 +1173,7 @@ function getConfirmAction(selectedRow, closesScreen) {
         }
         case "option-number":
         case "rest": return ["Enter", "Done"];
-        case "save-slots": return ["Enter", selectedRow?.index > 0 ? "Continue" : "New game"];
+        case "save-slots": return ["Enter", "Continue"];
         case "menu": return ["Enter", menu?.birth ? "Continue" : "Select"];
         default: return closesScreen ? ["Escape", "Back"] : ["Enter", "Continue"];
     }
@@ -1189,18 +1189,19 @@ function getCancelLabel() {
 
 function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, showPad, showTargetControls }) {
     const unavailable = !unavailableScreen.hidden;
+    const saveSlots = mode === "save-slots";
     const showFooter = mode !== undefined && !isTextEntry(mode) && !stopVisible && !outcome &&
         (mode !== "command" || !!openPanel || unavailable);
     setActions(terminalKeys, showFooter, disabled);
     setActions(outcomeActions, outcome && !stopVisible, disabled);
-    terminalKeys.classList.toggle("single-row-controls", (playingGame || mode === "save-slots") && !showPad);
+    terminalKeys.classList.toggle("single-row-controls", (playingGame || saveSlots) && !showPad);
     terminalKeys.classList.toggle("results-controls", mode === "victory" || resultChild || mode === "retire");
 
     const aiming = mode === "aim";
     const closesScreen = !context.listPreview &&
         (["details", "character", "overview", "help"].includes(mode) || unavailable);
     const selectedRow = menu?.rows.find((row) => row.index === menuCursor && row.enabled);
-    const [key, label] = getConfirmAction(selectedRow, closesScreen);
+    const [key, label] = getConfirmAction(closesScreen);
     const directMenu = playingGame && mode === "menu" && !!menu;
     terminalKeys.classList.toggle("aim-controls", aiming);
     confirmKey.dataset.key = key;
@@ -1209,7 +1210,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     const noAimTarget = aiming && !context.current;
     confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options ||
         (resultChild && !context.resultsList?.action) || isDirectionPrompt() || mode === "key" || (menu?.choice && !menu.birth) || directMenu || showTargetControls ||
-        noAimTarget);
+        noAimTarget || (saveSlots && !menu?.rows.length));
     confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget || context.trade?.amount === 0 ||
         (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
 
@@ -1346,7 +1347,7 @@ function showDeleteSaveStatus(message, failed = false) {
 
 function openDeleteSave(button, code) {
     if (mode !== "save-slots" || request === undefined || deleteSaveDialog.open) return;
-    const row = menu?.rows.find((row) => row.index === code && row.enabled && row.index > 0);
+    const row = menu?.rows.find((row) => row.index === code && row.enabled);
     if (!row) return;
     deleteTarget = { request, code };
     deleteSaveLabel.textContent = saveSlotLabel(row);
@@ -1437,7 +1438,7 @@ function updatePrompt() {
     }
     if (mode === "direction" || mode === "run-direction") text = "Choose a direction.";
     if (running || (mode === "run-direction" && request === undefined)) text = "";
-    if (mode === "save-slots") text = "Choose a save or start a new game.";
+    if (mode === "save-slots") text = menu?.rows.length ? "Choose a save or start a new game." : "";
     if (mode === "target") {
         text = terminalLine(0);
         if (!context.attack) {
@@ -2910,7 +2911,9 @@ function saveSlotLabel(row) {
 }
 
 function focusSelectedSave() {
-    (activeList.rows.querySelector('[aria-current="true"]') ?? activeList.rows).focus({ preventScroll: true });
+    const selected = activeList.rows.querySelector('[aria-current="true"]') ??
+        menuActions.querySelector('button[data-input="new-game"]');
+    (selected ?? activeList.rows).focus({ preventScroll: true });
 }
 
 function knowledgeResults(rows, query) {
@@ -2973,8 +2976,10 @@ function renderMenu(state, description = state?.description ?? "") {
     if (optionSaveStatus.textContent !== saveMessage) optionSaveStatus.textContent = saveMessage;
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
     const outcome = !!context.outcome;
+    const saveSlots = mode === "save-slots";
     menuScreen.classList.toggle("outcome-menu", outcome);
     menuActions.classList.toggle("birth-actions", Boolean(state?.birth));
+    menuActions.classList.toggle("save-slot-actions", saveSlots);
     if (!state) {
         activeList.state = undefined;
         menuCursor = undefined;
@@ -3012,8 +3017,7 @@ function renderMenu(state, description = state?.description ?? "") {
         return button;
     }));
     menuEmpty.hidden = rows.length > 0;
-    menuEmpty.textContent = query ? "No matches." : "No items.";
-    const randomCharacter = mode === "save-slots" && state.actions.find((action) => action.key === keyCode("@"));
+    menuEmpty.textContent = saveSlots ? "No saved games." : query ? "No matches." : "No items.";
     const focused = document.activeElement?.closest("button[data-input]");
     const focusedCode = focused && (menuRows.contains(focused) || outcomeActions.contains(focused)) ?
         focused.dataset.value : undefined;
@@ -3043,7 +3047,7 @@ function renderMenu(state, description = state?.description ?? "") {
             choices.push(more);
             continue;
         }
-        const label = mode === "save-slots" ? saveSlotLabel(row) : row.name;
+        const label = saveSlots ? saveSlotLabel(row) : row.name;
         const button = makeInput("menu-row", row.index, label);
         button.disabled = !row.enabled;
         if (row.checked !== undefined) {
@@ -3125,15 +3129,7 @@ function renderMenu(state, description = state?.description ?? "") {
             if (button === current) groupRows.open = true;
             continue;
         }
-        if (randomCharacter && row.index === 0 && row.enabled) {
-            const controls = document.createElement("div");
-            controls.className = "new-game-row";
-            button.replaceChildren(description);
-            const random = makeKey("@", randomCharacter.label);
-            setKeyHint(random);
-            controls.append(button, random);
-            choices.push(controls);
-        } else if (mode === "save-slots" && row.index > 0 && row.enabled) {
+        if (saveSlots && row.enabled) {
             const controls = document.createElement("div");
             controls.className = "save-slot-row";
             const remove = makeInput("delete-save", row.index, `Delete save: ${label}`);
@@ -3148,8 +3144,10 @@ function renderMenu(state, description = state?.description ?? "") {
     }
     menuRows.replaceChildren(...choices);
     outcomeActions.replaceChildren(...endings);
-    const focusedAction = menuActions.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
-    menuActions.replaceChildren(...state.actions.filter((action) => action !== randomCharacter).map((action) => {
+    const focusedAction = menuActions.contains(document.activeElement) ?
+        document.activeElement.dataset.key ?? document.activeElement.dataset.input : undefined;
+    menuActions.replaceChildren(...state.actions.map((action) => {
+        if (saveSlots && action.key === 0) return makeInput("new-game", 0, action.label);
         const button = state.store ? makeInput("store-action", action.key, action.label) :
             makeKey(String.fromCharCode(action.key), action.label);
         const key = keyFromCode(action.key);
@@ -3164,7 +3162,8 @@ function renderMenu(state, description = state?.description ?? "") {
         return button;
     }));
     if (focusedAction && !differentList) {
-        [...menuActions.children].find((button) => button.dataset.key === focusedAction)?.focus({ preventScroll: true });
+        [...menuActions.children].find((button) => (button.dataset.key ?? button.dataset.input) === focusedAction)
+            ?.focus({ preventScroll: true });
     }
     scrollArea.scrollTop = differentList ? 0 : previousScroll;
     if (current && menuRows.contains(current) && !differentList && state.cursor !== previous.cursor) {
@@ -3807,6 +3806,8 @@ document.addEventListener("keydown", (event) => {
         event.preventDefault();
         if (menu.rows.some((row) => row.index === menuCursor && row.enabled)) {
             sendInput({ type: "menu-row", code: menuCursor });
+        } else if (mode === "save-slots" && !menu.rows.length) {
+            menuActions.querySelector('button[data-input="new-game"]')?.click();
         }
         return;
     }

@@ -216,7 +216,7 @@ diff --git a/src/main.c b/src/main.c
  	/* Play the game */
  	play_game((select_game) ?
 diff --git a/src/ui-game.c b/src/ui-game.c
-index 14b71f4..c6b6f5f 100644
+index 14b71f4..e396cb3 100644
 --- a/src/ui-game.c
 +++ b/src/ui-game.c
 @@ -181,7 +181,9 @@ struct cmd_info cmd_info[] =
@@ -362,26 +362,29 @@ index 14b71f4..c6b6f5f 100644
 +static bool select_savefile(bool retry, bool *new_game)
  {
 +#ifdef __EMSCRIPTEN__
-+	const int notify = EVT_WEB_DELETE;
++	const int notify = EVT_WEB_DELETE | EVT_WEB_NEW_GAME;
 +#else
 +	const int notify = 0;
 +#endif
  	/* Build the list of selections. */
  	savefile_getter g = NULL;
  	/*
-@@ -869,6 +935,11 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -869,6 +935,14 @@ static void select_savefile(bool retry, bool *new_game)
  	menu_layout(m, &m_region);
  	m->cursor = default_entry;
  	m->flags |= MN_DBL_TAP;
 +#ifdef __EMSCRIPTEN__
-+	m->cursor = web_set_save_slots((const char *const *)names, count, m->cursor);
++	const int first_save = allow_new_game ? 1 : 0;
++	menu_setpriv(m, count - first_save, entries + first_save);
++	m->cursor = web_set_save_slots((const char *const *)(names + first_save),
++		count - first_save, MAX(0, m->cursor - first_save));
 +	if (allow_new_game)
 +		m->switch_keys = "@";
 +#endif
  
  	screen_save();
  	prt("Select the save to use (movement keys and enter or mouse) or quit",
-@@ -876,11 +947,31 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -876,11 +950,38 @@ static void select_savefile(bool retry, bool *new_game)
  	prt("(escape or second mouse button).", 1, 0);
  	prt((retry) ? "The previously selected savefile was unusable." : "",
  		2, 0);
@@ -389,16 +392,23 @@ index 14b71f4..c6b6f5f 100644
 +	while (true) {
 +		selection = menu_select(m, notify, false);
 +#ifdef __EMSCRIPTEN__
-+		if (selection.type == EVT_WEB_DELETE) {
-+			int slot = selection.key.code;
-+			if (slot <= 0 || slot >= count || !web_delete_save(names[slot]))
++		if (selection.type == EVT_SELECT) {
++			m->cursor += first_save;
++		} else if (selection.type == EVT_WEB_DELETE) {
++			int row = selection.key.code;
++			if (row < 0 || row >= count - first_save ||
++					!web_delete_save(names[row + first_save]))
 +				continue;
-+		} else if (selection.type == EVT_KBRD) {
-+			if (!allow_new_game || selection.key.code != '@')
++		} else if (selection.type == EVT_WEB_NEW_GAME ||
++				(selection.type == EVT_KBRD && selection.key.code == '@')) {
++			if (!allow_new_game)
 +				continue;
++			if (selection.type == EVT_KBRD)
++				web_request_random_character();
 +			m->cursor = 0;
 +			selection.type = EVT_SELECT;
-+			web_request_random_character();
++		} else if (selection.type == EVT_KBRD) {
++			continue;
 +		}
 +#endif
 +		break;
@@ -414,7 +424,7 @@ index 14b71f4..c6b6f5f 100644
  			*new_game = true;
  		} else {
  			*new_game = false;
-@@ -891,12 +982,22 @@ static void select_savefile(bool retry, bool *new_game)
+@@ -891,12 +992,22 @@ static void select_savefile(bool retry, bool *new_game)
  	}
  
  	menu_free(m);
@@ -437,7 +447,7 @@ index 14b71f4..c6b6f5f 100644
  }
  
  /**
-@@ -911,6 +1012,12 @@ void play_game(enum game_mode_type mode)
+@@ -911,6 +1022,12 @@ void play_game(enum game_mode_type mode)
  		switch (mode) {
  		case GAME_LOAD:
  		case GAME_NEW:
@@ -450,7 +460,7 @@ index 14b71f4..c6b6f5f 100644
  			if (!start_game(mode == GAME_NEW)) {
  				quit("Broken savefile");
  			}
-@@ -921,7 +1028,9 @@ void play_game(enum game_mode_type mode)
+@@ -921,7 +1038,9 @@ void play_game(enum game_mode_type mode)
  				bool new_game = false, retry = false;
  
  				while (1) {
@@ -461,7 +471,7 @@ index 14b71f4..c6b6f5f 100644
  					if (start_game(new_game)) {
  						break;
  					}
-@@ -947,6 +1056,14 @@ void play_game(enum game_mode_type mode)
+@@ -947,6 +1066,14 @@ void play_game(enum game_mode_type mode)
  		/* Close game on death or quitting */
  		close_game(true);
  
@@ -476,7 +486,7 @@ index 14b71f4..c6b6f5f 100644
  		if (!play_again) break;
  
  		cleanup_angband();
-@@ -1011,6 +1128,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
+@@ -1011,6 +1138,19 @@ bool savefile_name_already_used(const char *fname, bool make_safe,
  	return result;
  }
  
@@ -496,7 +506,7 @@ index 14b71f4..c6b6f5f 100644
  /**
   * Save the game.
   */
-@@ -1033,7 +1163,7 @@ bool save_game_checked(void)
+@@ -1033,7 +1173,7 @@ bool save_game_checked(void)
  	disturb(player);
  
  	/* Clear messages */
@@ -505,7 +515,7 @@ index 14b71f4..c6b6f5f 100644
  
  	/* Handle stuff */
  	handle_stuff(player);
-@@ -1047,11 +1177,25 @@ bool save_game_checked(void)
+@@ -1047,11 +1187,25 @@ bool save_game_checked(void)
  	/* The player is not dead */
  	my_strcpy(player->died_from, "(saved)", sizeof(player->died_from));
  
@@ -532,7 +542,7 @@ index 14b71f4..c6b6f5f 100644
  		prt("Saving game... done.", 0, 0);
  		result = true;
  	} else {
-@@ -1065,23 +1209,6 @@ bool save_game_checked(void)
+@@ -1065,23 +1219,6 @@ bool save_game_checked(void)
  	/* Allow suspend again */
  	signals_handle_tstp();
  
@@ -556,7 +566,7 @@ index 14b71f4..c6b6f5f 100644
  	/* Note that the player is not dead */
  	my_strcpy(player->died_from, "(alive and well)", sizeof(player->died_from));
  
-@@ -1095,10 +1222,8 @@ bool save_game_checked(void)
+@@ -1095,10 +1232,8 @@ bool save_game_checked(void)
   * \param prompt_failed_save If true, prompt the user to retry if saving fails.
   * Otherwise, no prompt is issued.
   *
@@ -569,7 +579,7 @@ index 14b71f4..c6b6f5f 100644
   */
  void close_game(bool prompt_failed_save)
  {
-@@ -1130,17 +1255,26 @@ void close_game(bool prompt_failed_save)
+@@ -1130,17 +1265,26 @@ void close_game(bool prompt_failed_save)
  	/* Handle death or life */
  	if (player->is_dead) {
  		death_knowledge(player);
@@ -597,7 +607,7 @@ index 14b71f4..c6b6f5f 100644
  	} else {
  		/* Save the game */
  		while (prompting && !save_game_checked()) {
-@@ -1150,6 +1284,10 @@ void close_game(bool prompt_failed_save)
+@@ -1150,6 +1294,10 @@ void close_game(bool prompt_failed_save)
  			}
  		}
  
@@ -608,7 +618,7 @@ index 14b71f4..c6b6f5f 100644
  		if (Term->mapped_flag) {
  			struct keypress ch;
  
-@@ -1158,6 +1296,7 @@ void close_game(bool prompt_failed_save)
+@@ -1158,6 +1306,7 @@ void close_game(bool prompt_failed_save)
  			if (ch.code != ESCAPE)
  				predict_score(false);
  		}
@@ -617,9 +627,10 @@ index 14b71f4..c6b6f5f 100644
  
  	/* Wipe the monster list */
 diff --git a/src/ui-event.h b/src/ui-event.h
+index 9f70577..1d8f98a 100644
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,27 @@
+@@ -36,7 +36,28 @@ typedef enum
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -644,11 +655,12 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 +	EVT_WEB_TEXT = 0x4000000,
 +	EVT_WEB_CHARACTER = 0x8000000,
 +	EVT_WEB_MENU_PREVIEW = 0x10000000,
++	EVT_WEB_NEW_GAME = 0x20000000,
 +#endif
  } ui_event_type;
  
  
-@@ -196,6 +216,14 @@
+@@ -196,6 +217,14 @@ struct keypress {
  	uint8_t mods;
  };
  
@@ -663,7 +675,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
  /**
   * Null keypress constant, for safe initializtion.
   */
-@@ -221,6 +249,9 @@
+@@ -221,6 +250,9 @@ struct mouseclick {
   */
  typedef union {
  	ui_event_type type;
@@ -1732,7 +1744,7 @@ index 956ef26..28c9bd8 100644
  			  char fallback);
  extern bool (*get_file)(const char *suggested_name, char *path, size_t len);
 diff --git a/src/ui-menu.c b/src/ui-menu.c
-index a934411..737269f 100644
+index a934411..0ff7fc2 100644
 --- a/src/ui-menu.c
 +++ b/src/ui-menu.c
 @@ -769,6 +769,12 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
@@ -1748,7 +1760,7 @@ index a934411..737269f 100644
  
  	assert(menu->active.width != 0 && menu->active.page_rows != 0);
  
-@@ -782,7 +788,69 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -782,7 +788,71 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  		int cursor = menu->cursor;
  
  		menu_refresh(menu, popup);
@@ -1780,8 +1792,10 @@ index a934411..737269f 100644
 +					web_add_menu_row(pos, entries[oid].name, NULL, NULL, key,
 +						!(entries[oid].flags & MN_ACT_GRAYED));
 +			}
-+			if (save_slots && menu->switch_keys)
++			if (save_slots && menu->switch_keys) {
++				web_menu_action(0, "New game");
 +				web_menu_action('@', "Random character");
++			}
 +		}
 +		if (web_rows && menu->web_title) web_set_menu_selection_title(menu->web_title);
 +#endif
@@ -1818,7 +1832,7 @@ index a934411..737269f 100644
  
  		/* Handle mouse & keyboard commands */
  		if (in.type == EVT_MOUSE) {
-@@ -798,7 +866,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
+@@ -798,7 +868,7 @@ ui_event menu_select(struct menu *menu, int notify, bool popup)
  				continue;
  
  			/* Switch key */
@@ -1827,7 +1841,7 @@ index a934411..737269f 100644
  				strchr(menu->switch_keys, (char)in.key.code)) {
  				menu_handle_action(menu, &in);
  				if (popup)
-@@ -1052,10 +1120,32 @@ static const menu_iter dynamic_iter = {
+@@ -1052,10 +1122,32 @@ static const menu_iter dynamic_iter = {
  	NULL	/* resize */
  };
  

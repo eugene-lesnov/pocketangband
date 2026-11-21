@@ -56,7 +56,7 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "delete-save") {
         if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
-            !(data.code > 0) || !waiting.menu?.rows.some((row) => row.index === data.code && row.enabled)) {
+            !waiting.menu?.rows.some((row) => row.index === data.code && row.enabled)) {
             deleteSaveError("The save slot selection changed. Try again.", waiting?.request);
             return;
         }
@@ -69,6 +69,9 @@ self.addEventListener("message", ({ data }) => {
     }
     if (data.type === "key") {
         if (!Number.isInteger(data.code) || data.code <= 0 || data.code > 0x10ffff) return;
+    } else if (data.type === "new-game") {
+        if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
+            !waiting.menu?.actions.some((action) => action.key === 0)) return;
     } else if (data.type === "open-character") {
         if (waiting?.mode !== "command" || data.request !== waiting.request) return;
     } else if (data.type === "run-direction") {

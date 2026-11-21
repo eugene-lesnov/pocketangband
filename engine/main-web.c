@@ -812,7 +812,7 @@ EM_JS(int, web_set_save_slots, (const char *const *names, int count, int cursor)
         return name ? UTF8ToString(name) : "";
     });
     const preferred = Module['saveSlots'].indexOf(Module['preferredSaveSlot']);
-    return preferred > 0 ? preferred : cursor;
+    return preferred >= 0 ? preferred : cursor;
 });
 
 EM_JS(void, web_set_options_title, (const char *title, bool defaults_saved), {
@@ -1787,7 +1787,7 @@ void web_poll_interrupt(void)
 EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
-        int text_event, int delete_event, int run_direction, int character_event), {
+        int text_event, int delete_event, int run_direction, int character_event, int new_game), {
     const event = Module['takeInput']();
     if (!event) return 0;
     HEAP32[code >>> 2] = event.code ?? 0;
@@ -1818,6 +1818,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview
         case "menu-row": return row;
         case "menu-preview": return preview;
         case "delete-save": return delete_event;
+        case "new-game": return new_game;
         case "menu-section": return section;
         case "store-action": return store_action;
         case "aim-cell": return aim_cell;
@@ -1962,7 +1963,7 @@ static errr queue_input(void)
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
         EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION,
-        EVT_WEB_CHARACTER);
+        EVT_WEB_CHARACTER, EVT_WEB_NEW_GAME);
 
     if (type == EVT_NONE) return 1;
     if (type != EVT_WEB_TILES) {
