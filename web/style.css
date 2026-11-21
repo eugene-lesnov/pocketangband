@@ -1357,6 +1357,9 @@ main.picker-expanded .controls { flex: 1; max-height: 100%; }
     .view:has(> #menu-screen:not([hidden])) {
         grid-template-rows: auto minmax(0, 1fr) fit-content(40%) var(--journal-track, auto) auto;
     }
+    .view:has(> #menu-screen.options-menu:not([hidden])) ~ .controls #menu-actions button {
+        flex-basis: 0;
+    }
     main.in-world {
         --pad-key-width: 44px;
         --pad-key-height: 44px;

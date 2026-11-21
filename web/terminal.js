@@ -176,6 +176,7 @@ function createMenuList(screenId, descriptionId) {
 const pageList = createMenuList("menu-screen", "menu-description");
 const pickerList = createMenuList("picker-list", "picker-description");
 let activeList = pageList;
+let lastMenuScrollSize;
 const menuActions = document.querySelector("#menu-actions");
 const optionSaveStatus = document.querySelector("#option-save-status");
 const picker = document.querySelector("#picker");
@@ -1968,6 +1969,7 @@ function handleWorkerMessage({ data }) {
                 if (saved && saved.cursor === menuCursor && saved.race === menu.birth.race) {
                     pageList.screen.scrollTop = saved.list;
                     birthPreview.scrollTop = saved.details;
+                    lastMenuScrollSize = menuScrollSize(pageList.screen);
                 } else {
                     birthPreview.scrollTop = 0;
                     selected?.scrollIntoView({ block: "nearest" });
@@ -2897,6 +2899,10 @@ function knowledgeResults(rows, query) {
     return { visible, count };
 }
 
+function menuScrollSize(scrollArea) {
+    return { scrollArea, width: scrollArea.clientWidth, height: scrollArea.clientHeight };
+}
+
 function scrollMenuRowIntoView(row, scrollArea) {
     const bounds = row.getBoundingClientRect();
     const screen = scrollArea.getBoundingClientRect();
@@ -3254,10 +3260,16 @@ function updatePickerOverflow() {
 
 const menuResize = new ResizeObserver((entries) => {
     const { rows, scrollArea } = activeList;
-    const focused = document.activeElement;
-    if (rows.contains(focused) && focused.matches('[aria-current="true"]') && scrollArea.clientHeight &&
-        entries.some(({ target }) => target === scrollArea)) {
-        scrollMenuRowIntoView(focused, scrollArea);
+    if (entries.some(({ target }) => target === scrollArea)) {
+        const previous = lastMenuScrollSize;
+        const size = menuScrollSize(scrollArea);
+        lastMenuScrollSize = size;
+        const focused = document.activeElement;
+        if (previous?.scrollArea === scrollArea && size.width && size.height &&
+            (size.width < previous.width || size.height < previous.height) &&
+            rows.contains(focused) && focused.matches('[aria-current="true"]')) {
+            scrollMenuRowIntoView(focused, scrollArea);
+        }
     }
     updatePickerOverflow();
 });
