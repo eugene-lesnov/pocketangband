@@ -1,8 +1,8 @@
 diff --git a/docs/command.rst b/docs/command.rst
-index 52e13dc..7c482d2 100644
+index 52e13dc..2c49f09 100644
 --- a/docs/command.rst
 +++ b/docs/command.rst
-@@ -157,16 +157,20 @@ Go down staircase (``>``)
+@@ -157,16 +157,22 @@ Go down staircase (``>``)
    :ref:`Pathfinding <pathfinding-player>` has more information about how the
    path is calculated and what happens when following the path.
  
@@ -26,10 +26,12 @@ index 52e13dc..7c482d2 100644
 +  impassable rubble, and known traps that can affect you.
 +
 +  Exploration stops with "Something is here." when you notice a monster,
-+  staircase, trap, secret door, or item you would leave on the floor. Several
-+  discoveries on the same step give one message. Items on your route use the
-+  usual pickup rules. Other disturbances can also stop exploration. Press
-+  Escape to interrupt resting or movement, and ``p`` to explore again.
++  staircase, trap, secret door, or item that requires a pickup decision.
++  Several discoveries on the same step give one message. Items on your route
++  use the usual pickup rules. If there is room for the quantity allowed by
++  an auto-pickup inscription such as ``=g5``, exploration continues. Other
++  disturbances can also stop exploration. Press Escape to interrupt resting
++  or movement, and ``p`` to explore again.
  
  Resting Commands
  ================
@@ -395,7 +397,7 @@ index 918fc80..b7edfab 100644
  	if (player_resting_count(player) > 0) {
  		cmdq_push(CMD_REST);
 diff --git a/src/cmd-pickup.c b/src/cmd-pickup.c
-index c122ae1..d917876 100644
+index c122ae1..0dc2f75 100644
 --- a/src/cmd-pickup.c
 +++ b/src/cmd-pickup.c
 @@ -125,11 +125,14 @@ static void player_pickup_gold(struct player *p)
@@ -416,33 +418,38 @@ index c122ae1..d917876 100644
  				object_similar(gear_obj, obj, OSTACK_PACK)) {
  			/* We found the object */
  			return gear_obj;
-@@ -144,7 +147,7 @@ static const struct object *find_stack_object_in_inventory(const struct object *
-  * Determine if an object can be picked up automatically and return the
-  * number to pick up.
+@@ -141,10 +144,9 @@ static const struct object *find_stack_object_in_inventory(const struct object *
+ 
+ 
+ /**
+- * Determine if an object can be picked up automatically and return the
+- * number to pick up.
++ * Return the desired auto-pickup quantity, or -1 for manual pickup.
   */
 -static int auto_pickup_okay(const struct object *obj)
-+int auto_pickup_okay(const struct player *p, const struct object *obj)
++static int auto_pickup_wanted(const struct player *p, const struct object *obj)
  {
          /*
  	 * Use the following inscriptions to guide pickup with the last one
-@@ -167,13 +170,14 @@ static int auto_pickup_okay(const struct object *obj)
+@@ -167,27 +169,27 @@ static int auto_pickup_okay(const struct object *obj)
  	 * inscriptions.  The player option to pickup if in the inventory
  	 * honors those inscriptions.
  	 */
 -	int num = inven_carry_num(player, obj);
-+	int num = inven_carry_num(p, obj);
++	int num = obj->number;
  	unsigned obj_has_auto, obj_has_maxauto;
  	int obj_maxauto;
  
- 	if (!num) return 0;
- 
+-	if (!num) return 0;
+-
 -	if (OPT(player, pickup_always)) return num;
+-	if (check_for_inscrip(obj, "!g")) return 0;
 +	if (OPT(p, pickup_always))
 +		return num;
- 	if (check_for_inscrip(obj, "!g")) return 0;
++	if (check_for_inscrip(obj, "!g")) return -1;
  
  	obj_has_auto = check_for_inscrip(obj, "=g");
-@@ -181,8 +185,9 @@ static int auto_pickup_okay(const struct object *obj)
+ 	obj_maxauto = INT_MAX;
  	obj_has_maxauto = check_for_inscrip_with_int(obj, "=g", &obj_maxauto);
  	if (obj_has_auto > obj_has_maxauto) return num;
  
@@ -453,8 +460,15 @@ index c122ae1..d917876 100644
 +			find_stack_object_in_inventory(p, obj, NULL);
  		if (!gear_obj) {
  			if (obj_has_maxauto) {
- 				return (num < obj_maxauto) ? num : obj_maxauto;
-@@ -209,7 +214,8 @@ static int auto_pickup_okay(const struct object *obj)
+-				return (num < obj_maxauto) ? num : obj_maxauto;
++				return MIN(num, obj_maxauto);
+ 			}
+-			return 0;
++			return -1;
+ 		}
+ 		if (!check_for_inscrip(gear_obj, "!g")) {
+ 			unsigned int gear_has_auto = check_for_inscrip(gear_obj, "=g");
+@@ -209,7 +211,8 @@ static int auto_pickup_okay(const struct object *obj)
  					if (!gear_obj->next) {
  						break;
  					}
@@ -464,8 +478,53 @@ index c122ae1..d917876 100644
  					if (!gear_obj) {
  						break;
  					}
-@@ -427,10 +433,11 @@ int do_autopickup(struct player *p)
- 			int auto_num;
+@@ -218,14 +221,21 @@ static int auto_pickup_okay(const struct object *obj)
+ 				if (pack_num >= max_num) {
+ 					return 0;
+ 				}
+-				return (num < max_num - pack_num) ?
+-					num : max_num - pack_num;
++				return MIN(num, max_num - pack_num);
+ 			}
+ 			return num;
+ 		}
+ 	}
+ 
+-	return 0;
++	return -1;
++}
++
++
++bool auto_pickup_requires_stop(const struct player *p, const struct object *obj)
++{
++	int wanted = auto_pickup_wanted(p, obj);
++
++	return wanted < 0 || (wanted > 0 && inven_carry_num(p, obj) < wanted);
+ }
+ 
+ 
+@@ -409,11 +419,15 @@ int do_autopickup(struct player *p)
+ {
+ 	struct object *obj, *next;
+ 	uint8_t objs_picked_up = 0;
++	bool explore_had_pack_space;
+ 
+ 	/* Nothing to pick up -- return */
+ 	if (!square_object(cave, p->grid))
+ 		return 0;
+ 
++	explore_had_pack_space = p->upkeep->exploring &&
++		pack_slots_used(p) < z_info->pack_size;
++
+ 	/* Always pickup gold, effortlessly */
+ 	player_pickup_gold(p);
+ 
+@@ -424,13 +438,24 @@ int do_autopickup(struct player *p)
+ 
+ 		/* Ignore all hidden objects and non-objects */
+ 		if (!ignore_item_ok(p, obj)) {
+-			int auto_num;
++			int wanted, auto_num = 0;
  
  			/* Disturb */
 -			disturb(p);
@@ -474,11 +533,21 @@ index c122ae1..d917876 100644
  
  			/* Automatically pick up items into the backpack */
 -			auto_num = auto_pickup_okay(obj);
-+			auto_num = auto_pickup_okay(p, obj);
++			wanted = auto_pickup_wanted(p, obj);
++			if (wanted > 0) {
++				int capacity = inven_carry_num(p, obj);
++
++				if (explore_had_pack_space && capacity < wanted &&
++						pack_slots_used(p) >= z_info->pack_size) {
++					disturb(p);
++					break;
++				}
++				auto_num = MIN(wanted, capacity);
++			}
  			if (auto_num) {
  				/* Pick up the object (as much as possible) with message */
  				player_pickup_aux(p, obj, auto_num, true);
-@@ -481,7 +488,8 @@ void do_cmd_autopickup(struct command *cmd)
+@@ -481,7 +506,8 @@ void do_cmd_autopickup(struct command *cmd)
  		player->upkeep->energy_use = z_info->move_energy;
  
  	/* Look at or feel what's left */
@@ -489,14 +558,14 @@ index c122ae1..d917876 100644
  	/* Redraw the object list using the upkeep flag so that the update can be
  	 * somewhat coalesced. Use event_signal(EVENT_ITEMLIST to force update. */
 diff --git a/src/cmds.h b/src/cmds.h
-index 8e48662..d7362c4 100644
+index 8e48662..2fe91e3 100644
 --- a/src/cmds.h
 +++ b/src/cmds.h
 @@ -74,6 +74,7 @@ void do_cmd_study_book(struct command *cmd);
  void do_cmd_study(struct command *cmd);
  
  /* cmd-pickup.c */
-+int auto_pickup_okay(const struct player *p, const struct object *obj);
++bool auto_pickup_requires_stop(const struct player *p, const struct object *obj);
  int do_autopickup(struct player *p);
  void do_cmd_pickup(struct command *cmd);
  void do_cmd_autopickup(struct command *cmd);
@@ -575,7 +644,7 @@ index 1c8033b..62d1030 100644
  
  			/* Clear the mimicry */
 diff --git a/src/obj-knowledge.c b/src/obj-knowledge.c
-index f87027f..d9eb067 100644
+index f87027f..7bd86a9 100644
 --- a/src/obj-knowledge.c
 +++ b/src/obj-knowledge.c
 @@ -18,6 +18,7 @@
@@ -602,7 +671,7 @@ index f87027f..d9eb067 100644
  	}
 +
 +	if (discovery && square_isseen(cave, grid) && !tval_is_money(obj) &&
-+			!ignore_item_ok(p, obj) && auto_pickup_okay(p, obj) < obj->number) {
++			!ignore_item_ok(p, obj) && auto_pickup_requires_stop(p, obj)) {
 +		p->upkeep->explore_discovery = true;
 +	}
  }
