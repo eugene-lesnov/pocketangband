@@ -1442,8 +1442,8 @@ void web_move_aim(int direction, struct loc *location)
 enum web_map_action {
     MAP_EAT, MAP_REFILL, MAP_EQUIP_LIGHT, MAP_PICKUP, MAP_GO_UP, MAP_GO_DOWN,
     MAP_OPEN, MAP_CLOSE, MAP_DISARM, MAP_TUNNEL, MAP_OPEN_CHEST, MAP_DISARM_CHEST,
-    MAP_STUDY, MAP_REST, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_FIRE, MAP_CAST,
-    MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_ACTION_COUNT
+    MAP_STUDY, MAP_REST, MAP_JUMP, MAP_WALK, MAP_ATTACK, MAP_STEAL, MAP_FIRE, MAP_CAST,
+    MAP_THROW, MAP_DETAILS, MAP_INSPECT, MAP_FLOOR, MAP_ACTION_COUNT
 };
 
 static const char *const map_action_labels[MAP_ACTION_COUNT] = {
@@ -1453,9 +1453,9 @@ static const char *const map_action_labels[MAP_ACTION_COUNT] = {
     [MAP_OPEN] = "Open", [MAP_CLOSE] = "Close", [MAP_DISARM] = "Disarm", [MAP_TUNNEL] = "Tunnel",
     [MAP_OPEN_CHEST] = "Open Chest", [MAP_DISARM_CHEST] = "Disarm Chest", [MAP_STUDY] = "Study",
     [MAP_REST] = "Rest", [MAP_JUMP] = "Walk into a trap", [MAP_WALK] = "Walk",
-    [MAP_ATTACK] = "Attack",
+    [MAP_ATTACK] = "Attack", [MAP_STEAL] = "Steal",
     [MAP_FIRE] = "Fire", [MAP_CAST] = "Cast", [MAP_THROW] = "Throw",
-    [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect",
+    [MAP_DETAILS] = "Details", [MAP_INSPECT] = "Inspect", [MAP_FLOOR] = "Floor",
 };
 
 static const cmd_code map_action_commands[MAP_ACTION_COUNT] = {
@@ -1465,7 +1465,7 @@ static const cmd_code map_action_commands[MAP_ACTION_COUNT] = {
     [MAP_CLOSE] = CMD_CLOSE, [MAP_DISARM] = CMD_DISARM, [MAP_TUNNEL] = CMD_TUNNEL,
     [MAP_OPEN_CHEST] = CMD_OPEN, [MAP_DISARM_CHEST] = CMD_DISARM, [MAP_STUDY] = CMD_STUDY,
     [MAP_JUMP] = CMD_JUMP, [MAP_WALK] = CMD_WALK,
-    [MAP_ATTACK] = CMD_ALTER, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
+    [MAP_ATTACK] = CMD_ALTER, [MAP_STEAL] = CMD_STEAL, [MAP_FIRE] = CMD_FIRE, [MAP_CAST] = CMD_CAST,
     [MAP_THROW] = CMD_THROW,
 };
 
@@ -1504,16 +1504,21 @@ static unsigned player_map_actions(struct loc grid, int object_count)
     else if ((!light || (!of_has(light->flags, OF_NO_FUEL) && !light->timeout)) &&
             has_action_item(web_can_equip_light, supplies))
         actions |= 1U << MAP_EQUIP_LIGHT;
-    if (object_count) actions |= 1U << MAP_PICKUP;
+    if (object_count) {
+        actions |= 1U << MAP_PICKUP;
+        if (!player->timed[TMD_IMAGE])
+            actions |= 1U << (object_count == 1 ? MAP_INSPECT : MAP_FLOOR);
+    }
     if (square_isupstairs(known, grid)) actions |= 1U << MAP_GO_UP;
     if (square_isdownstairs(known, grid)) actions |= 1U << MAP_GO_DOWN;
+    if (!player->timed[TMD_IMAGE] && count_feats(NULL, square_isdiggable, false))
+        actions |= 1U << MAP_TUNNEL;
     if (player_can_study(player, false) && has_action_item(obj_can_study, pack_and_floor))
         actions |= 1U << MAP_STUDY;
     return actions;
 }
 
-static unsigned nearby_map_actions(struct loc grid, struct object *const *objects, int object_count,
-        bool quick)
+static unsigned nearby_map_actions(struct loc grid, struct object *const *objects, int object_count)
 {
     struct chunk *known = player->cave;
     unsigned actions = 0;
@@ -1531,26 +1536,61 @@ static unsigned nearby_map_actions(struct loc grid, struct object *const *object
     if (square_isopendoor(known, grid)) actions |= 1U << MAP_CLOSE;
     if (square_isdisarmabletrap(known, grid) && !(actions & (1U << MAP_DISARM_CHEST)))
         actions |= 1U << MAP_DISARM;
-    if (square_isdiggable(known, grid) && (!quick || square_isrubble(known, grid) || square_hasgoldvein(known, grid)))
-        actions |= 1U << MAP_TUNNEL;
     return actions;
 }
 
+struct map_action_cell {
+    int x, y;
+    unsigned actions;
+};
+
+static unsigned player_nearby_actions(struct map_action_cell *cells, unsigned underfoot)
+{
+    const term *map = angband_term[WEB_MAP_TERM];
+    struct object *objects[z_info->floor_size];
+    const unsigned terrain = (1U << MAP_OPEN) | (1U << MAP_CLOSE) | (1U << MAP_DISARM);
+    unsigned seen = 0, prompt = 0;
+    for (int dir = DIR_SW; dir <= DIR_NE; dir++) {
+        struct loc grid = next_grid(player->grid, dir);
+        int x = (grid.x - map->offset_x) * tile_width;
+        int y = (grid.y - map->offset_y) * tile_height;
+        if (x < 0 || x >= map->wid || y < 0 || y >= map->hgt ||
+                !square_in_bounds_fully(cave, grid)) continue;
+        unsigned actions = underfoot;
+        if (obvious_map_monster(grid)) {
+            if (player_has(player, PF_STEAL)) prompt |= 1U << MAP_STEAL;
+            continue;
+        }
+        if (dir != DIR_TARGET) {
+            int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
+            actions = nearby_map_actions(grid, objects, count);
+        }
+        cells[dir] = (struct map_action_cell){ x, y, actions };
+        prompt |= seen & actions & terrain;
+        seen |= actions;
+    }
+    return underfoot | prompt;
+}
+
 static unsigned map_actions(struct loc grid, struct monster *mon, struct object *const *objects,
-        int object_count, bool quick)
+        int object_count, bool quick, struct map_action_cell *nearby)
 {
     struct chunk *known = player->cave;
     unsigned actions = 0;
     if (loc_eq(grid, player->grid)) {
         actions = player_map_actions(grid, object_count);
-        if (!player->timed[TMD_IMAGE]) actions |= nearby_map_actions(grid, objects, object_count, true);
+        if (!player->timed[TMD_IMAGE])
+            actions |= player_nearby_actions(nearby, nearby_map_actions(grid, objects, object_count));
         return actions;
     }
     if (player->timed[TMD_IMAGE]) return 0;
     bool adjacent = map_cell_adjacent(grid);
     if (mon) {
         actions = 1U << MAP_DETAILS;
-        if (adjacent) actions |= 1U << MAP_ATTACK;
+        if (adjacent) {
+            actions |= 1U << MAP_ATTACK;
+            if (player_has(player, PF_STEAL)) actions |= 1U << MAP_STEAL;
+        }
         if (target_able(mon)) {
             int sources = USE_INVEN | USE_FLOOR | USE_QUIVER;
             if (player_can_fire(player, false) && has_action_item(obj_can_fire, sources))
@@ -1563,7 +1603,10 @@ static unsigned map_actions(struct loc grid, struct monster *mon, struct object 
         return actions;
     }
     if (adjacent) {
-        actions = nearby_map_actions(grid, objects, object_count, quick);
+        actions = nearby_map_actions(grid, objects, object_count);
+        if (square_isdiggable(known, grid) &&
+                (!quick || square_isrubble(known, grid) || square_hasgoldvein(known, grid)))
+            actions |= 1U << MAP_TUNNEL;
         if (square_isdisarmabletrap(known, grid)) actions |= 1U << MAP_JUMP;
         if (square_isknownpassable(known, grid) && !square_isvisibletrap(known, grid))
             actions |= 1U << MAP_WALK;
@@ -1606,27 +1649,8 @@ static void describe_map_actions(int x, int y, int direction, unsigned enabled)
     }
 }
 
-static void describe_nearby_map_actions(unsigned underfoot)
-{
-    const term *map = angband_term[WEB_MAP_TERM];
-    struct object *objects[z_info->floor_size];
-    for (int dir = DIR_SW; dir <= DIR_NE; dir++) {
-        struct loc grid = next_grid(player->grid, dir);
-        int x = (grid.x - map->offset_x) * tile_width;
-        int y = (grid.y - map->offset_y) * tile_height;
-        if (x < 0 || x >= map->wid || y < 0 || y >= map->hgt ||
-                !square_in_bounds_fully(cave, grid) || obvious_map_monster(grid)) continue;
-        unsigned actions = underfoot;
-        if (dir != DIR_TARGET) {
-            int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
-            actions = nearby_map_actions(grid, objects, count, true);
-        }
-        if (actions) describe_map_actions(x, y, dir, actions);
-    }
-}
-
 static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned actions,
-        struct monster *mon, struct object **objects, int count)
+        struct monster *mon, struct object **objects, int count, const struct map_action_cell *nearby)
 {
     bool here = loc_eq(player->grid, grid);
     const char *phrase = here ? "You are on " : square_isseen(cave, grid) ? "You see " :
@@ -1659,19 +1683,25 @@ static void describe_map_cell(int x, int y, struct loc grid, bool menu, unsigned
     char coordinates[32], description[224];
     coords_desc(coordinates, sizeof(coordinates), grid.y, grid.x);
     strnfmt(description, sizeof(description), "%s%s%s, %s.", phrase, article, name, coordinates);
-    const unsigned chest_actions = (1U << MAP_OPEN_CHEST) | (1U << MAP_DISARM_CHEST);
-    unsigned underfoot = here ? actions & chest_actions : 0;
     set_map_cell(x, y, description, here, menu);
     if (!menu) return;
-    describe_map_actions(x, y, 0, actions & ~underfoot);
-    if (here && !player->timed[TMD_IMAGE]) describe_nearby_map_actions(underfoot);
+    unsigned untargeted = actions & ~nearby[DIR_TARGET].actions;
+    describe_map_actions(x, y, 0, untargeted);
+    if (here) {
+        for (int dir = DIR_SW; dir <= DIR_NE; dir++) {
+            const struct map_action_cell *cell = &nearby[dir];
+            unsigned targeted = cell->actions & ~untargeted;
+            if (targeted) describe_map_actions(cell->x, cell->y, dir, targeted);
+        }
+    }
 }
 
 static bool queue_map_command(cmd_code command, struct loc grid)
 {
     if (cmdq_push(command)) return false;
-    if (command == CMD_WALK || command == CMD_JUMP || command == CMD_ALTER || command == CMD_OPEN ||
-            command == CMD_CLOSE || command == CMD_DISARM || command == CMD_TUNNEL) {
+    if (!loc_eq(grid, player->grid) && (command == CMD_WALK || command == CMD_JUMP ||
+            command == CMD_ALTER || command == CMD_OPEN || command == CMD_CLOSE ||
+            command == CMD_DISARM || command == CMD_STEAL || command == CMD_TUNNEL)) {
         cmd_set_arg_direction(cmdq_peek(), "direction", motion_dir(player->grid, grid));
     } else if (command == CMD_PATHFIND) {
         cmd_set_arg_point(cmdq_peek(), "point", grid);
@@ -1702,11 +1732,12 @@ bool web_map_cell(int x, int y, int gesture)
             !square_isvisibletrap(known, grid)) {
         return queue_map_command(CMD_WALK, grid);
     }
-    unsigned actions = map_actions(grid, mon, objects, count, gesture != WEB_MAP_HOLD);
+    struct map_action_cell nearby[DIR_NE + 1] = { 0 };
+    unsigned actions = map_actions(grid, mon, objects, count, gesture != WEB_MAP_HOLD, nearby);
     bool menu = gesture == WEB_MAP_HOLD || here || (actions && (adjacent || mon));
     if (!menu && direct_move && repeat && square_in_bounds_fully(cave, grid))
         return queue_map_command(adjacent ? CMD_WALK : CMD_PATHFIND, grid);
-    describe_map_cell(x, y, grid, menu, actions, mon, objects, count);
+    describe_map_cell(x, y, grid, menu, actions, mon, objects, count, nearby);
     set_map_route_available(direct_move && !menu && square_in_bounds_fully(cave, grid));
     return false;
 }
@@ -1718,14 +1749,16 @@ bool web_act_on_map_cell(int x, int y, int action)
     struct monster *mon = obvious_map_monster(grid);
     struct object *objects[z_info->floor_size];
     int count = scan_distant_floor(objects, N_ELEMENTS(objects), player, grid);
-    if (!(map_actions(grid, mon, objects, count, false) & (1U << action))) return false;
+    struct map_action_cell nearby[DIR_NE + 1] = { 0 };
+    if (!(map_actions(grid, mon, objects, count, false, nearby) & (1U << action))) return false;
     if (action == MAP_REST) {
         if (!key_confirm_command('R')) return false;
         textui_cmd_rest();
         return true;
     }
-    if (action == MAP_DETAILS || action == MAP_INSPECT) {
+    if (action == MAP_DETAILS || action == MAP_INSPECT || action == MAP_FLOOR) {
         if (action == MAP_DETAILS) lore_show_interactive(mon->race, get_lore(mon->race));
+        else if (action == MAP_FLOOR) web_inspect_floor(player, objects, count);
         else display_object_recall_interactive(objects[0]);
         web_map_cell(x, y, WEB_MAP_HOLD);
         return false;
@@ -1735,6 +1768,8 @@ bool web_act_on_map_cell(int x, int y, int action)
     if (!key_confirm_command(cmd_lookup_key(command, keymap)) || !queue_map_command(command, grid))
         return false;
     if (action == MAP_EQUIP_LIGHT) cmd_set_arg_choice(cmdq_peek(), "light source", 1);
+    if ((action == MAP_OPEN_CHEST || action == MAP_DISARM_CHEST) && loc_eq(grid, player->grid))
+        cmd_set_arg_direction(cmdq_peek(), "direction", DIR_TARGET);
     return true;
 }
 
@@ -1980,7 +2015,7 @@ static errr queue_input(void)
         case EVT_WEB_TARGET_CELL: {
             const ui_event action = { .mouse = { .type = type, .x = x, .y = y,
                 .button = type == EVT_WEB_MAP_CELL || type == EVT_WEB_MAP_ACTION ||
-                    type == EVT_WEB_AIM_CELL ? code : 1 } };
+                    (type == EVT_WEB_AIM_CELL && input_mode == WEB_INPUT_AIM) ? code : 1 } };
             return Term_event_push(&action);
         }
         case EVT_WEB_STORE_ACTION: {

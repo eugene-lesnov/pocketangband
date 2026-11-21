@@ -1402,7 +1402,7 @@ index ec19a5b..a77ce42 100644
  
  		/* Get first keypress - the first test is to avoid displaying the
  		 * prompt for direction if there's already a keypress queued up
-@@ -1525,16 +1676,31 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,16 +1676,33 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1429,8 +1429,10 @@ index ec19a5b..a77ce42 100644
  				struct loc from = player->grid;
  				struct loc to = loc(x, y);
 +#ifdef __EMSCRIPTEN__
-+				if (ke.type == EVT_WEB_AIM_CELL)
++				if (ke.type == EVT_WEB_AIM_CELL) {
 +					to = web_direction_grid(ke.mouse.x, ke.mouse.y);
++					if (!allow_5 && loc_eq(from, to)) continue;
++				}
 +#endif
  
  				dir = pathfind_direction_to(from, to);
@@ -1578,7 +1580,7 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 index 956ef26..28c9bd8 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,137 @@
+@@ -24,6 +24,138 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1628,6 +1630,7 @@ index 956ef26..28c9bd8 100644
 +	WEB_MAP_MOUSE_TAP, WEB_MAP_MOUSE_REPEAT };
 +bool web_map_cell(int x, int y, int gesture);
 +bool web_act_on_map_cell(int x, int y, int action);
++void web_inspect_floor(struct player *p, struct object **items, int count);
 +void web_run_direction(int direction);
 +bool web_can_equip_light(const struct object *obj);
 +bool web_get_map_aim_dir(int *dir, struct loc grid);
@@ -2463,7 +2466,7 @@ diff --git a/src/ui-target.c b/src/ui-target.c
  }
  
 +#ifdef __EMSCRIPTEN__
-+static void web_inspect_floor(struct player *p, struct object **items, int count)
++void web_inspect_floor(struct player *p, struct object **items, int count)
 +{
 +	struct menu *m = menu_dynamic_new();
 +	int pos;
