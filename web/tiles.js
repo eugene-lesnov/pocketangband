@@ -65,7 +65,6 @@ export function renderTileMap(canvas, tiles, frame, grid, colors) {
     context.font = `${size * 0.75}px monospace`;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.strokeStyle = "#ffdb76";
     context.lineWidth = cursorWidth;
     for (let row = 0; row < rows; row++) {
         for (let column = 0; column < columns; column++) {
@@ -89,7 +88,8 @@ export function renderTileMap(canvas, tiles, frame, grid, colors) {
                 context.fillStyle = "#ffdb764d";
                 context.fillRect(left, top, size, size);
             }
-            if (index === frame.cursor) {
+            if (index === frame.cursor || frame.discoveries?.has(index)) {
+                context.strokeStyle = index === frame.cursor ? "#ffdb76" : "#79e0da";
                 context.strokeRect(left + cursorWidth / 2, top + cursorWidth / 2, size - cursorWidth, size - cursorWidth);
             }
         }

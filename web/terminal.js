@@ -442,6 +442,9 @@ function draw() {
         const selected = previewCell ?? target ?? (map ? context.mapCell : undefined);
         const cursor = selected ? selected.y * source.width + selected.x : source.cursor;
         const path = aiming && view !== views.terminal ? context.aimPath : undefined;
+        const marks = map && !exploring && world?.mapStatus?.discoveries;
+        const discoveries = marks && source.player?.depth === world.depth &&
+            source.player.x === marks.x && source.player.y === marks.y ? marks.cells : undefined;
         const mapActions = view === views.map ? context.mapCell?.actions : undefined;
         const choosing = view === views.map ? mapDirectionAction : undefined;
         const previousGrid = view.gridElement;
@@ -470,12 +473,13 @@ function draw() {
         }
         const regionChanged = !sameRegion(region, view.region);
         const changed = source !== view.rendered || cursor !== view.cursor || regionChanged || path !== view.path ||
-            mapActions !== view.mapActions || choosing !== view.choosing;
+            mapActions !== view.mapActions || choosing !== view.choosing || discoveries !== view.discoveries;
         if (changed) {
             const positions = choosing?.targets ?? mapActions?.flatMap((action) => action.targets ?? []);
             const highlighted = path ? new Set(path) :
                 positions?.length ? new Set(positions.map(({ x, y }) => y * source.width + x)) : undefined;
-            const frame = cursor === source.cursor && !highlighted ? source : { ...source, cursor, highlighted };
+            const frame = cursor === source.cursor && !highlighted && !discoveries ? source :
+                { ...source, cursor, highlighted, discoveries };
             const { grid, gridElement } = renderFrame(view, frame, region);
             if (map) {
                 view.gridElement.style.setProperty("--first-column", grid.x);
@@ -488,6 +492,7 @@ function draw() {
             view.region = region;
             view.cursor = cursor;
             view.path = path;
+            view.discoveries = discoveries;
             view.mapActions = mapActions;
             view.choosing = choosing;
         }
@@ -2231,7 +2236,7 @@ function sendInput(input) {
     request = undefined;
     if (mode === "text") textFields.disabled = true;
     renderAppUpdate();
-    if (mode === "aim") draw();
+    if (mode === "aim" || exploring) draw();
     if (running || !mapCellActions.hidden) updateControls();
     updatePrompt();
     return true;

@@ -510,6 +510,8 @@ dt { color: var(--muted); }
 
 .cursor { outline: 1px solid #ffdb76; outline-offset: -1px; }
 .highlighted-cell { box-shadow: inset 0 0 0 1em #ffdb764d; }
+.explore-discovery { outline: 1px solid #79e0da; outline-offset: -1px; }
+.explore-discovery.cursor { outline-color: #ffdb76; }
 
 :is(#journal, #message-pause) { margin: 0.25rem; }
 #journal {

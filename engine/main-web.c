@@ -1161,6 +1161,10 @@ EM_JS(void, add_map_indicator, (const char *label, const char *color, const char
     });
 });
 
+EM_JS(void, set_explore_marks, (int x, int y, const int *cells, int count), {
+    Module['worldMapStatus'].discoveries = { x, y, cells: new Set(HEAP32.subarray(cells >>> 2, (cells >>> 2) + count)) };
+});
+
 static void publish_map_indicator(const char *label, int attr, const char *description)
 {
     char color[8];
@@ -1272,6 +1276,18 @@ static void publish_world(bool commands)
 
     start_world_status();
     publish_map_status();
+    const struct point_set *marks = player->upkeep->explore_marks;
+    if (marks && marks->n) {
+        int cells[marks->n], count = 0;
+        for (int i = 0; i < marks->n; ++i) {
+            int x = (marks->pts[i].x - map->offset_x) * tile_width;
+            int y = (marks->pts[i].y - map->offset_y) * tile_height;
+            if (x >= 0 && x < map->wid && y >= 0 && y < map->hgt)
+                cells[count++] = y * map->wid + x;
+        }
+        set_explore_marks((player->grid.x - map->offset_x) * tile_width,
+            (player->grid.y - map->offset_y) * tile_height, cells, count);
+    }
     publish_stats(commands);
     publish_monster_health();
     if (player->word_recall) add_world_condition("Recall", 55);
@@ -1803,6 +1819,7 @@ void web_poll_interrupt(void)
     }
     if (take_interrupt(player->upkeep->exploring, resting)) {
         if (player->upkeep->exploring) {
+            if (player->upkeep->explore_discovery) clear_explore_marks(player);
             player->upkeep->explore_discovery = false;
             disturb(player);
             msg("Cancelled.");

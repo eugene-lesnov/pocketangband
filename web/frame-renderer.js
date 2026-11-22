@@ -59,7 +59,7 @@ export function renderFrame({ pre, canvas }, frame, region = {}) {
 }
 
 function renderText(pre, frame, grid, colors, tiles) {
-    const { width, codepoints, attributes, backgroundStride, shade, cursor, highlighted } = frame;
+    const { width, codepoints, attributes, backgroundStride, shade, cursor, highlighted, discoveries } = frame;
     const { x, y, columns, rows } = grid;
     const fragment = document.createDocumentFragment();
     for (let row = 0; row < rows; row++) {
@@ -71,13 +71,15 @@ function renderText(pre, frame, grid, colors, tiles) {
             const attr = attributes[start];
             const span = document.createElement("span");
             const marked = highlighted?.has(start) ?? false;
+            const discovery = discoveries?.has(start);
             const tile = tiles && tileAt(tiles, attr, codepoints[start]);
             let end = start + 1;
             if (tile) {
                 styleTerminalTile(span, tiles, tile, frame, start);
             } else {
-                if (start !== cursor) {
+                if (start !== cursor && !discovery) {
                     while (end < rowEnd && attributes[end] === attr && end !== cursor &&
+                        !discoveries?.has(end) &&
                         (highlighted?.has(end) ?? false) === marked &&
                         !(tiles && tileAt(tiles, attr, codepoints[end]))) end++;
                 }
@@ -94,6 +96,7 @@ function renderText(pre, frame, grid, colors, tiles) {
             }
             if (start === cursor) span.classList.add("cursor");
             if (marked) span.classList.add("highlighted-cell");
+            if (discovery) span.classList.add("explore-discovery");
             line.append(span);
             start = end;
         }
