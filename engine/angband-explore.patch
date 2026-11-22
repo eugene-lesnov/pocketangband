@@ -429,10 +429,20 @@ index c122ae1..669a0da 100644
  	/* Redraw the object list using the upkeep flag so that the update can be
  	 * somewhat coalesced. Use event_signal(EVENT_ITEMLIST to force update. */
 diff --git a/src/game-world.c b/src/game-world.c
-index d384de8..96bf018 100644
+index d384de8..68045d5 100644
 --- a/src/game-world.c
 +++ b/src/game-world.c
-@@ -981,8 +981,10 @@ void process_player(void)
+@@ -842,6 +842,9 @@ static void process_player_cleanup(void)
+ 
+ 	/* Significant */
+ 	if (player->upkeep->energy_use) {
++		if (!player->upkeep->explore_discovery)
++			clear_explore_marks(player);
++
+ 		/* Use some energy */
+ 		player->energy -= player->upkeep->energy_use;
+ 
+@@ -981,8 +984,10 @@ void process_player(void)
  		}
  
  		/* Get a command from the queue if there is one */
@@ -444,7 +454,7 @@ index d384de8..96bf018 100644
  
  		if (!player->upkeep->playing)
  			break;
-@@ -1061,6 +1063,11 @@ void on_new_level(void)
+@@ -1061,6 +1066,11 @@ void on_new_level(void)
   * Housekeeping on leaving a level
   */
  static void on_leave_level(void) {
