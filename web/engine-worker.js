@@ -329,8 +329,7 @@ async function play(afterRun) {
         onExit(code) {
             readMessageRecall = undefined;
             clearTimeout(checkpointTimer);
-            finish({ type: "exit", code, message: lastError,
-                afterRun: game.birthCancelled ? "save-slots" : game.afterRun });
+            finish({ type: "exit", code, message: lastError, afterRun: game.afterRun });
         },
     });
     readMessageRecall = game._web_message_recall;

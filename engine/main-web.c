@@ -594,19 +594,15 @@ void web_show_splash(bool startup)
     web_set_input_mode(previous);
 }
 
-EM_JS(void, cancel_birth, (void), {
-    Module['birthCancelled'] = true;
+EM_JS(void, web_finish_run, (bool new_game), {
+    Module['afterRun'] = new_game ? "new-game" : "save-slots";
 });
 
 void web_cancel_birth(void)
 {
-    cancel_birth();
+    web_finish_run(false);
     quit(NULL);
 }
-
-EM_JS(void, web_finish_run, (bool new_game), {
-    Module['afterRun'] = new_game ? "new-game" : "save-slots";
-});
 
 EM_JS(void, web_set_outcome, (const char *kind, const char *name, const char *race,
         const char *class_name, int level, int depth, int32_t exp, int32_t gold,
