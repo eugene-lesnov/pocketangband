@@ -713,7 +713,6 @@ fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
     transform: translateY(0.125rem);
 }
 #center-caption { font: 0.625rem/1.05 system-ui, sans-serif; }
-.direction-pad.cardinal :is(.diagonal, #direction-center) { visibility: hidden; }
 .key-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #stop-action { grid-column: 1 / -1; border-color: var(--accent); background: #4c3820; }
 #play-keys { grid-template-columns: repeat(6, minmax(0, 1fr)); }

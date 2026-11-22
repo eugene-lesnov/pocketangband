@@ -1375,9 +1375,17 @@ struct loc web_direction_grid(int x, int y)
         Term->offset_y + (y - ROW_MAP) / tile_height);
 }
 
+static bool has_aim_target(void)
+{
+    for (int i = 1; i < cave_monster_max(cave); i++) {
+        struct monster *mon = cave_monster(cave, i);
+        if (square_in_bounds_fully(cave, mon->grid) && target_able(mon)) return true;
+    }
+    return false;
+}
+
 void web_set_aim_options(bool selecting, struct loc location)
 {
-    struct point_set *targets = target_get_monsters(TARGET_KILL, NULL, false);
     const bool overhead = web_has_overhead_map();
     const term *map = overhead ? angband_term[WEB_MAP_TERM] : Term;
     const int origin_x = overhead ? 0 : COL_MAP;
@@ -1404,10 +1412,9 @@ void web_set_aim_options(bool selecting, struct loc location)
         if (target_able(mon)) monster_desc(description, sizeof(description), mon, MDESC_IND_VIS);
         else coords_desc(description, sizeof(description), grid.y, grid.x);
     }
-    set_aim_options(current, point_set_size(targets) > 0, selecting,
+    set_aim_options(current, has_aim_target(), selecting,
         origin_x + (grid.x - map->offset_x) * tile_width,
         origin_y + (grid.y - map->offset_y) * tile_height, path_cells, path_count, description);
-    point_set_dispose(targets);
 }
 
 static bool aim_at_grid(struct loc grid, struct loc *location)

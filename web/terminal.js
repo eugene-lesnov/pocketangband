@@ -401,6 +401,7 @@ let journalPrompt = "";
 const preferencesKey = "pocketangband-touch";
 const preferences = { compactHud: false, leftHanded: false, largeText: false,
     fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
+let preferencesWriteFailed = false;
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey) || "{}");
     for (const key of Object.keys(preferences)) {
@@ -410,7 +411,12 @@ try {
 } catch {}
 
 function savePreferences() {
-    try { localStorage.setItem(preferencesKey, JSON.stringify(preferences)); } catch {}
+    try {
+        localStorage.setItem(preferencesKey, JSON.stringify(preferences));
+        preferencesWriteFailed = false;
+    } catch {
+        preferencesWriteFailed = true;
+    }
 }
 
 function applyPreferences() {
@@ -1100,7 +1106,6 @@ function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
     const showPad = !choosing && !(command && showKeyboard) &&
         (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
-    directionPad.classList.toggle("cardinal", mode === "save-slots");
     directionPad.classList.toggle("run-direction", mode === "run-direction");
     directionPad.classList.toggle("running-mode", command && runMode);
     directionPad.setAttribute("aria-label", command && runMode ? "Direction pad: Run" :
@@ -1207,9 +1212,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     const [key, label] = getConfirmAction(closesScreen);
     const directMenu = playingGame && mode === "menu" && !!menu;
     terminalKeys.classList.toggle("aim-controls", aiming);
-    confirmKey.dataset.key = key;
-    confirmKey.textContent = label;
-    setKeyHint(confirmKey);
+    updateKeyButton(confirmKey, label, key);
     const noAimTarget = aiming && !context.current;
     confirmKey.hidden = !unavailable && (!!context.listPreview || !!openPanel || !!menu?.options ||
         (resultChild && !context.resultsList?.action) || isDirectionPrompt() || mode === "key" || (menu?.choice && !menu.birth) || directMenu || showTargetControls ||
@@ -1217,10 +1220,7 @@ function updateTerminalControls({ disabled, outcome, resultChild, stopVisible, s
     confirmKey.disabled = !unavailable && (mode === "direction" || noAimTarget || context.trade?.amount === 0 ||
         (mode === "target" && !context.canSelect) || (!!menu && !selectedRow));
 
-    cancelKey.dataset.key = mode === "confirm" ? "n" : "Escape";
-    cancelKey.textContent = getCancelLabel();
-    cancelKey.setAttribute("aria-label", cancelKey.textContent);
-    setKeyHint(cancelKey);
+    updateKeyButton(cancelKey, getCancelLabel(), mode === "confirm" ? "n" : "Escape");
     cancelKey.hidden = (closesScreen && !context.browseKey) || mode === "victory";
 }
 
@@ -1251,8 +1251,7 @@ function updateTargetControls(disabled, showTargetControls, showKeyboard) {
     const attackTargeting = selecting && context.attack;
     setActions(targetActions, showTargetControls, disabled);
     if (selecting) {
-        confirmTarget.textContent = targetActionLabel();
-        setKeyHint(confirmTarget);
+        updateKeyButton(confirmTarget, targetActionLabel());
         confirmTarget.disabled = !context.canSelect;
     }
     nearest.hidden = !aiming || !!openPanel || showKeyboard;
@@ -1267,9 +1266,8 @@ function updateTargetControls(disabled, showTargetControls, showKeyboard) {
         targetLocation.setAttribute("aria-pressed", String(context.freeAim));
         targetMonster.disabled = !context.targetCount;
     } else {
-        targetMode.textContent = context.freeAim ? "Interesting places" : "Free selection";
-        targetMode.dataset.key = context.freeAim ? "m" : "o";
-        setKeyHint(targetMode);
+        updateKeyButton(targetMode, context.freeAim ? "Interesting places" : "Free selection",
+            context.freeAim ? "m" : "o");
         targetMode.disabled = selecting && context.freeAim && !context.targetCount;
     }
     const preview = context.listPreview;
@@ -2099,7 +2097,8 @@ function handleWorkerMessage({ data }) {
         case "saved":
             clearTimeout(saveNoticeTimer);
             saving = false;
-            if (data.ok && !data.outcome && data.slot) {
+            if (data.ok && !data.outcome && data.slot &&
+                (preferences.lastSave !== data.slot || preferencesWriteFailed)) {
                 preferences.lastSave = data.slot;
                 savePreferences();
             }
@@ -2642,6 +2641,15 @@ function setKeyHint(button, key = button.dataset.key, caption) {
         badge.textContent = text;
     }
     button.setAttribute("aria-description", `Shortcut: ${label}`);
+}
+
+function updateKeyButton(button, label, key = button.dataset.key) {
+    const text = button.firstChild;
+    if (text.data !== label) text.data = label;
+    if (button.dataset.key !== key) {
+        button.dataset.key = key;
+        setKeyHint(button);
+    }
 }
 
 function setMapListsOpen(open) {
