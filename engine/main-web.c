@@ -1970,13 +1970,10 @@ static ui_event_type wait_for_input(void)
         (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_MORE ||
             mode == WEB_INPUT_RUN_DIRECTION || warning);
     if (mode == WEB_INPUT_CHARACTER ||
-            (playing && (mode == WEB_INPUT_COMMAND || world_view || (aiming && map_visible) ||
-                (mode != WEB_INPUT_MENU && new_messages))))
+            (playing && (mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_MENU || world_view ||
+                (aiming && map_visible) || new_messages)))
         publish_world(mode == WEB_INPUT_COMMAND);
-    if (playing && ((aiming && map_visible) || mode == WEB_INPUT_MENU)) {
-        if (mode == WEB_INPUT_MENU) publish_world(false);
-        web_character_sheet(false);
-    }
+    if (playing && aiming && map_visible) web_character_sheet(false);
     if ((mode == WEB_INPUT_COMMAND || mode == WEB_INPUT_AIM || mode == WEB_INPUT_RUN_DIRECTION) && world_view) {
         const term *map = angband_term[WEB_MAP_TERM];
         width = MIN(map->wid, (cave->width - map->offset_x) * tile_width);
