@@ -171,7 +171,9 @@ def unpack_release(download, site, current):
             raise ValueError(f"Versioned worker and update metadata disagree in {archive}.")
     target = site / "sources" / f"{source_hash}.tar.gz"
     if not target.exists():
-        write_file(target, (download / RELEASE_FILES[1]).read_bytes())
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with (download / RELEASE_FILES[1]).open("rb") as source, target.open("xb") as destination:
+            shutil.copyfileobj(source, destination)
     return version
 
 
