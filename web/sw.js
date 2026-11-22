@@ -6,11 +6,11 @@ const cacheName = cachePrefix + version;
 const legacyWorker = self.location.href === new URL("sw.js", scope).href;
 const installedPackageUrl = new URL("installed-package.json", scope);
 
-async function cacheAsset(cache, path, signal, reportProgress) {
+async function cacheAsset(cache, path, installation) {
     const key = new URL(path, scope);
     const cached = await cache.match(key, { ignoreVary: true });
     if (cached) {
-        await reportProgress?.(assets[path].size);
+        if (installation) return installation.reportProgress(assets[path].size);
         return cached;
     }
 
@@ -19,7 +19,7 @@ async function cacheAsset(cache, path, signal, reportProgress) {
         cache: "reload",
         mode: "same-origin",
         redirect: "error",
-        signal,
+        signal: installation?.signal,
     });
     if (response.status !== 200 || !response.body) {
         throw new Error(`Could not download ${path} (HTTP ${response.status}).`);
@@ -37,7 +37,7 @@ async function cacheAsset(cache, path, signal, reportProgress) {
             }
             bytes.set(value, offset);
             offset += value.byteLength;
-            await reportProgress?.(value.byteLength);
+            if (installation) await installation.reportProgress(value.byteLength);
         }
     } catch (error) {
         void reader.cancel().catch(() => {});
@@ -56,6 +56,7 @@ async function cacheAsset(cache, path, signal, reportProgress) {
     headers.delete("Content-Encoding");
     headers.set("Content-Length", String(bytes.byteLength));
     const asset = new Response(bytes, { headers });
+    if (installation) return cache.put(key, asset);
     await cache.put(key, asset.clone());
     return asset;
 }
@@ -90,7 +91,8 @@ async function downloadPackage() {
 
     resetTimeout();
     try {
-        await Promise.all(paths.map((path) => cacheAsset(cache, path, abort.signal, reportProgress)));
+        const installation = { signal: abort.signal, reportProgress };
+        await Promise.all(paths.map((path) => cacheAsset(cache, path, installation)));
     } catch (error) {
         abort.abort();
         throw error;
