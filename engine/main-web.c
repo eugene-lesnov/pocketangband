@@ -804,13 +804,13 @@ EM_JS(void, web_set_pickup_menu, (void), {
     Module['inputMenu'].pickup = true;
 });
 
-EM_JS(int, web_set_save_slots, (const char *const *names, int count, int cursor), {
-    Module['saveSlots'] = Array.from({ length: count }, (_, index) => {
+EM_JS(int, web_preferred_save_cursor, (const char *const *names, int count, int cursor), {
+    const preferred = Module['preferredSaveSlot'];
+    for (let index = 0; index < count; index++) {
         const name = HEAPU32[(names >>> 2) + index];
-        return name ? UTF8ToString(name) : "";
-    });
-    const preferred = Module['saveSlots'].indexOf(Module['preferredSaveSlot']);
-    return preferred >= 0 ? preferred : cursor;
+        if ((name ? UTF8ToString(name) : "") === preferred) return index;
+    }
+    return cursor;
 });
 
 EM_JS(void, web_set_options_title, (const char *title, bool defaults_saved), {
