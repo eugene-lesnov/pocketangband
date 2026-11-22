@@ -1,4 +1,5 @@
 import { renderDescription, renderFrame, textColors } from "./frame-renderer.js";
+import { ExploreCamera } from "./explore-camera.js";
 import { renderInscriptionHelp } from "./inscriptions.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
 import { graphicsModes, loadTiles, styleTerminalTile, tileAt } from "./tiles.js";
@@ -108,6 +109,9 @@ const openMapLists = document.querySelector("#open-map-lists");
 const mapLists = document.querySelector("#map-lists");
 const mapKeyboardToggle = document.querySelector("#map-keyboard-toggle");
 const openMenu = document.querySelector("#open-menu");
+const discoveryArrow = document.querySelector("#discovery-arrow");
+const exploreCamera = new ExploreCamera(discoveryArrow,
+    [mapStatus, monsterHealth, zoom, mapKeyboardToggle, openMenu, openMapLists, saveStatus], draw);
 const stopAction = document.querySelector("#stop-action");
 const exploreAction = document.querySelector("#explore-action");
 const nearest = document.querySelector("#nearest");
@@ -433,6 +437,10 @@ function draw() {
     requestAnimationFrame(() => {
         drawPending = false;
         const view = activeView;
+        const showDiscoveries = view === views.map && !view.viewport.hidden && mode === "command" &&
+            request !== undefined && !exploring && !context.mapCell && picker.hidden && mapLists.hidden &&
+            messagePause.hidden;
+        if (!showDiscoveries) discoveryArrow.hidden = true;
         if (view.viewport.hidden || (!picker.hidden && view !== views.map)) return;
         const map = view === views.map;
         if (map && (!view.viewport.clientWidth || !view.viewport.clientHeight)) return;
@@ -450,6 +458,7 @@ function draw() {
         const marks = map && !exploring && world?.mapStatus?.discoveries;
         const discoveries = marks && source.player?.depth === world.depth &&
             source.player.x === marks.x && source.player.y === marks.y ? marks.cells : undefined;
+        const frameStop = showDiscoveries && discoveries?.size && !exploreCamera.framed;
         const mapActions = view === views.map ? context.mapCell?.actions : undefined;
         const choosing = view === views.map ? mapDirectionAction : undefined;
         const previousGrid = view.gridElement;
@@ -471,9 +480,11 @@ function draw() {
                     Boolean(graphicsModes.get(source.graphicsMode)?.atlas && source.terrainAttributes));
             }
             updateViewZoom(view);
-            if (cell && (centerPending || focusChanged || sizeChanged || graphicsChanged)) {
+            if (cell && !frameStop && (centerPending || focusChanged || sizeChanged || graphicsChanged)) {
                 centerCell(view, selected?.actions ? selected : cell);
             }
+            if (showDiscoveries && discoveries?.size) exploreCamera.update(view, discoveries);
+            else discoveryArrow.hidden = true;
             region = visibleMapRegion(view);
         }
         const regionChanged = !sameRegion(region, view.region);
@@ -1384,6 +1395,7 @@ function terminalLine(row, end) {
 }
 
 function showMessagePause(data) {
+    discoveryArrow.hidden = true;
     if (messagePause.hidden) messagePauseTrigger = document.activeElement;
     if (messageDialog.open) messageDialog.close();
     mainView.inert = false;
@@ -1524,6 +1536,7 @@ function updateView(state = world, region = views.target.crop) {
     const previous = activeView;
     const previousSpeed = world?.speed;
     world = state;
+    if (!world?.mapStatus?.discoveries?.cells.size) exploreCamera.reset();
     const choosing = isChoosing();
     activeList = choosing ? pickerList : pageList;
     main.classList.toggle("choosing", choosing);
@@ -2206,6 +2219,8 @@ function sendInput(input) {
     runningFromPad = input.type === "run-direction";
     exploring = mode === "command" && input.type === "key" && input.code === keyCode("p") &&
         !!world?.quickActions?.canExplore;
+    discoveryArrow.hidden = true;
+    if (exploring) exploreCamera.reset();
     running = runningFromPad || exploring ||
         (movingToCell && world && Math.max(Math.abs(input.x - world.x), Math.abs(input.y - world.y)) > 1) ||
         (mode === "run-direction" && (input.type === "aim-cell" ||
@@ -2653,8 +2668,10 @@ function updateKeyButton(button, label, key = button.dataset.key) {
 }
 
 function setMapListsOpen(open) {
+    if (mapLists.hidden === !open) return;
     mapLists.hidden = !open;
     openMapLists.setAttribute("aria-expanded", String(open));
+    draw();
 }
 
 openMapLists.addEventListener("click", () => {

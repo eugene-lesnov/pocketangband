@@ -512,6 +512,20 @@ dt { color: var(--muted); }
 .highlighted-cell { box-shadow: inset 0 0 0 1em #ffdb764d; }
 .explore-discovery { outline: 1px solid #79e0da; outline-offset: -1px; }
 .explore-discovery.cursor { outline-color: #ffdb76; }
+#discovery-arrow {
+    position: absolute;
+    grid-area: content;
+    z-index: 1;
+    width: var(--map-button-size);
+    height: var(--map-button-size);
+    padding: 0;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    background: var(--panel);
+    color: #79e0da;
+    font-size: 1.5rem;
+}
+#discovery-arrow span { display: block; line-height: 1; }
 
 :is(#journal, #message-pause) { margin: 0.25rem; }
 #journal {
