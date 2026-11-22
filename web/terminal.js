@@ -2980,7 +2980,6 @@ function renderMenu(state, description = state?.description ?? "") {
     menuScreen.classList.toggle("birth-menu", Boolean(state?.birth));
     const outcome = !!context.outcome;
     const saveSlots = mode === "save-slots";
-    menuScreen.classList.toggle("outcome-menu", outcome);
     menuActions.classList.toggle("birth-actions", Boolean(state?.birth));
     menuActions.classList.toggle("save-slot-actions", saveSlots);
     if (!state) {
