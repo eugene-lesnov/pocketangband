@@ -2701,7 +2701,8 @@ function renderQuickActions({ roguelike, quickActions }) {
         launcher ? fireCommand : spellAction ?? throwCommand;
     combatAction.dataset.key = commandKey(combat, roguelike);
     combatAction.setAttribute("aria-label", combat[1]);
-    combatAction.textContent = combat[3];
+    const label = combatAction.firstChild;
+    if (label.data !== combat[3]) label.data = combat[3];
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
     setKeyHint(combatAction);
