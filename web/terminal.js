@@ -2923,11 +2923,12 @@ function focusSelectedSave() {
 function knowledgeResults(rows, query) {
     const words = query.split(/\s+/);
     const groups = new Map();
+    const sections = [];
     let count = 0;
-    let section;
     for (const row of rows) {
-        if (row.sectionOnly) section = row;
+        if (row.sectionOnly) sections[row.section] = row;
         if (!row.enabled) continue;
+        const section = sections[row.section];
         const group = section.group ?? section.name;
         const name = row.name.toLowerCase();
         const detail = row.detail?.toLowerCase() ?? "";
@@ -2940,18 +2941,27 @@ function knowledgeResults(rows, query) {
         else if (words.every(word => path.includes(word))) rank = 4;
         else continue;
         if (!groups.has(group)) groups.set(group, [[], [], [], [], []]);
-        groups.get(group)[rank].push({ ...row, group,
-            detail: section.group && !row.sectionOnly ? section.name : row.detail });
+        groups.get(group)[rank].push(row);
         count++;
     }
 
     const visible = [];
     for (const [group, ranked] of groups) {
-        const matches = ranked.flat();
         const limit = knowledgeLimits.get(group) ?? (groups.size > 1 ? 5 : knowledgePageSize);
-        visible.push(...matches.slice(0, limit));
-        if (matches.length > limit) {
-            visible.push({ group, moreFrom: limit, nextIndex: matches[limit].index });
+        let remaining = limit;
+        for (const matches of ranked) {
+            const shown = Math.min(remaining, matches.length);
+            for (let i = 0; i < shown; i++) {
+                const row = matches[i];
+                const section = sections[row.section];
+                visible.push({ ...row, group,
+                    detail: section.group && !row.sectionOnly ? section.name : row.detail });
+            }
+            if (shown < matches.length) {
+                visible.push({ group, moreFrom: limit, nextIndex: matches[shown].index });
+                break;
+            }
+            remaining -= shown;
         }
     }
     return { visible, count };
