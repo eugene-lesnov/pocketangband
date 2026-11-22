@@ -321,8 +321,7 @@ const mapDirections = [
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const mapScales = [...scales, 2, 2.25];
-const defaultAsciiZoom = scales.indexOf(1.5);
-const defaultTileZoom = scales.indexOf(1.5);
+const defaultZoom = scales.indexOf(1.5);
 const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
@@ -545,8 +544,7 @@ function centerCell(view, cell) {
 }
 
 function zoomIndex(view) {
-    const tiles = view === views.map ? view.gridElement.classList.contains("tiles") : view.gridElement === view.canvas;
-    return view.zoom ?? (tiles ? defaultTileZoom : defaultAsciiZoom);
+    return view.zoom ?? defaultZoom;
 }
 
 function updateViewZoom(view) {
