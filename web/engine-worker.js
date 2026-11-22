@@ -25,10 +25,6 @@ function deleteSaveError(message, request) {
 }
 
 self.addEventListener("message", ({ data }) => {
-    if (data.type === "ping") {
-        self.postMessage({ type: "pong", waiting: waiting !== undefined });
-        return;
-    }
     if (data.type === "message-recall") {
         if (readMessageRecall) readMessageRecall(data.recall);
         else self.postMessage({ type: "message-recall", recall: data.recall });
@@ -90,9 +86,8 @@ self.addEventListener("message", ({ data }) => {
         if (!["birth-stats", "birth-roll"].includes(waiting?.mode) || data.request !== waiting.request) return;
     } else if (data.type === "set-tiles") {
         if (waiting?.mode !== "command" || data.request !== waiting.request || !graphicsModes.has(data.code)) return;
-    } else if (["tap", "aim-cell", "target-cell", "map-cell", "map-action"].includes(data.type)) {
+    } else if (["aim-cell", "target-cell", "map-cell", "map-action"].includes(data.type)) {
         if (!waiting || data.request !== waiting.request) return;
-        if (data.type === "tap" && !["menu", "save-slots"].includes(waiting.mode)) return;
         if (data.type === "aim-cell" && !["aim", "direction", "run-direction"].includes(waiting.mode)) return;
         if (data.type === "aim-cell") data.code = data.fast === true ? 1 : 0;
         if (data.type === "target-cell" && waiting.mode !== "target") return;

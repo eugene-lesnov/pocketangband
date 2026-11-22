@@ -1832,7 +1832,7 @@ void web_poll_interrupt(void)
     }
 }
 
-EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview, int section,
+EM_JS(int, take_input, (int *code, int *x, int *y, int row, int preview, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
         int text_event, int delete_event, int run_direction, int character_event, int new_game), {
@@ -1862,7 +1862,6 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int tap, int row, int preview
         case "random-name":
             HEAP32[code >>> 2] = 1;
             return name_event;
-        case "tap": return tap;
         case "menu-row": return row;
         case "menu-preview": return preview;
         case "delete-save": return delete_event;
@@ -2004,7 +2003,7 @@ static ui_event_type wait_for_input(void)
 static errr queue_input(void)
 {
     int code = 0, x = 0, y = 0;
-    ui_event_type type = take_input(&code, &x, &y, EVT_MOUSE, EVT_WEB_MENU_ROW, EVT_WEB_MENU_PREVIEW,
+    ui_event_type type = take_input(&code, &x, &y, EVT_WEB_MENU_ROW, EVT_WEB_MENU_PREVIEW,
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
         EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION,
@@ -2018,7 +2017,6 @@ static errr queue_input(void)
 
     switch (type) {
         case EVT_KBRD: return Term_keypress(code, 0);
-        case EVT_MOUSE: return Term_mousepress(x, y, 1);
         case EVT_WEB_AIM_CELL:
         case EVT_WEB_MAP_CELL:
         case EVT_WEB_MAP_ACTION:
