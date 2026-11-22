@@ -2631,16 +2631,17 @@ function keyFromCode(code) {
     return code > 0 && code < 27 ? `Ctrl+${String.fromCharCode(code + 64)}` : String.fromCodePoint(code);
 }
 
-function setKeyHint(button, key = button.dataset.key) {
+function setKeyHint(button, key = button.dataset.key, caption) {
     const label = keyNames.get(key) ?? key;
+    const text = caption || label;
     let badge = button.querySelector(".key-hint");
     if (!badge) {
-        badge = keyBadge(label);
+        badge = keyBadge(text);
         badge.className = "key-hint";
         badge.setAttribute("aria-hidden", "true");
         button.append(badge);
-    } else if (badge.textContent !== label) {
-        badge.textContent = label;
+    } else if (badge.textContent !== text) {
+        badge.textContent = text;
     }
     button.setAttribute("aria-description", `Shortcut: ${label}`);
 }
@@ -2705,12 +2706,11 @@ function renderQuickActions({ roguelike, quickActions }) {
     combatAction.textContent = combat[3];
     useAction.dataset.key = commandKey(useCommand, roguelike);
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
-    for (const button of [combatAction, useAction, repeatAction]) setKeyHint(button);
+    setKeyHint(combatAction);
+    setKeyHint(useAction);
     repeatName = quickActions.repeat;
-    repeatAction.textContent = "Repeat";
     repeatAction.setAttribute("aria-label", repeatName ? `Repeat ${repeatName}` : "No command to repeat");
-    setKeyHint(repeatAction);
-    if (repeatName) repeatAction.lastElementChild.textContent = repeatName;
+    setKeyHint(repeatAction, repeatAction.dataset.key, repeatName);
 }
 
 function renderActionsPanel() {
