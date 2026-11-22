@@ -5640,8 +5640,48 @@ diff --git a/src/player-util.c b/src/player-util.c
  
  				/* No longer a winner */
  				p->total_winner = false;
+diff --git a/src/message.c b/src/message.c
+index 70e93e6..01397c0 100644
+--- a/src/message.c
++++ b/src/message.c
+@@ -110,5 +110,16 @@ uint16_t messages_num(void)
+ }
+
++void messages_foreach(enum message_order order, message_visitor visit)
++{
++	bool oldest_first = order == MESSAGE_OLDEST_FIRST;
++	const message_t *message = oldest_first ? messages->tail : messages->head;
++
++	while (message) {
++		visit(message->str, message->count, message->type);
++		message = oldest_first ? message->newer : message->older;
++	}
++}
++
+ /**
+  * ------------------------------------------------------------------------
+  * Functions for individual messages
+diff --git a/src/message.h b/src/message.h
+index f10bf7d..01f06bc 100644
+--- a/src/message.h
++++ b/src/message.h
+@@ -41,10 +41,14 @@ enum {
+ };
+
+
++enum message_order { MESSAGE_OLDEST_FIRST, MESSAGE_NEWEST_FIRST };
++typedef void (*message_visitor)(const char *text, uint16_t count, uint16_t type);
++
+ /* Functions */
+ void messages_init(void);
+ void messages_free(void);
+ uint16_t messages_num(void);
++void messages_foreach(enum message_order order, message_visitor visit);
+ void message_add(const char *str, uint16_t type);
+ const char *message_str(uint16_t age);
+ uint16_t message_count(uint16_t age);
 diff --git a/src/ui-death.c b/src/ui-death.c
-index 695b0ce..bac18fe 100644
+index 695b0ce..92b1e3c 100644
 --- a/src/ui-death.c
 +++ b/src/ui-death.c
 @@ -22,6 +22,11 @@
@@ -5664,7 +5704,7 @@ index 695b0ce..bac18fe 100644
  /**
   * Write formatted string `fmt` on line `y`, centred between points x1 and x2.
   */
-@@ -156,11 +162,63 @@ static void display_winner(void)
+@@ -156,11 +162,69 @@ static void display_winner(void)
  }
  
  
@@ -5678,6 +5718,12 @@ index 695b0ce..bac18fe 100644
 +	web_set_outcome(kind, player->full_name, player->race->name,
 +		player->class->name, player->lev, player->depth, player->exp,
 +		player->au, player->died_from, outcome_time);
++}
++
++static void web_results_message(const char *text, uint16_t count, uint16_t type)
++{
++	const char *detail = count > 1 ? format("Repeated %d times", count) : NULL;
++	web_add_results_entry(text, detail, false);
 +}
 +
 +static void web_results_item(const struct object *object, const char *slot)
@@ -5728,7 +5774,7 @@ index 695b0ce..bac18fe 100644
  	char buf[1024];
  	char ftmp[80];
  
-@@ -185,6 +243,7 @@ static void death_file(const char *title, int row)
+@@ -185,6 +249,7 @@ static void death_file(const char *title, int row)
  		/* Flush messages */
  		event_signal(EVENT_MESSAGE_FLUSH);
  	}
@@ -5736,7 +5782,7 @@ index 695b0ce..bac18fe 100644
  }
  
  /**
-@@ -192,6 +251,13 @@ static void death_file(const char *title, int row)
+@@ -192,6 +257,13 @@ static void death_file(const char *title, int row)
   */
  static void death_info(const char *title, int row)
  {
@@ -5750,7 +5796,7 @@ index 695b0ce..bac18fe 100644
  	struct store *home = &stores[f_info[FEAT_HOME].shopnum - 1];
  
  	screen_save();
-@@ -275,6 +341,7 @@ static void death_info(const char *title, int row)
+@@ -275,6 +347,7 @@ static void death_info(const char *title, int row)
  	}
  
  	screen_load();
@@ -5758,17 +5804,13 @@ index 695b0ce..bac18fe 100644
  }
  
  /**
-@@ -282,9 +349,19 @@ static void death_info(const char *title, int row)
+@@ -282,9 +355,15 @@ static void death_info(const char *title, int row)
   */
  static void death_messages(const char *title, int row)
  {
 +#ifdef __EMSCRIPTEN__
 +	web_set_results_list("Messages");
-+	for (int i = 0; i < messages_num(); i++) {
-+		int count = message_count(i);
-+		const char *detail = count > 1 ? format("Repeated %d times", count) : NULL;
-+		web_add_results_entry(message_str(i), detail, false);
-+	}
++	messages_foreach(MESSAGE_NEWEST_FIRST, web_results_message);
 +	web_wait_for_back(WEB_INPUT_RESULTS_LIST);
 +#else
  	screen_save();
@@ -5778,7 +5820,7 @@ index 695b0ce..bac18fe 100644
  }
  
  /**
-@@ -292,9 +369,27 @@ static void death_messages(const char *title, int row)
+@@ -292,9 +371,27 @@ static void death_messages(const char *title, int row)
   */
  static void death_scores(const char *title, int row)
  {
@@ -5806,7 +5848,7 @@ index 695b0ce..bac18fe 100644
  }
  
  /**
-@@ -305,6 +400,14 @@ static void death_examine(const char *title, int row)
+@@ -305,6 +402,14 @@ static void death_examine(const char *title, int row)
  	struct object *obj;
  	const char *q, *s;
  
@@ -5821,7 +5863,7 @@ index 695b0ce..bac18fe 100644
  	/* Get an item */
  	q = "Examine which item? ";
  	s = "You have nothing to examine.";
-@@ -341,6 +444,7 @@ static void death_spoilers(const char *title, int row)
+@@ -341,6 +446,7 @@ static void death_spoilers(const char *title, int row)
  	do_cmd_spoilers();
  }
  
@@ -5829,7 +5871,7 @@ index 695b0ce..bac18fe 100644
  /***
   * Menu command: start a new game
   */
-@@ -348,6 +452,7 @@ static void death_new_game(const char *title, int row)
+@@ -348,6 +454,7 @@ static void death_new_game(const char *title, int row)
  {
      play_again = get_check("Start a new game? ");
  }
@@ -5837,7 +5879,7 @@ index 695b0ce..bac18fe 100644
  
  /**
   * Menu structures for the death menu. Note that Quit must always be the
-@@ -355,19 +460,44 @@ static void death_new_game(const char *title, int row)
+@@ -355,19 +462,44 @@ static void death_new_game(const char *title, int row)
   */
  static menu_action death_actions[] =
  {
@@ -5882,7 +5924,7 @@ index 695b0ce..bac18fe 100644
  /**
   * Handle character death
   */
-@@ -377,6 +507,17 @@ void death_screen(void)
+@@ -377,6 +509,17 @@ void death_screen(void)
  	bool done = false;
  	const region area = { 51, 2, 0, N_ELEMENTS(death_actions) };
  
@@ -5900,7 +5942,7 @@ index 695b0ce..bac18fe 100644
  	/* Winner */
  	if (player->total_winner)
  	{
-@@ -385,6 +526,7 @@ void death_screen(void)
+@@ -385,6 +528,7 @@ void death_screen(void)
  
  	/* Tombstone/retiring */
  	display_exit_screen();
@@ -5908,7 +5950,7 @@ index 695b0ce..bac18fe 100644
  
  	/* Flush all input and output */
  	event_signal(EVENT_INPUT_FLUSH);
-@@ -395,6 +537,9 @@ void death_screen(void)
+@@ -395,6 +539,9 @@ void death_screen(void)
  			N_ELEMENTS(death_actions));
  
  	death_menu->flags = MN_CASELESS_TAGS;
@@ -5918,7 +5960,7 @@ index 695b0ce..bac18fe 100644
  
  	menu_layout(death_menu, &area);
  
-@@ -408,7 +553,15 @@ void death_screen(void)
+@@ -408,7 +555,15 @@ void death_screen(void)
  		}
  		else if (e.type == EVT_SELECT)
  		{

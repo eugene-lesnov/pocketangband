@@ -1132,14 +1132,17 @@ EM_JS(void, finish_message_recall, (unsigned int request), {
     Module['messageRecall'] = undefined;
 });
 
+static void collect_recalled_message(const char *text, uint16_t count, uint16_t type)
+{
+    char color[8];
+    web_text_color(color, sizeof(color), message_type_color(type));
+    add_recalled_message(text, count, color);
+}
+
 EMSCRIPTEN_KEEPALIVE void web_message_recall(unsigned int request)
 {
     start_message_recall();
-    for (int age = messages_num() - 1; age >= 0; --age) {
-        char color[8];
-        web_text_color(color, sizeof(color), message_color(age));
-        add_recalled_message(message_str(age), message_count(age), color);
-    }
+    messages_foreach(MESSAGE_OLDEST_FIRST, collect_recalled_message);
     finish_message_recall(request);
 }
 
