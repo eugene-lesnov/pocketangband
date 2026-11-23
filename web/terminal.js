@@ -638,7 +638,7 @@ function renderMonsterHealth(health) {
 }
 
 function renderResource(element, value, current, maximum) {
-    value.textContent = `${current} / ${maximum}`;
+    value.textContent = `${current}/${maximum}`;
     const fill = maximum > 0 ? Math.max(0, Math.min(100, current * 100 / maximum)) : 0;
     element.style.setProperty("--fill", `${fill}%`);
 }
