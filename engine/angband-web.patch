@@ -1788,8 +1788,8 @@ index a934411..0ff7fc2 100644
 +						!(entries[oid].flags & MN_ACT_GRAYED));
 +			}
 +			if (save_slots && menu->switch_keys) {
-+				web_menu_action(0, "New game");
 +				web_menu_action('@', "Random character");
++				web_menu_action(0, "New game");
 +			}
 +		}
 +		if (web_rows && menu->web_title) web_set_menu_selection_title(menu->web_title);
