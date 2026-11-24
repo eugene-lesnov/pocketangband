@@ -2629,11 +2629,11 @@ function renderMapActions() {
     const { actions, here } = context.mapCell;
     const buttons = [];
     const footer = [closeMapCellActions];
-    for (const { code, label, key, targets, detail } of [...actions].sort((a, b) => a.code - b.code)) {
+    for (const { code, label, key, keySequence, targets, detail } of [...actions].sort((a, b) => a.code - b.code)) {
         const direction = targets?.length === 1 ? mapDirections[targets[0].direction] : undefined;
         const button = makeInput("map-action", code, direction?.arrow ? `${label} ${direction.arrow}` : label);
         if (direction) button.setAttribute("aria-label", `${label}, ${direction.name}`);
-        if (key) setKeyHint(button, keyFromCode(key));
+        if (keySequence || key) setKeyHint(button, keySequence ?? keyFromCode(key));
         if (detail) {
             const hint = document.createElement("small");
             hint.textContent = detail;

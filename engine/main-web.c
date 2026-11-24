@@ -1696,11 +1696,12 @@ EM_JS(void, set_map_route_available, (bool available), {
 });
 
 EM_JS(void, add_map_action, (int x, int y, int direction, int code, const char *label, int key,
-        const char *detail), {
+        const char *keySequence, const char *detail), {
     const actions = Module['inputContext'].mapCell.actions;
     let action = actions.find((entry) => entry.code === code);
     if (!action) {
         action = { code, label: UTF8ToString(label), key };
+        if (keySequence) action.keySequence = UTF8ToString(keySequence);
         if (detail) action.detail = UTF8ToString(detail);
         actions.push(action);
     }
@@ -1717,9 +1718,10 @@ static void describe_map_actions(int x, int y, int direction, unsigned enabled)
         if (!(enabled & (1U << code))) continue;
         cmd_code command = map_action_commands[code];
         int key = code == MAP_REST ? 'R' : command != CMD_NULL ? cmd_lookup_key(command, keymap) : 0;
+        const char *key_sequence = code == MAP_INSPECT ? "I -" : NULL;
         const char *detail = (code == MAP_EQUIP_LIGHT || code == MAP_REFILL) && player_has(player, PF_UNLIGHT) ?
             "Unlight increases spell failure on lit squares." : NULL;
-        add_map_action(x, y, direction, code, map_action_labels[code], key, detail);
+        add_map_action(x, y, direction, code, map_action_labels[code], key, key_sequence, detail);
     }
 }
 
