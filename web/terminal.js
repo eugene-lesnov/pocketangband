@@ -2726,7 +2726,7 @@ mapLists.replaceChildren(...visibleListCommands.map(([key, announcement, , label
 }));
 
 for (const button of document.querySelectorAll(
-    "#play-keys [data-key], #target-actions [data-key], #terminal-keys [data-key], " +
+    "#play-keys [data-key]:not(#pack-action), #target-actions [data-key], #terminal-keys [data-key], " +
     "#birth-roll-actions [data-key], #name-fields [data-key], #text-fields [data-key], #reset-stats"
 )) setKeyHint(button);
 for (const button of directionButtons) {
