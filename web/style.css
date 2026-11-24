@@ -211,7 +211,6 @@ dt { color: var(--muted); }
     background: transparent;
 }
 .in-world .view > .screen { grid-row: content-start / map-tools-end; }
-.large-text .view { --journal-font-size: 1rem; }
 
 #open-menu, #open-map-lists {
     position: absolute;
@@ -1351,11 +1350,6 @@ button:enabled:active { background: #4c3820; }
 button:disabled, button[aria-disabled="true"] { opacity: 0.5; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-main.compact-hud {
-    --hud-height: 56px;
-    --vital-rows: 21px 18px;
-    --hud-stats-display: none;
-}
 main.in-world:not(.choosing) .controls:not(:has(#keyboard:not([hidden]))) {
     min-height: calc(var(--dock-height) - var(--hud-height));
     justify-content: end;
@@ -1426,13 +1420,6 @@ main.picker-expanded .controls { flex: 1; max-height: 100%; }
 #messages li + li { margin-top: 0.5rem; }
 #messages mark { background: #ffe080; color: #171612; }
 #message-dialog form button { width: 100%; }
-.large-text button { font-size: 0.9375rem; }
-.large-text .menu-rows button { font-size: 1rem; }
-.large-text :is(.menu-rows small, #input-prompt, .character-rows, .detail-text, #birth-card, #messages li),
-.large-text #picker-list.birth-menu ~ #picker-description { font-size: 1rem; }
-.large-text h2 { font-size: 1rem; }
-.large-text #movement-mode button { font-size: 0.8125rem; }
-.large-text .direction-pad button { font-size: 1.25rem; }
 
 @media (max-width: 340px), (max-height: 480px) {
     .in-world .game-controls-row { column-gap: 0.5rem; }

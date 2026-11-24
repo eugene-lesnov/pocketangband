@@ -406,8 +406,7 @@ let recalledMessages = [];
 let journalEntries;
 let journalPrompt = "";
 const preferencesKey = "pocketangband-touch";
-const preferences = { compactHud: false, leftHanded: false, largeText: false,
-    fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
+const preferences = { leftHanded: false, fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
 let preferencesWriteFailed = false;
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey) || "{}");
@@ -427,10 +426,7 @@ function savePreferences() {
 }
 
 function applyPreferences() {
-    main.classList.toggle("compact-hud", preferences.compactHud);
     main.classList.toggle("left-handed", preferences.leftHanded);
-    main.classList.toggle("large-text", preferences.largeText);
-    messageDialog.classList.toggle("large-text", preferences.largeText);
 }
 applyPreferences();
 
@@ -2776,9 +2772,7 @@ function renderActionsPanel() {
     const currentGraphics = views.map.frame?.graphicsMode ?? 0;
     if (openPanel === "touch-settings") {
         actionsScreen.replaceChildren(...[
-            ["compactHud", "Compact status", "Show HP, SP, and conditions. Open Character for all stats."],
             ["leftHanded", "Direction pad on the left", "Keep movement controls beside your left thumb."],
-            ["largeText", "Larger interface text", "Increase labels and list text without changing map zoom."],
             ["fastAim", "Fast targeting", "Tap a monster to use the prepared spell or item immediately. Turn off to preview and confirm."],
             ["tapToMove", "Tap map to move", "Turn off to inspect cells with a tap and move with the direction pad."],
         ].map(([key, label, detail]) => {
