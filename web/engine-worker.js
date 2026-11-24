@@ -70,6 +70,10 @@ self.addEventListener("message", ({ data }) => {
             !waiting.menu?.actions.some((action) => action.key === 0)) return;
     } else if (data.type === "open-character") {
         if (waiting?.mode !== "command" || data.request !== waiting.request) return;
+    } else if (data.type === "quick-action") {
+        if (waiting?.mode !== "command" || data.request !== waiting.request ||
+            !Number.isInteger(data.code) || data.code < 0 || data.code >= 128 ||
+            !"123456789dmr".includes(String.fromCharCode(data.code))) return;
     } else if (data.type === "run-direction") {
         if (waiting?.mode !== "command" || data.request !== waiting.request ||
             !Number.isInteger(data.code) || data.code < 1 || data.code > 9 || data.code === 5) return;

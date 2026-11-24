@@ -95,6 +95,7 @@ const playKeys = document.querySelector("#play-keys");
 const quickActionKeys = document.querySelector("#quick-actions");
 const heroActions = document.querySelector("#hero-actions");
 const useAction = document.querySelector("#use-action");
+const monsterCommands = document.querySelector("#monster-commands");
 const combatAction = document.querySelector("#combat-action");
 const repeatAction = document.querySelector("#repeat-action");
 const movementMode = document.querySelector("#movement-mode");
@@ -283,6 +284,8 @@ const spellCommands = {
     study: ["G", "Gain new spells", null, "Study"],
     cast: ["m", "Cast a spell", null, "Cast"],
 };
+const monsterCommandsList = [["d", "Drop an item", null, "Drop"], ["m", "Cast a monster spell", null, "Magic"],
+    ["r", "Release the monster", null, "Release"]];
 const fireCommand = ["f", "Fire your missile weapon", "t", "Fire"];
 const throwCommand = ["v", "Throw an item", null, "Throw"];
 const restCommand = ["R", "Rest for a while", null, "Rest"];
@@ -1146,8 +1149,9 @@ function updateDirectionPad(disabled, choosing, stopVisible, showKeyboard) {
         (usingPad || (playingGame && main.classList.contains("in-world")));
     setActions(directionPad, showPad, disabled || !usingPad || stopVisible);
     directionPad.classList.toggle("run-direction", mode === "run-direction");
-    directionPad.classList.toggle("running-mode", command && runMode);
-    directionPad.setAttribute("aria-label", command && runMode ? "Direction pad: Run" :
+    const commanding = command && world?.quickActions?.commanding;
+    directionPad.classList.toggle("running-mode", command && runMode && !commanding);
+    directionPad.setAttribute("aria-label", commanding ? "Move the commanded monster" : command && runMode ? "Direction pad: Run" :
         mode === "aim" && context.selecting ? "Adjust target selection" : "Direction pad");
     const targets = mapDirectionAction?.targets;
     const here = (mode === "direction" && context.center) || targets?.some(({ direction }) => direction === 5);
@@ -1172,8 +1176,11 @@ function updateMapControls(disabled, showKeyboard, stopVisible) {
     stopAction.hidden = !stopVisible;
     setActions(playKeys, showPlayActions || stopVisible, disabled && !stopVisible);
     playKeys.classList.toggle("stopping", stopVisible);
-    setActions(quickActionKeys, showPlayActions || exploring, disabled || exploring);
-    movementMode.hidden = !(showPlayActions || runningFromPad || exploring);
+    const commanding = !!world?.quickActions?.commanding;
+    setActions(quickActionKeys, (showPlayActions || exploring) && !commanding, disabled || exploring);
+    setActions(monsterCommands, showPlayActions && commanding, disabled);
+    exploreAction.hidden = commanding;
+    movementMode.hidden = commanding || !(showPlayActions || runningFromPad || exploring);
     walkMode.disabled = runModeButton.disabled = exploring || (stopVisible ? stopAction.disabled : disabled);
     if (focusStop) stopAction.focus({ preventScroll: true });
     walkMode.setAttribute("aria-pressed", String(!runMode));
@@ -2270,7 +2277,7 @@ function sendInput(input) {
     if (input.type !== "set-tiles") context.actionMessages = undefined;
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
-        ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction",
+        ["key", "quick-action", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction",
             "open-character"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
@@ -2523,9 +2530,12 @@ main.addEventListener("click", (event) => {
         chooseMapDirection(mapDirections.findIndex((direction) => direction?.key === key));
         return;
     }
-    if (runMode && mode === "command" && button !== directionCenter && directionPad.contains(button)) {
+    if (mode === "command" && directionPad.contains(button)) {
         const direction = mapDirections.findIndex((entry) => entry?.key === key);
-        sendInput({ type: "run-direction", code: direction });
+        if (runMode && button !== directionCenter && !world?.quickActions?.commanding)
+            sendInput({ type: "run-direction", code: direction });
+        else
+            sendInput({ type: "quick-action", code: keyCode(String(direction)) });
         return;
     }
     const controlled = controlKey && keyboard.contains(button) && /^[a-z]$/i.test(key);
@@ -2742,12 +2752,19 @@ function commandKey([key, , alternative], roguelike) {
     return roguelike && alternative ? alternative : key;
 }
 
+monsterCommands.replaceChildren(...monsterCommandsList.map(([key, label, , caption]) => {
+    const button = makeInput("quick-action", keyCode(key), caption);
+    button.setAttribute("aria-label", label);
+    setKeyHint(button, key);
+    return button;
+}));
+
 function renderQuickActions({ roguelike, quickActions }) {
-    const { spell, launcher } = quickActions;
-    const spellAction = spell === "look" ? undefined : spellCommands[spell];
-    const combat = spell === "cast" && spellAction ? spellAction :
-        launcher ? fireCommand : spellAction ?? throwCommand;
-    combatAction.dataset.key = commandKey(combat, roguelike);
+    const attacks = { cast: spellCommands.cast, fire: fireCommand, throw: throwCommand };
+    const available = ["cast", "fire", "throw"].find((attack) => quickActions[attack]);
+    const combat = attacks[available] ?? spellCommands.look;
+    const key = commandKey(combat, roguelike);
+    combatAction.dataset.key = key;
     combatAction.setAttribute("aria-label", combat[1]);
     const label = combatAction.firstChild;
     if (label.data !== combat[3]) label.data = combat[3];
@@ -2798,6 +2815,11 @@ function renderActionsPanel() {
         });
         tilesStatus.textContent = "";
         actionsScreen.replaceChildren(...rows, tilesStatus);
+        return;
+    }
+    if (openPanel === "commands" && world?.quickActions?.commanding) {
+        actionsScreen.replaceChildren(...monsterCommandsList.map(([key, label]) =>
+            makeInput("quick-action", keyCode(key), label)));
         return;
     }
     let commands;

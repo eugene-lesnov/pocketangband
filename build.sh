@@ -5,7 +5,7 @@ project_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 output_dir=${2:-"$project_dir/dist"}
 [[ $output_dir = /* ]] || output_dir="$PWD/$output_dir"
 source "$project_dir/engine/versions.sh"
-angband_patch_date=2026-11-13
+angband_patch_date=2026-11-25
 
 pocketangband_version=${3:-dev}
 if [[ -z ${3:-} && -f "$project_dir/VERSION" ]]; then
@@ -67,7 +67,7 @@ else
         for patch in "${patches[@]}"; do
             notice="Modified by PocketAngband on $angband_patch_date for the WebAssembly port."
             if [[ $patch == */angband-explore.patch ]]; then
-                notice="Modified by PocketAngband on 2026-11-24 for continuous exploration."
+                notice="Modified by PocketAngband on $angband_patch_date for continuous exploration."
             fi
             git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
                 case "$path" in
