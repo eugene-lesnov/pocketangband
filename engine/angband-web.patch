@@ -1045,7 +1045,7 @@ index 375413f..90c957c 100644
  				if (next == BIRTH_COMPLETE)
  					done = true;
 diff --git a/src/ui-input.c b/src/ui-input.c
-index ec19a5b..a77ce42 100644
+index ec19a5b..e782d88 100644
 --- a/src/ui-input.c
 +++ b/src/ui-input.c
 @@ -329,8 +329,12 @@ struct keypress inkey(void)
@@ -1385,7 +1385,23 @@ index ec19a5b..a77ce42 100644
  		return true;
  	else
  		return false;
-@@ -1511,7 +1662,7 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1486,6 +1637,15 @@ static int dir_transitions[10][10] =
+ 	/* 9-> */ { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+ };
+ 
++static uint8_t movement_delay(void)
++{
++#ifdef __EMSCRIPTEN__
++	return 0;
++#else
++	return player->opts.lazymove_delay;
++#endif
++}
++
+ /**
+  * Request a "movement" direction (1,2,3,4,5(optional),6,7,8,9) from the user.
+  *
+@@ -1511,7 +1671,7 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  	/* Get a direction */
  	while (!dir) {
  		/* Paranoia*/
@@ -1394,7 +1410,7 @@ index ec19a5b..a77ce42 100644
  
  		/* Get first keypress - the first test is to avoid displaying the
  		 * prompt for direction if there's already a keypress queued up
-@@ -1525,16 +1676,33 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+@@ -1525,16 +1685,33 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
  				(ke.type == EVT_KBRD
  				&& !target_dir_allow(ke.key, allow_5, true))) {
  			prt("Direction or <click> (Escape to cancel)? ", 0, 0);
@@ -1429,7 +1445,20 @@ index ec19a5b..a77ce42 100644
  
  				dir = pathfind_direction_to(from, to);
  			} else if (ke.mouse.button == 2) {
-@@ -1626,6 +1792,10 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1570,10 +1747,10 @@ static bool textui_get_rep_dir(int *dp, bool allow_5)
+ 					dir = dir_transitions[dir][this_dir];
+ 				}
+ 
+-				if (player->opts.lazymove_delay == 0 || ++keypresses_handled > 1)
++				if (movement_delay() == 0 || ++keypresses_handled > 1)
+ 					break;
+ 
+-				inkey_scan = player->opts.lazymove_delay;
++				inkey_scan = movement_delay();
+ 				ke = inkey_ex();
+ 			}
+ 
+@@ -1626,6 +1803,10 @@ static bool textui_get_aim_dir(int *dp)
  
  	/* Auto-target if requested */
  	if (OPT(player, use_old_target) && target_okay() && !dir) dir = 5;
@@ -1440,7 +1469,7 @@ index ec19a5b..a77ce42 100644
  
  	/* Ask until satisfied */
  	while (!dir) {
-@@ -1642,8 +1812,25 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1642,8 +1823,25 @@ static bool textui_get_aim_dir(int *dp)
  			p = "Direction ('5' for target, '*' or <click> to re-target, Escape to cancel)? ";
  
  		/* Get a command (or Cancel) */
@@ -1468,7 +1497,7 @@ index ec19a5b..a77ce42 100644
  		if (ke.type == EVT_MOUSE) {
  			if (ke.mouse.button == 1) {
  				if (target_set_interactive(TARGET_KILL,
-@@ -1661,18 +1848,35 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1661,18 +1859,35 @@ static bool textui_get_aim_dir(int *dp)
  					dir = 5;
  			} else if (ke.key.code == '\'') {
  				/* Set to closest target */
@@ -1505,7 +1534,22 @@ index ec19a5b..a77ce42 100644
  			} else {
  				/* Possible direction */
  				int keypresses_handled = 0;
-@@ -1720,6 +1924,18 @@ static bool textui_get_aim_dir(int *dp)
+@@ -1695,12 +1910,12 @@ static bool textui_get_aim_dir(int *dp)
+ 						break;
+ 					}
+ 
+-					if (player->opts.lazymove_delay == 0 || ++keypresses_handled > 1)
++					if (movement_delay() == 0 || ++keypresses_handled > 1)
+ 						break;
+ 
+ 					/* See if there's a second keypress within the defined
+ 					 * period of time. */
+-					inkey_scan = player->opts.lazymove_delay;
++					inkey_scan = movement_delay();
+ 					ke = inkey_ex();
+ 				}
+ 			}
+@@ -1720,6 +1935,18 @@ static bool textui_get_aim_dir(int *dp)
  	return (true);
  }
  
@@ -1524,7 +1568,7 @@ index ec19a5b..a77ce42 100644
  /**
   * Initialise the UI hooks to give input asked for by the game
   */
-@@ -1756,9 +1972,21 @@ static int textui_get_count(void)
+@@ -1756,9 +1983,21 @@ static int textui_get_count(void)
  	while (1) {
  		struct keypress ke;
  
@@ -1546,7 +1590,7 @@ index ec19a5b..a77ce42 100644
  		if (ke.code == ESCAPE)
  			return -1;
  
-@@ -1840,6 +2068,21 @@ ui_event textui_get_command(int *count)
+@@ -1840,6 +2079,21 @@ ui_event textui_get_command(int *count)
  			Term_set_cursor(false);
  		}
  
@@ -1569,10 +1613,9 @@ index ec19a5b..a77ce42 100644
  			bool keymap_ok = true;
  			switch (ke.key.code) {
 diff --git a/src/ui-input.h b/src/ui-input.h
-index 956ef26..d194a21 100644
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,138 @@
+@@ -24,6 +24,139 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1677,7 +1720,8 @@ index 956ef26..d194a21 100644
 +void web_set_pickup_menu(void);
 +int web_preferred_save_cursor(const char *const *names, int count, int cursor);
 +void web_set_options_title(const char *title, bool defaults_saved);
-+void web_add_option_toggle(int row, const char *label, bool checked, bool enabled);
++bool web_has_mouse(void);
++void web_add_option_toggle(int row, const char *label, const char *detail, bool checked, bool enabled);
 +bool web_sync_profile(void);
 +void web_set_option_notice(const char *message);
 +void web_set_menu_sections(int current, int available);
@@ -1711,7 +1755,7 @@ index 956ef26..d194a21 100644
  /**
   * Holds a generic command.  If hook is not NULL, that function
   * will be called.  Otherwise, if cmd is not CMD_NULL, that command
-@@ -67,6 +199,10 @@ struct command_list
+@@ -67,6 +200,10 @@ struct command_list
  	int keymap;
  };
  
@@ -1722,7 +1766,7 @@ index 956ef26..d194a21 100644
  #define SCAN_INSTANT ((uint32_t) -1)
  #define SCAN_OFF 0
  
-@@ -92,6 +228,7 @@ ui_event inkey_m(void);
+@@ -92,6 +229,7 @@ ui_event inkey_m(void);
  void display_message(game_event_type unused, game_event_data *data, void *user);
  void bell_message(game_event_type unused, game_event_data *data, void *user);
  void message_flush(game_event_type unused, game_event_data *data, void *user);
@@ -1730,7 +1774,7 @@ index 956ef26..d194a21 100644
  void clear_from(int row);
  bool askfor_aux_keypress(char *buf, size_t buflen, size_t *curs, size_t *len,
  						 struct keypress keypress, bool firsttime);
-@@ -102,6 +239,7 @@ bool askfor_aux_ext(char *buf, size_t len,
+@@ -102,6 +240,7 @@ bool askfor_aux_ext(char *buf, size_t len,
  	bool (*keypress_h)(char *, size_t, size_t *, size_t *, struct keypress, bool),
  	int (*mouse_h)(char *, size_t, size_t *, size_t *, struct mouseclick, bool));
  bool get_character_name(char *buf, size_t buflen);
@@ -5110,7 +5154,15 @@ diff --git a/src/ui-spell.c b/src/ui-spell.c
 diff --git a/src/ui-options.c b/src/ui-options.c
 --- a/src/ui-options.c
 +++ b/src/ui-options.c
-@@ -41,6 +41,7 @@
+@@ -20,6 +20,7 @@
+ #include "angband.h"
+ #include "cmds.h"
+ #include "game-input.h"
++#include "grafmode.h"
+ #include "init.h"
+ #include "obj-desc.h"
+ #include "obj-ignore.h"
+@@ -41,6 +42,7 @@
  /**
   * Prompt the user for a filename to save the pref file to.
   */
@@ -5118,8 +5170,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  static bool get_pref_path(const char *what, int row, char *buf, size_t max)
  {
  	char ftmp[80];
-@@ -98,7 +99,8 @@
- 	return;
+@@ -99,6 +101,7 @@ static void dump_pref_file(void (*dump)(ang_file *), const char *title, int row)
  }
  
  static void do_cmd_pref_file_hack(long row);
@@ -5127,13 +5178,42 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  
  
-@@ -138,6 +140,21 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
+@@ -138,6 +141,81 @@ static void option_toggle_display(struct menu *m, int oid, bool cursor,
  		option_name(oid)), row, col + 45);
  }
  
 +#ifdef __EMSCRIPTEN__
++enum { WEB_INPUT_OPTIONS = OP_MAX };
++
 +static bool web_defaults_saved;
 +static bool web_saved_options[OPT_MAX];
++static const char *const wall_styles[] = { "Symbols", "Solid blocks", "Shaded background" };
++
++static int web_option_page(int opt)
++{
++	if (web_option_is_fixed(opt)) return OP_SPECIAL;
++	if (opt == OPT_rogue_like_commands || opt == OPT_mouse_movement) return WEB_INPUT_OPTIONS;
++	return option_type(opt);
++}
++
++static int web_wall_style(void)
++{
++	if (OPT(player, hybrid_walls)) return 2;
++	return OPT(player, solid_walls) ? 1 : 0;
++}
++
++static int web_choose_option(const char *title, const char *const labels[], int count, int current)
++{
++	struct menu *m = menu_dynamic_new();
++	m->title = title;
++	m->web_no_keyboard = true;
++	for (int i = 0; i < count; i++) menu_dynamic_add(m, labels[i], i);
++	m->cursor = current;
++	menu_layout(m, &SCREEN_REGION);
++	int choice = menu_dynamic_select(m);
++	menu_dynamic_free(m);
++	return choice;
++}
 +
 +static void web_option_notice(const char *message)
 +{
@@ -5146,10 +5226,62 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +}
 +#endif
 +
++enum option_defaults_action {
++	ACT_CTX_OPT_SAVE,
++	ACT_CTX_OPT_RESTORE,
++	ACT_CTX_OPT_RESET
++};
++
++static bool option_menu_defaults(struct menu *m, int page, enum option_defaults_action action)
++{
++#ifdef __EMSCRIPTEN__
++	if (page == OP_INTERFACE) {
++		struct player_options defaults = { 0 };
++		bool saving = action == ACT_CTX_OPT_SAVE;
++		bool *dest = saving ? defaults.opt : player->opts.opt;
++		const bool *src = saving ? player->opts.opt : defaults.opt;
++
++		options_restore_maintainer(&defaults, page);
++		if (action != ACT_CTX_OPT_RESET && !options_restore_custom(&defaults, page)) return false;
++		for (int pos = 0; pos < m->filter_count; pos++) {
++			int opt = m->filter_list[pos];
++			dest[opt] = src[opt];
++			if (opt == OPT_solid_walls) dest[OPT_hybrid_walls] = src[OPT_hybrid_walls];
++		}
++		return !saving || options_save_custom(&defaults, page);
++	}
++#endif
++	if (action == ACT_CTX_OPT_SAVE) return options_save_custom(&player->opts, page);
++	if (action == ACT_CTX_OPT_RESTORE) return options_restore_custom(&player->opts, page);
++	options_restore_maintainer(&player->opts, page);
++	return true;
++}
++
  /**
   * Handle keypresses for an option entry.
   */
-@@ -164,14 +181,25 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -146,6 +224,20 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ {
+ 	bool next = false;
+ 	int page = option_type(oid);
++#ifdef __EMSCRIPTEN__
++	keycode_t key = event->type == EVT_KBRD ? event->key.code : 0;
++	bool change = event->type == EVT_SELECT || key == 'y' || key == 'Y' ||
++		key == 'n' || key == 'N' || key == 't' || key == 'T';
++	if (change && oid == OPT_pickup_inven && OPT(player, pickup_always)) return true;
++	if (change && oid == OPT_solid_walls) {
++		int style = web_choose_option("Wall style", wall_styles, N_ELEMENTS(wall_styles), web_wall_style());
++		if (style >= 0) {
++			player->opts.opt[OPT_solid_walls] = style == 1;
++			player->opts.opt[OPT_hybrid_walls] = style == 2;
++		}
++		return true;
++	}
++#endif
+ 
+ 	if (event->type == EVT_SELECT) {
+ 		/* Birth options can not be toggled after birth */
+@@ -164,14 +256,25 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
  		} else if (event->key.code == 't' || event->key.code == 'T') {
  			option_set(option_name(oid), !player->opts.opt[oid]);
  		} else if (event->key.code == 's' || event->key.code == 'S') {
@@ -5159,7 +5291,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  			screen_save();
 -			if (options_save_custom(&player->opts, page)) {
-+			bool saved = options_save_custom(&player->opts, page);
++			bool saved = option_menu_defaults(m, page, ACT_CTX_OPT_SAVE);
 +#ifdef __EMSCRIPTEN__
 +			web_defaults_saved = saved && web_sync_profile();
 +			if (web_defaults_saved)
@@ -5176,7 +5308,12 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  			screen_load();
  		/*
  		 * For birth options, only allow restore from custom defaults
-@@ -184,9 +212,13 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+@@ -180,13 +283,17 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ 		} else if ((event->key.code == 'r' || event->key.code == 'R') &&
+ 				(page != OP_BIRTH || m->flags == MN_DBL_TAP)) {
+ 			screen_save();
+-			if (options_restore_custom(&player->opts, page)) {
++			if (option_menu_defaults(m, page, ACT_CTX_OPT_RESTORE)) {
  				screen_load();
  				menu_refresh(m, false);
  			} else {
@@ -5190,7 +5327,55 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  				screen_load();
  			}
  		/*
-@@ -318,6 +350,28 @@ static const menu_iter option_toggle_iter = {
+@@ -195,7 +302,7 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ 		 */
+ 		} else if ((event->key.code == 'x' || event->key.code == 'X') &&
+ 				(page != OP_BIRTH || m->flags == MN_DBL_TAP)) {
+-			options_restore_maintainer(&player->opts, page);
++			option_menu_defaults(m, page, ACT_CTX_OPT_RESET);
+ 			menu_refresh(m, false);
+ 		} else {
+ 			return false;
+@@ -228,11 +335,6 @@ static bool option_toggle_handle(struct menu *m, const ui_event *event,
+ static bool use_option_context_menu(struct menu *m, const ui_event *in,
+ 		ui_event *out)
+ {
+-	enum {
+-		ACT_CTX_OPT_SAVE,
+-		ACT_CTX_OPT_RESTORE,
+-		ACT_CTX_OPT_RESET
+-	};
+ 	/*
+ 	 * As a bit of a hack, get the type of options involved from the first
+ 	 * option selected by the menu's filter.
+@@ -269,7 +371,7 @@ static bool use_option_context_menu(struct menu *m, const ui_event *in,
+ 
+ 	switch (selected) {
+ 	case ACT_CTX_OPT_SAVE:
+-		if (options_save_custom(&player->opts, page)) {
++		if (option_menu_defaults(m, page, ACT_CTX_OPT_SAVE)) {
+ 			get_com("Successfully saved.  Press any key to "
+ 				"continue.", &dummy);
+ 		} else {
+@@ -279,7 +381,7 @@ static bool use_option_context_menu(struct menu *m, const ui_event *in,
+ 		break;
+ 
+ 	case ACT_CTX_OPT_RESTORE:
+-		if (options_restore_custom(&player->opts, page)) {
++		if (option_menu_defaults(m, page, ACT_CTX_OPT_RESTORE)) {
+ 			refresh = true;
+ 		} else {
+ 			get_com("Restore failed.  Press any key to continue.",
+@@ -288,7 +390,7 @@ static bool use_option_context_menu(struct menu *m, const ui_event *in,
+ 		break;
+ 
+ 	case ACT_CTX_OPT_RESET:
+-		options_restore_maintainer(&player->opts, page);
++		option_menu_defaults(m, page, ACT_CTX_OPT_RESET);
+ 		refresh = true;
+ 		break;
+ 
+@@ -318,15 +420,49 @@ static const menu_iter option_toggle_iter = {
  };
  
  
@@ -5206,7 +5391,17 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +	web_set_options_title(m->title, web_defaults_saved);
 +	for (int pos = 0; pos < m->filter_count; pos++) {
 +		int oid = m->filter_list[pos];
-+		web_add_option_toggle(pos, option_desc(oid), options[oid], enabled);
++		if (oid == OPT_solid_walls) {
++			web_add_menu_row(pos, "Wall style", NULL, wall_styles[web_wall_style()], 0, true);
++			continue;
++		}
++		const char *detail = NULL;
++		if (oid == OPT_pickup_always)
++			detail = "Overrides pickup inscriptions, including !g and =g limits.";
++		else if (oid == OPT_rogue_like_commands)
++			detail = "Command letters in item inscriptions depend on this keyset.";
++		bool selectable = enabled && !(oid == OPT_pickup_inven && options[OPT_pickup_always]);
++		web_add_option_toggle(pos, option_desc(oid), detail, options[oid], selectable);
 +	}
 +	if (m->context_hook) {
 +		web_menu_action('s', "Save as default options");
@@ -5219,17 +5414,46 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Interact with some options
   */
-@@ -357,7 +411,23 @@ static void option_toggle_menu(const char *name, int page)
+ static void option_toggle_menu(const char *name, int page)
+ {
+ 	static const char selections[] = "abcdefgimopquvwzABCDEFGHIJKLMOPQUVWZ";
+-	int i;
+-	
+ 	struct menu *m = menu_new(MN_SKIN_SCROLL, &option_toggle_iter);
++	bool interface_options = page == OP_INTERFACE;
++#ifdef __EMSCRIPTEN__
++	interface_options = interface_options || page == WEB_INPUT_OPTIONS;
++#endif
  
+ 	/* for all menus */
+ 	m->prompt = "Set option (y/n/t), select with movement keys or index";
+@@ -339,7 +475,7 @@ static void option_toggle_menu(const char *name, int page)
+ 		m->prompt = "You can only modify these options at character birth.";
+ 		m->cmd_keys = "";
+ 		m->flags = MN_NO_TAGS;
+-	} else if (page == OPT_PAGE_BIRTH + 10 || page == OP_INTERFACE) {
++	} else if (page == OPT_PAGE_BIRTH + 10 || interface_options) {
+ 		m->prompt = "Set option (y/n/t), 's' to save, 'r' to restore, 'x' to reset";
+ 		m->cmd_keys = "YyNnTtSsRrXx";
+ 		/* Provide a context menu for equivalents to 's', 'r', .... */
+@@ -352,12 +488,29 @@ static void option_toggle_menu(const char *name, int page)
+ 	/* for this particular menu */
+ 	m->title = name;
+ 
+-	/* Find the number of valid entries */
+-	for (i = 0; option_page[page][i] != OPT_none; ++i) {}
+-
  	/* Set the data to the player's options */
  	menu_setpriv(m, OPT_MAX, &player->opts.opt);
 +#ifdef __EMSCRIPTEN__
 +	int supported[OPT_MAX];
 +	int count = 0;
 +	web_defaults_saved = false;
-+	for (int pos = 0; pos < i; pos++) {
-+		int option = option_page[page][pos];
-+		if (option != OPT_use_sound) supported[count++] = option;
++	for (int opt = 1; opt < OPT_MAX; opt++) {
++		if (web_option_page(opt) != page || opt == OPT_hybrid_walls) continue;
++		if (opt == OPT_solid_walls && use_graphics != GRAPHICS_NONE) continue;
++		if (opt == OPT_mouse_movement && !web_has_mouse()) continue;
++		supported[count++] = opt;
 +	}
 +	menu_set_filter(m, supported, count);
 +	m->web_render = web_render_option_toggles;
@@ -5238,12 +5462,14 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +	if (page == OP_BIRTH && m->flags == MN_NO_TAGS)
 +		m->title = "Birth (difficulty) options (read-only)";
 +#else
++	int i;
++	for (i = 0; option_page[page][i] != OPT_none; ++i) {}
  	menu_set_filter(m, option_page[page], i);
 +#endif
  	menu_layout(m, &SCREEN_REGION);
  
  	/* Run the menu */
-@@ -383,6 +453,7 @@ void do_cmd_options_birth(void)
+@@ -383,6 +536,7 @@ void do_cmd_options_birth(void)
  /**
   * Modify the "window" options
   */
@@ -5251,7 +5477,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  static void do_cmd_options_win(const char *name, int row)
  {
  	int i, j, d;
-@@ -453,7 +524,13 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -453,7 +607,13 @@ static void do_cmd_options_win(const char *name, int row)
  		Term_gotoxy(35 + x * 5, y + 5);
  
  		/* Get key */
@@ -5265,7 +5491,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  		/* Mouse or keyboard interaction */
  		if (ke.type == EVT_MOUSE) {
-@@ -519,6 +596,7 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -519,6 +679,7 @@ static void do_cmd_options_win(const char *name, int row)
  
  	screen_load();
  }
@@ -5273,7 +5499,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  
  
-@@ -527,6 +605,7 @@ static void do_cmd_options_win(const char *name, int row)
+@@ -527,6 +688,7 @@ static void do_cmd_options_win(const char *name, int row)
   * Interact with keymaps
   * ------------------------------------------------------------------------ */
  
@@ -5281,7 +5507,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Current (or recent) keymap action
   */
-@@ -1013,6 +1092,7 @@ static void do_cmd_colors(const char *title, int row)
+@@ -1013,6 +1175,7 @@ static void do_cmd_colors(const char *title, int row)
  
  	screen_load();
  }
@@ -5289,7 +5515,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  
  /**
-@@ -1048,6 +1128,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
+@@ -1048,6 +1211,20 @@ static bool askfor_aux_numbers(char *buf, size_t buflen, size_t *curs, size_t *l
  }
  
  
@@ -5310,7 +5536,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Set base delay factor
   */
-@@ -1068,7 +1162,7 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1068,7 +1245,7 @@ static void do_cmd_delay(const char *name, int unused)
  	prt("", 23, 0);
  
  	/* Ask for a numeric value */
@@ -5319,7 +5545,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  		uint16_t val = (uint16_t) strtoul(tmp, NULL, 0);
  		player->opts.delay_factor = MIN(val, 255);
  	}
-@@ -1079,8 +1173,12 @@ static void do_cmd_delay(const char *name, int unused)
+@@ -1079,8 +1256,12 @@ static void do_cmd_delay(const char *name, int unused)
  /**
   * Set sidebar mode
   */
@@ -5332,7 +5558,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	char tmp[20] = "";	
  	const char *names[SIDEBAR_MAX] = {"Left", "Top", "None"};
  	struct keypress cx = KEYPRESS_NULL;
-@@ -1110,7 +1208,9 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+@@ -1110,7 +1291,9 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
  	}
  
  	screen_load();
@@ -5342,25 +5568,41 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  
  /**
-@@ -1136,7 +1236,7 @@ static void do_cmd_hp_warn(const char *name, int unused)
- 	prt("", 23, 0);
+@@ -1118,6 +1301,13 @@ static void do_cmd_sidebar_mode(const char *name, int unused)
+  */
+ static void do_cmd_hp_warn(const char *name, int unused)
+ {
++#ifdef __EMSCRIPTEN__
++	static const char *const levels[] = {
++		"0%", "10%", "20%", "30%", "40%", "50%", "60%", "70%", "80%", "90%"
++	};
++	int choice = web_choose_option(name, levels, N_ELEMENTS(levels), player->opts.hitpoint_warn);
++	if (choice >= 0) player->opts.hitpoint_warn = choice;
++#else
+ 	bool res;
+ 	char tmp[4] = "";
+ 	uint8_t warn;
+@@ -1150,9 +1340,11 @@ static void do_cmd_hp_warn(const char *name, int unused)
+ 	}
  
- 	/* Ask the user for a string */
--	res = askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers);
-+	res = edit_option_number(tmp, sizeof(tmp), "Hitpoint warning (0–9, in steps of 10%)");
+ 	screen_load();
++#endif
+ }
  
- 	/* Process input */
- 	if (res) {
-@@ -1175,7 +1275,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
- 	prt("", 23, 0);
  
- 	/* Ask the user for a string */
--	res = askfor_aux(tmp, sizeof(tmp), askfor_aux_numbers);
-+	res = edit_option_number(tmp, sizeof(tmp), "Movement delay (0–255, in steps of 10 ms)");
++#ifndef __EMSCRIPTEN__
+ /**
+  * Set "lazy-movement" delay
+  */
+@@ -1185,6 +1377,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
  
- 	/* Process input */
- 	if (res) {
-@@ -1196,6 +1296,7 @@
+ 	screen_load();
+ }
++#endif
+ 
+ 
+ 
+@@ -1196,6 +1389,7 @@ static void do_cmd_lazymove_delay(const char *name, int unused)
   *
   * Allow absolute file names?  XXX XXX XXX
   */
@@ -5368,7 +5610,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  static void do_cmd_pref_file_hack(long row)
  {
  	char ftmp[80];
-@@ -1268,6 +1369,7 @@
+@@ -1268,6 +1462,7 @@ static void options_load_pref_file(const char *n, int row)
  {
  	do_cmd_pref_file_hack(20);
  }
@@ -5376,7 +5618,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  
  
-@@ -1396,6 +1498,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
+@@ -1396,6 +1591,22 @@ static bool ego_action(struct menu * menu, const ui_event * event, int oid)
  	return false;
  }
  
@@ -5390,7 +5632,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +	for (int i = 0; i < m->count; i++) {
 +		const struct ego_desc *choice = &choices[i];
 +		web_add_option_toggle(i, format("%s %s", quality_choices[choice->itype].name,
-+			e_info[choice->e_idx].name),
++			e_info[choice->e_idx].name), NULL,
 +			ego_is_ignored(choice->e_idx, choice->itype), true);
 +	}
 +}
@@ -5399,7 +5641,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display list of ego items to be ignored.
   */
-@@ -1471,6 +1589,10 @@ static void ego_menu(const char *unused, int also_unused)
+@@ -1471,6 +1682,10 @@ static void ego_menu(const char *unused, int also_unused)
  	memset(&menu, 0, sizeof(menu));
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu_setpriv(&menu, max_num, choice);
@@ -5410,7 +5652,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(&menu, &area);
  
  	/* Select an entry */
-@@ -1574,6 +1696,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
+@@ -1574,6 +1789,25 @@ static void quality_subdisplay(struct menu *menu, int oid, bool cursor, int row,
  	c_put_str(attr, name, row, col);
  }
  
@@ -5436,7 +5678,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Handle keypresses.
-@@ -1606,6 +1747,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
+@@ -1606,6 +1840,13 @@ static bool quality_action(struct menu *m, const ui_event *event, int oid)
  		area.row += Term->hgt - 1 - area.row - menu.count;
  
  	menu_layout(&menu, &area);
@@ -5450,7 +5692,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  	window_make(area.col - 2, area.row - 1, area.col + area.width + 2,
  				area.row + area.page_rows);
-@@ -1638,6 +1786,10 @@ static void quality_menu(const char *unused, int also_unused)
+@@ -1638,6 +1879,10 @@ static void quality_menu(const char *unused, int also_unused)
  	/* Set up the menu */
  	menu_init(&menu, MN_SKIN_SCROLL, &menu_f);
  	menu.title = "Quality ignore menu";
@@ -5461,7 +5703,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_setpriv(&menu, ITYPE_MAX, quality_values);
  	menu_layout(&menu, &area);
  
-@@ -1767,6 +1919,23 @@ static const menu_iter ignore_sval_menu =
+@@ -1767,6 +2012,23 @@ static const menu_iter ignore_sval_menu =
  	NULL,
  };
  
@@ -5476,7 +5718,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +		const ignore_choice *choice = &choices[i];
 +		char name[80];
 +		object_kind_name(name, sizeof(name), choice->kind, choice->aware);
-+		web_add_option_toggle(i, name, choice->kind->ignore &
++		web_add_option_toggle(i, name, NULL, choice->kind->ignore &
 +			(choice->aware ? IGNORE_IF_AWARE : IGNORE_IF_UNAWARE), true);
 +	}
 +}
@@ -5485,7 +5727,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Collect all tvals in the big ignore_choice array
-@@ -1860,6 +2029,13 @@ static bool sval_menu(int tval, const char *desc)
+@@ -1860,6 +2122,13 @@ static bool sval_menu(int tval, const char *desc)
  	menu_setpriv(menu, n_choices, choices);
  	menu->cmd_keys = "Tt";
  	menu_layout(menu, &area);
@@ -5499,7 +5741,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_set_cursor_x_offset(menu, 1); /* Place cursor in brackets. */
  	menu_select(menu, 0, false);
  
-@@ -1998,6 +2174,21 @@ static const menu_iter options_item_iter =
+@@ -1998,6 +2267,21 @@ static const menu_iter options_item_iter =
  	NULL
  };
  
@@ -5521,7 +5763,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  
  /**
   * Display and handle the main ignoring menu.
-@@ -2011,6 +2202,10 @@ void do_cmd_options_item(const char *title, int row)
+@@ -2011,6 +2295,10 @@ void do_cmd_options_item(const char *title, int row)
  				 N_ELEMENTS(extra_item_options) + 1, NULL);
  
  	menu.title = title;
@@ -5532,11 +5774,26 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	menu_layout(&menu, &SCREEN_REGION);
  
  	screen_save();
-@@ -2036,26 +2231,53 @@ static menu_action option_actions[] =
+@@ -2030,20 +2318,34 @@ void do_cmd_options_item(const char *title, int row)
+  * Main menu definitions and display
+  * ------------------------------------------------------------------------ */
+ 
++#ifdef __EMSCRIPTEN__
++static void web_input_options(const char *name, int unused)
++{
++	option_toggle_menu(web_has_mouse() ? name : "Keyboard options", WEB_INPUT_OPTIONS);
++}
++#endif
++
+ static struct menu *option_menu;
+ static menu_action option_actions[] = 
+ {
  	{ 0, 'a', "User interface options", option_toggle_menu },
  	{ 0, 'b', "Birth (difficulty) options", option_toggle_menu },
  	{ 0, 'x', "Cheat options", option_toggle_menu },
-+#ifndef __EMSCRIPTEN__
++#ifdef __EMSCRIPTEN__
++	{ 0, 'k', "Keyboard and mouse options", web_input_options },
++#else
  	{ 0, 'w', "Subwindow setup", do_cmd_options_win },
 +#endif
  	{ 0, 'i', "Item ignoring setup", do_cmd_options_item },
@@ -5544,17 +5801,15 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	{ 0, 0, NULL, NULL },
  	{ 0, 'd', "Set base delay factor", do_cmd_delay },
  	{ 0, 'h', "Set hitpoint warning", do_cmd_hp_warn },
- 	{ 0, 'm', "Set movement delay", do_cmd_lazymove_delay },
 +#ifndef __EMSCRIPTEN__
+ 	{ 0, 'm', "Set movement delay", do_cmd_lazymove_delay },
  	{ 0, 'o', "Set sidebar mode", do_cmd_sidebar_mode },
 +#endif
 +#ifndef __EMSCRIPTEN__
  	{ 0, 0, NULL, NULL },
  	{ 0, 's', "Save subwindow setup to pref file", do_dump_options },
  	{ 0, 't', "Save autoinscriptions to pref file", do_dump_autoinsc },
- 	{ 0, 'u', "Save char screen options to pref file", do_dump_charscreen_opt },
- 	{ 0, 0, NULL, NULL },
- 	{ 0, 'p', "Load a user pref file", options_load_pref_file },
+@@ -2053,9 +2355,31 @@ static menu_action option_actions[] =
  	{ 0, 'e', "Edit keymaps (advanced)", do_cmd_keymaps },
  	{ 0, 'c', "Edit colours (advanced)", do_cmd_colors },
  	{ 0, 'v', "Save visuals (advanced)", do_cmd_visuals },
@@ -5576,9 +5831,9 @@ diff --git a/src/ui-options.c b/src/ui-options.c
 +		switch (action->tag) {
 +			case 'd': value = format("%d ms", player->opts.delay_factor); break;
 +			case 'h': value = format("%d%%", player->opts.hitpoint_warn * 10); break;
-+			case 'm': value = format("%d ms", player->opts.lazymove_delay * 10); break;
 +		}
-+		web_add_menu_row(pos, action->name, NULL, value, action->tag, true);
++		const char *label = action->tag == 'k' && !web_has_mouse() ? "Keyboard options" : action->name;
++		web_add_menu_row(pos, label, NULL, value, action->tag, true);
 +	}
 +}
 +#endif
@@ -5586,7 +5841,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  /**
   * Display the options main menu.
   */
-@@ -2068,6 +2290,10 @@ void do_cmd_options(void)
+@@ -2068,6 +2392,10 @@ void do_cmd_options(void)
  
  		option_menu->title = "Options Menu";
  		option_menu->flags = MN_CASELESS_TAGS;
@@ -5597,7 +5852,7 @@ diff --git a/src/ui-options.c b/src/ui-options.c
  	}
  
  	screen_save();
-@@ -2081,8 +2307,10 @@ void do_cmd_options(void)
+@@ -2081,8 +2409,10 @@ void do_cmd_options(void)
  
  void cleanup_options(void)
  {
@@ -7242,3 +7497,103 @@ index 10e10e0..44e8314 100644
  	screen_load();
 +#endif
  }
+diff --git a/lib/help/commands.txt b/lib/help/commands.txt
+--- a/lib/help/commands.txt
++++ b/lib/help/commands.txt
+@@ -6,14 +6,11 @@ Original Keyset Command Summary
+ the letter key with the control key also depressed.  You may also press
+ and release ^ and then press and release the letter key to activate the
+ same command in case your system intercepts the control plus key
+-combination and does not pass it on.  The autoexplore_commands option
+-modifies the '<', '>', and 'p' commands.  When that option is off (that
+-is the default), the commands act as described below.  When that option
+-is on, '<' or '>' will use the staircase at the player's location if it
+-is the appropriate kind of staircase or will move to the nearest known
+-staircase of the appropriate kind if the player is not already at that
+-kind of staircase.  'p' explores the level until you are disturbed,
+-you discover something of interest, or no route remains.
++combination and does not pass it on.
++
++Use '<' or '>' on the appropriate staircase to change levels, or away
++from it to move to the nearest known staircase of that kind. Use 'p' to
++explore until you are disturbed, discover something, or run out of routes.
+ 
+   a    Aim a wand                      A    Activate an object
+   b    Browse a book                   B    -
+diff --git a/lib/help/r_comm.txt b/lib/help/r_comm.txt
+--- a/lib/help/r_comm.txt
++++ b/lib/help/r_comm.txt
+@@ -6,14 +6,11 @@ Roguelike Keyset Command Summary
+ the letter key with the control key also depressed.  You may also press
+ and release ^ and then press and release the letter key to activate the
+ same command in case your system intercepts the control plus key
+-combination and does not pass it on.  The autoexplore_commands option
+-modifies the '<', '>', and 'p' commands.  When that option is off (that
+-is the default), the commands act as described below.  When that option
+-is on, '<' or '>' will use the staircase at the player's location if it
+-is the appropriate kind of staircase or will move to the nearest known
+-staircase of the appropriate kind if the player is not already at that
+-kind of staircase.  'p' explores the level until you are disturbed,
+-you discover something of interest, or no route remains.
++combination and does not pass it on.
++
++Use '<' or '>' on the appropriate staircase to change levels, or away
++from it to move to the nearest known staircase of that kind. Use 'p' to
++explore until you are disturbed, discover something, or run out of routes.
+ 
+   a    Zap a rod (Activate)            A    Activate an object
+   b    (walk - south west)             B    (run - south west)
+diff --git a/src/load.c b/src/load.c
+--- a/src/load.c
++++ b/src/load.c
+@@ -433,7 +433,11 @@ int rd_options(void)
+ 
+ 	/* Read "hitpoint_warn" */
+ 	rd_byte(&b);
++#ifdef __EMSCRIPTEN__
++	player->opts.hitpoint_warn = b <= 9 ? b : 3;
++#else
+ 	player->opts.hitpoint_warn = b;
++#endif
+ 
+ 	/* Read lazy movement delay */
+ 	rd_byte(&b);
+diff --git a/src/option.h b/src/option.h
+--- a/src/option.h
++++ b/src/option.h
+@@ -47,7 +47,35 @@ enum
+ 	OPT_MAX
+ };
+ 
++#ifdef __EMSCRIPTEN__
++enum {
++#define OP(a, b, c, d) OPT_DEFAULT_##a = d,
++#include "list-options.h"
++#undef OP
++};
++
++static inline bool web_option_is_fixed(int opt)
++{
++	switch (opt) {
++	case OPT_autoexplore_commands:
++	case OPT_use_sound:
++	case OPT_use_old_target:
++	case OPT_show_target:
++	case OPT_highlight_player:
++	case OPT_disturb_near:
++	case OPT_animate_flicker:
++	case OPT_center_player:
++	case OPT_auto_more:
++		return true;
++	default:
++		return false;
++	}
++}
++
++#define OPT(p, name) (web_option_is_fixed(OPT_##name) ? OPT_DEFAULT_##name : (p)->opts.opt[OPT_##name])
++#else
+ #define OPT(p, opt_name)	p->opts.opt[OPT_##opt_name]
++#endif
+ 
+ /**
+  * Information for "do_cmd_options()".

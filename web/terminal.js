@@ -92,7 +92,6 @@ const editHistory = document.querySelector("#edit-history");
 const confirmKey = document.querySelector("#confirm-key");
 const playKeys = document.querySelector("#play-keys");
 const quickActionKeys = document.querySelector("#quick-actions");
-const primaryActions = document.querySelector("#primary-actions");
 const heroActions = document.querySelector("#hero-actions");
 const useAction = document.querySelector("#use-action");
 const combatAction = document.querySelector("#combat-action");
@@ -293,7 +292,7 @@ const visibleListCommands = [
     ["]", "Display visible item list", null, "Item list"],
 ];
 const extraCommands = [
-    runCommand, restCommand, spellCommands.look, useCommand, repeatCommand,
+    ["p", "Start exploring"], runCommand, restCommand, spellCommands.look, useCommand, repeatCommand,
     ["r", "Read a scroll"], ["q", "Quaff a potion"], ["d", "Drop an item"],
     ["g", "Pick up objects"], ["<", "Go up staircase"], [">", "Go down staircase"],
     ["u", "Use a staff", "Z"], ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"],
@@ -415,6 +414,7 @@ let journalEntries;
 let journalPrompt = "";
 const preferencesKey = "pocketangband-touch";
 const preferences = { leftHanded: false, fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
+const finePointer = matchMedia("(any-pointer: fine)");
 let preferencesWriteFailed = false;
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey) || "{}");
@@ -2257,8 +2257,7 @@ function sendInput(input) {
     const movingToCell = input.type === "map-cell" && !input.openMenu && !context.mapCell?.actions &&
         input.x === context.mapCell?.x && input.y === context.mapCell?.y;
     runningFromPad = input.type === "run-direction";
-    exploring = mode === "command" && input.type === "key" && input.code === keyCode("p") &&
-        !!world?.quickActions?.canExplore;
+    exploring = mode === "command" && input.type === "key" && input.code === keyCode("p");
     discoveryArrow.hidden = true;
     if (exploring) exploreCamera.reset();
     running = runningFromPad || exploring ||
@@ -2270,7 +2269,7 @@ function sendInput(input) {
         mapDirectionAction = undefined;
         draw();
     }
-    worker.postMessage({ ...input, request });
+    worker.postMessage({ ...input, request, mouseAvailable: finePointer.matches });
     if (input.type !== "set-tiles") context.actionMessages = undefined;
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
@@ -2747,17 +2746,7 @@ function commandKey([key, , alternative], roguelike) {
 }
 
 function renderQuickActions({ roguelike, quickActions }) {
-    const { spell, launcher, canExplore = false } = quickActions;
-    if (primaryActions.contains(useAction) !== canExplore) {
-        if (canExplore) {
-            heroActions.after(useAction);
-            combatAction.before(repeatAction);
-        } else {
-            primaryActions.after(useAction);
-            combatAction.after(repeatAction);
-        }
-    }
-    exploreAction.hidden = !canExplore;
+    const { spell, launcher } = quickActions;
     const spellAction = spell === "look" ? undefined : spellCommands[spell];
     const combat = spell === "cast" && spellAction ? spellAction :
         launcher ? fireCommand : spellAction ?? throwCommand;
@@ -2819,7 +2808,6 @@ function renderActionsPanel() {
         commands = gameMenu;
     } else if (openPanel === "commands") {
         commands = [...extraCommands];
-        if (world?.quickActions?.canExplore) commands.push(["p", "Start exploring"]);
         if (world?.quickActions?.canSteal) commands.push(stealCommand);
         commands.push(["Enter", "All Angband commands"]);
     }
@@ -2828,8 +2816,11 @@ function renderActionsPanel() {
         const key = commandKey(entry, world?.roguelike);
         const label = entry[1];
         const button = makeKey(key, label);
-        button.prepend(keyBadge(keyNames.get(key) ?? key));
-        button.setAttribute("aria-description", `Shortcut: ${keyNames.get(key) ?? key}`);
+        if (key !== "Tab") {
+            const shortcut = keyNames.get(key) ?? key;
+            button.prepend(keyBadge(shortcut));
+            button.setAttribute("aria-description", `Shortcut: ${shortcut}`);
+        }
         return button;
     });
     if (openPanel === "menu") {
