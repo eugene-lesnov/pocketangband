@@ -5,15 +5,8 @@ PocketAngband brings the classic single-player dungeon roguelike [Angband](https
 PocketAngband’s ideas were inspired by [PocketZot](https://github.com/pocketzot/pocketzot).
 
 <p>
-  <a href="screenshots/hello.png"><img src="screenshots/hello.png" width="220" alt="PocketAngband welcome screen"></a>
-  <a href="screenshots/spellbook.png"><img src="screenshots/spellbook.png" width="220" alt="Browsing Light Room and six other learned spells in First Spells"></a>
-  <a href="screenshots/character.png"><img src="screenshots/character.png" width="220" alt="Elenor’s High-Elf Mage character sheet with stats, conditions and combat skills"></a>
-</p>
-
-<p>
-  <a href="screenshots/ascii.png"><img src="screenshots/ascii.png" width="220" alt="Elenor faces Sauron, the Sorcerer at 4,950 feet in ASCII mode"></a>
-  <a href="screenshots/tiles.png"><img src="screenshots/tiles.png" width="220" alt="Elenor fights Morgoth, Lord of Darkness at 5,000 feet using David Gervais' tiles"></a>
-  <a href="screenshots/victory.png"><img src="screenshots/victory.png" width="220" alt="Victory screen for Elenor, a level 50 High-Elf Mage, after defeating Morgoth"></a>
+  <a href="screenshots/hello.png"><img src="screenshots/hello.png" width="280" alt="PocketAngband welcome screen in the dark Atlas theme"></a>
+  <a href="screenshots/ascii.png"><img src="screenshots/ascii.png" width="280" alt="Elenor fights Sauron at 4,950 feet in ASCII mode, with dark Atlas below the diagonal and light Atlas above"></a>
 </p>
 
 ## Play on GitHub Pages
