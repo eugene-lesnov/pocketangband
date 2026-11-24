@@ -1058,6 +1058,20 @@ main:has(#option-digits:not([hidden])) #keyboard-toggle { display: none !importa
     overscroll-behavior: contain;
 }
 .menu-summary, .menu-sections { flex: none; }
+#delete-save-error:not(:empty) {
+    flex: none;
+    padding: 0.5rem 0.625rem;
+    background: var(--alert-panel);
+    color: var(--alert);
+    font-size: 0.875rem;
+}
+#delete-save-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
 #actions-screen button:not(:has(kbd)) { display: block; }
 #character-screen { display: grid; align-content: start; gap: 0.625rem; padding: 0.625rem; }
 .character-identity h3 { margin: 0; font-size: 1.25rem; color: var(--accent); overflow-wrap: anywhere; }

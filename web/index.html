@@ -132,6 +132,7 @@
                 <span id="monster-health-bar" aria-hidden="true"></span>
             </div>
             <div id="menu-screen" class="menu-screen" hidden>
+                <p id="delete-save-error" role="alert"></p>
                 <section id="outcome-summary" class="character-identity" aria-label="Run summary" hidden>
                     <h3 id="outcome-name"></h3>
                     <p id="outcome-class"></p>
@@ -346,7 +347,6 @@
             </section>
             <fieldset id="menu-actions" aria-label="Menu actions" disabled hidden></fieldset>
             <p id="option-save-status" role="status" hidden></p>
-            <p id="delete-save-status" class="status" role="status" hidden></p>
             <fieldset id="quantity" class="key-panel" aria-label="Quantity" disabled hidden></fieldset>
             <fieldset id="option-digits" class="key-panel" aria-label="Enter a number" disabled hidden></fieldset>
             <fieldset id="rest" class="key-panel" aria-label="Rest duration" disabled hidden></fieldset>
@@ -454,6 +454,7 @@
             </div>
         </form>
     </dialog>
+    <p id="delete-save-status" role="status"></p>
     <template id="menu-list-template">
         <div class="menu-summary" hidden></div>
         <fieldset class="menu-sections" aria-label="Item lists" hidden></fieldset>

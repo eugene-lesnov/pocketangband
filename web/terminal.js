@@ -17,6 +17,7 @@ const deleteSaveLabel = document.querySelector("#delete-save-label");
 const confirmDeleteSave = document.querySelector("#confirm-delete-save");
 const deleteSaveIcon = document.querySelector("#delete-save-icon");
 const deleteSaveStatus = document.querySelector("#delete-save-status");
+const deleteSaveError = document.querySelector("#delete-save-error");
 const viewTitle = document.querySelector("#view-title");
 const monsterSort = document.querySelector("#monster-sort");
 const zoom = document.querySelector("#zoom");
@@ -1121,6 +1122,10 @@ function updateControls() {
 }
 
 function updateMenuControls(disabled, choosing) {
+    if (mode !== "save-slots") {
+        deleteSaveStatus.textContent = "";
+        deleteSaveError.textContent = "";
+    }
     pickerToggle.disabled = disabled || !choosing;
     monsterSort.disabled = disabled;
     monsterSort.setAttribute("aria-pressed", String(!!context.sortByExp));
@@ -1372,12 +1377,6 @@ updateApp.addEventListener("click", async () => {
     }
 });
 
-function showDeleteSaveStatus(message, failed = false) {
-    deleteSaveStatus.textContent = message;
-    deleteSaveStatus.classList.toggle("error", failed);
-    deleteSaveStatus.hidden = false;
-}
-
 function openDeleteSave(button, code) {
     if (mode !== "save-slots" || request === undefined || deleteSaveDialog.open) return;
     const row = menu?.rows.find((row) => row.index === code && row.enabled);
@@ -1396,7 +1395,8 @@ deleteSaveDialog.addEventListener("submit", (event) => {
     if (!target || mode !== "save-slots" || target.request !== request ||
         !sendInput({ type: "delete-save", code: target.code })) return;
     deletingSave = true;
-    deleteSaveStatus.hidden = true;
+    deleteSaveStatus.textContent = "";
+    deleteSaveError.textContent = "";
     updateControls();
 });
 
@@ -1994,9 +1994,6 @@ function handleWorkerMessage({ data }) {
                 const stayingOnMap = activeView === views.map &&
                     (data.context.worldView || data.menu?.choice || promptModes.has(data.mode));
                 if (!stayingOnMap) centerPending = true;
-                if (mode === "save-slots") {
-                    deleteSaveStatus.hidden = true;
-                }
                 keyboardOpen = data.mode === "key";
                 openPanel = panelTrigger = undefined;
             }
@@ -2200,7 +2197,7 @@ function handleWorkerMessage({ data }) {
             updateControls();
             break;
         case "save-deleted":
-            showDeleteSaveStatus(`Deleted ${data.slot}.`);
+            deleteSaveStatus.textContent = `Deleted ${data.slot}.`;
             break;
         case "save-delete-error":
             if (data.request !== undefined) {
@@ -2209,7 +2206,7 @@ function handleWorkerMessage({ data }) {
                 updateControls();
                 if (mode === "save-slots") focusSelectedSave();
             }
-            showDeleteSaveStatus(data.message, true);
+            if (mode === "save-slots") deleteSaveError.textContent = data.message;
             break;
         case "exit":
             stop(data.code === 0 ? "Angband has closed." :
@@ -3061,7 +3058,7 @@ function renderMenu(state, description = state?.description ?? "") {
     const previousScroll = activeList.scrollArea.scrollTop;
     const showGold = state.store && !state.store.home;
     menuSections.hidden = (state.sections?.length ?? 0) <= 1;
-    const scrollItems = showGold || !menuSections.hidden;
+    const scrollItems = saveSlots || showGold || !menuSections.hidden;
     menuScreen.classList.toggle("scroll-menu-items", scrollItems);
     const scrollArea = scrollItems ? menuItems : menuScreen;
     activeList.scrollArea = scrollArea;
