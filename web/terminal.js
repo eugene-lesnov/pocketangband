@@ -95,6 +95,7 @@ const playKeys = document.querySelector("#play-keys");
 const quickActionKeys = document.querySelector("#quick-actions");
 const heroActions = document.querySelector("#hero-actions");
 const useAction = document.querySelector("#use-action");
+const packAction = document.querySelector("#pack-action");
 const monsterCommands = document.querySelector("#monster-commands");
 const combatAction = document.querySelector("#combat-action");
 const repeatAction = document.querySelector("#repeat-action");
@@ -277,6 +278,7 @@ const gameMenu = [
     ["Save", "Save"], ["SaveAndQuit", "Save and quit"],
 ];
 const useCommand = ["U", "Use an item", "X", "Use"];
+const packCommand = ["i", "Display inventory listing", null, "Pack"];
 const repeatCommand = ["n", "Repeat previous command", "Ctrl+V"];
 const spellCommands = {
     look: ["l", "Look around", "x", "Look"],
@@ -290,24 +292,27 @@ const fireCommand = ["f", "Fire your missile weapon", "t", "Fire"];
 const throwCommand = ["v", "Throw an item", null, "Throw"];
 const restCommand = ["R", "Rest for a while", null, "Rest"];
 const runCommand = [".", "Start running", ","];
-const stealCommand = ["s", "Steal from a monster"];
+const stealCommand = ["s", "Steal from a monster", null, "Steal"];
 const visibleListCommands = [
     ["[", "Display visible monster list", null, "Monster list"],
     ["]", "Display visible item list", null, "Item list"],
 ];
 const extraCommands = [
     ["p", "Start exploring"], runCommand, restCommand, spellCommands.look, useCommand, repeatCommand,
-    ["r", "Read a scroll"], ["q", "Quaff a potion"], ["d", "Drop an item"],
-    ["g", "Pick up objects"], ["<", "Go up staircase"], [">", "Go down staircase"],
+    ["r", "Read a scroll", null, "Read"], ["q", "Quaff a potion", null, "Quaff"], ["d", "Drop an item"],
+    ["S", "View abilities", null, "Abilities"], ["M", "Full dungeon map", null, "Map"],
+    ["g", "Pick up objects", null, "Pick up"], ["<", "Go up staircase"], [">", "Go down staircase"],
     ["u", "Use a staff", "Z"], ["a", "Aim a wand", "z"], ["z", "Zap a rod", "a"],
     spellCommands.study, spellCommands.browse, throwCommand, spellCommands.cast, fireCommand,
-    ["E", "Eat some food"], ["A", "Activate an object"], ["F", "Fuel your light source"],
+    ["E", "Eat some food"], ["A", "Activate an object", null, "Activate"], ["F", "Fuel your light source"],
     [":", "Take notes"], ["/", "Identify symbol"],
     ["K", "Toggle ignoring of items", "O"],
-    ["*", "Target monster or location"], ...visibleListCommands,
-    ["h", "Fire at nearest target", "Tab"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
-    ["D", "Disarm a trap or chest, or lock a door"], ["o", "Open a door or a chest"], ["c", "Close a door"],
+    ["*", "Target monster or location", null, "Target"], ...visibleListCommands,
+    ["h", "Fire at nearest target", "Tab", "Fire nearest"], ["+", "Alter a grid"], ["T", "Dig a tunnel", "CtrlT"],
+    ["D", "Disarm a trap or chest, or lock a door", null, "Disarm"], ["o", "Open a door or a chest"], ["c", "Close a door"],
 ];
+const quickSlotCommands = [useCommand, packCommand, ...extraCommands.filter(entry => entry[3] && entry !== useCommand),
+    stealCommand];
 const panelTitles = { menu: "Menu", commands: "Commands", tiles: "Tiles", character: "Character",
     "touch-settings": "Touch settings" };
 const screenTitles = new Map([
@@ -417,13 +422,19 @@ let recalledMessages = [];
 let journalEntries;
 let journalPrompt = "";
 const preferencesKey = "pocketangband-touch";
-const preferences = { leftHanded: false, fastAim: false, tapToMove: true, tiles: 0, lastSave: "" };
+const preferences = { leftHanded: false, fastAim: false, tapToMove: true, combat: "cast", firstAction: "U", secondAction: "i", tiles: 0, lastSave: "" };
 const finePointer = matchMedia("(any-pointer: fine)");
 let preferencesWriteFailed = false;
 try {
     const saved = JSON.parse(localStorage.getItem(preferencesKey) || "{}");
     for (const key of Object.keys(preferences)) {
         if (typeof saved[key] === typeof preferences[key]) preferences[key] = saved[key];
+    }
+    if (!["cast", "fire", "throw"].includes(preferences.combat)) preferences.combat = "cast";
+    for (const [setting, fallback] of [["firstAction", useCommand], ["secondAction", packCommand]]) {
+        const value = preferences[setting];
+        if (!quickSlotCommands.some(([key]) => key === value) && !/^keymap:\d+:\d+$/.test(value))
+            preferences[setting] = fallback[0];
     }
     if (!graphicsModes.has(preferences.tiles)) preferences.tiles = 0;
 } catch {}
@@ -2542,6 +2553,12 @@ main.addEventListener("click", (event) => {
     const input = button.dataset.input ?
         { type: button.dataset.input, code: Number(button.dataset.value) } :
         { type: "key", code: controlled ? key.charCodeAt(0) & 31 : keyCode(key) };
+    if (input.type === "key" && button.dataset.mods !== undefined) {
+        input.mods = Number(button.dataset.mods);
+    } else if (input.type === "key" && mode === "command" &&
+            (playKeys.contains(button) || actionsScreen.contains(button) || mapLists.contains(button))) {
+        input.command = true;
+    }
     if (input.type === "delete-save") {
         openDeleteSave(button, input.code);
         return;
@@ -2612,11 +2629,17 @@ function renderMapActions() {
     const { actions, here } = context.mapCell;
     const buttons = [];
     const footer = [closeMapCellActions];
-    for (const { code, label, key, targets } of [...actions].sort((a, b) => a.code - b.code)) {
+    for (const { code, label, key, targets, detail } of [...actions].sort((a, b) => a.code - b.code)) {
         const direction = targets?.length === 1 ? mapDirections[targets[0].direction] : undefined;
         const button = makeInput("map-action", code, direction?.arrow ? `${label} ${direction.arrow}` : label);
         if (direction) button.setAttribute("aria-label", `${label}, ${direction.name}`);
         if (key) setKeyHint(button, keyFromCode(key));
+        if (detail) {
+            const hint = document.createElement("small");
+            hint.textContent = detail;
+            button.append(hint);
+            button.setAttribute("aria-description", detail);
+        }
         if (here && key === keyCode(restCommand[0])) footer.push(button);
         else buttons.push(button);
     }
@@ -2761,17 +2784,46 @@ monsterCommands.replaceChildren(...monsterCommandsList.map(([key, label, , capti
 
 function renderQuickActions({ roguelike, quickActions }) {
     const attacks = { cast: spellCommands.cast, fire: fireCommand, throw: throwCommand };
-    const available = ["cast", "fire", "throw"].find((attack) => quickActions[attack]);
+    const available = [preferences.combat, "cast", "fire", "throw"].find((attack) => quickActions[attack]);
     const combat = attacks[available] ?? spellCommands.look;
     const key = commandKey(combat, roguelike);
     combatAction.dataset.key = key;
     combatAction.setAttribute("aria-label", combat[1]);
     const label = combatAction.firstChild;
     if (label.data !== combat[3]) label.data = combat[3];
-    useAction.dataset.key = commandKey(useCommand, roguelike);
+    const usable = { m: quickActions.cast, f: quickActions.fire, h: quickActions.fire, v: quickActions.throw,
+        s: quickActions.canSteal };
+    for (const [button, value] of [[useAction, preferences.firstAction], [packAction, preferences.secondAction]]) {
+        if (value.startsWith("keymap:")) {
+            const mapping = quickActions.keymaps.find(entry => entry.id === value);
+            updateKeyButton(button, "Keymap", mapping?.key ?? "—");
+            setKeyHint(button, mapping?.key ?? "—");
+            button.dataset.input = "key";
+            button.dataset.value = mapping?.code ?? 0;
+            button.dataset.mods = mapping?.mods ?? 0;
+            button.setAttribute("aria-label", mapping?.label ?? "Keymap unavailable");
+            button.removeAttribute("aria-keyshortcuts");
+            button.disabled = !mapping;
+            continue;
+        }
+        delete button.dataset.input;
+        delete button.dataset.value;
+        delete button.dataset.mods;
+        const entry = quickSlotCommands.find(([key]) => key === value);
+        const shortcut = commandKey(entry, roguelike);
+        updateKeyButton(button, entry[3], shortcut);
+        if (button === packAction && entry === packCommand) {
+            button.querySelector(".key-hint")?.remove();
+            button.setAttribute("aria-description", `Shortcut: ${shortcut}`);
+        } else {
+            setKeyHint(button, shortcut);
+        }
+        button.setAttribute("aria-label", entry[1]);
+        button.setAttribute("aria-keyshortcuts", shortcut);
+        button.disabled = usable[value] === false;
+    }
     repeatAction.dataset.key = commandKey(repeatCommand, roguelike);
-    setKeyHint(combatAction);
-    setKeyHint(useAction);
+    setKeyHint(combatAction, key);
     repeatName = quickActions.repeat;
     repeatAction.setAttribute("aria-label", repeatName ? `Repeat ${repeatName}` : "No command to repeat");
     setKeyHint(repeatAction, repeatAction.dataset.key, repeatName);
@@ -2782,7 +2834,31 @@ function renderActionsPanel() {
     actionsScreen.scrollTop = 0;
     const currentGraphics = views.map.frame?.graphicsMode ?? 0;
     if (openPanel === "touch-settings") {
-        actionsScreen.replaceChildren(...[
+        const mappings = world?.quickActions?.keymaps ?? [];
+        const slotChoices = [...quickSlotCommands, ...mappings.map(entry => [entry.id, entry.label])];
+        function selectAction(label, setting, choices) {
+            const select = document.createElement("select");
+            for (const [value, name] of choices) select.add(new Option(name, value, false, preferences[setting] === value));
+            if (!choices.some(([value]) => value === preferences[setting])) {
+                const missing = new Option("Keymap unavailable", preferences[setting], false, true);
+                missing.disabled = true;
+                select.add(missing);
+            }
+            select.onchange = () => {
+                preferences[setting] = select.value;
+                savePreferences();
+                if (world?.quickActions) renderQuickActions(world);
+            };
+            const field = document.createElement("label");
+            field.className = "action-preference";
+            field.append(label, select);
+            return field;
+        }
+        actionsScreen.replaceChildren(
+            selectAction("Preferred combat action", "combat",
+                [["cast", spellCommands.cast[1]], ["fire", fireCommand[1]], ["throw", throwCommand[1]]]),
+            selectAction("First quick action", "firstAction", slotChoices),
+            selectAction("Second quick action", "secondAction", slotChoices), ...[
             ["leftHanded", "Direction pad on the left", "Keep movement controls beside your left thumb."],
             ["fastAim", "Fast targeting", "Tap a monster to use the prepared spell or item immediately. Turn off to preview and confirm."],
             ["tapToMove", "Tap map to move", "Turn off to inspect cells with a tap and move with the direction pad."],
@@ -3815,18 +3891,11 @@ document.addEventListener("keydown", (event) => {
             if (!event.repeat) sendInput({ type: "key", code: key.charCodeAt(0) & 31 });
             return;
         }
-        let shortcut;
-        if (key === "s") shortcut = "Save";
-        else if (!event.metaKey) {
-            if (key === "a") shortcut = "Ctrl+A";
-            else if (key === "x") shortcut = "SaveAndQuit";
-            else if (key === "p") shortcut = "Ctrl+P";
-            else if (world?.roguelike && key === "v") shortcut = "Ctrl+V";
-            else if (world?.roguelike && key === "t") shortcut = "CtrlT";
-        }
-        if (mode === "command" && request !== undefined && !event.shiftKey && shortcut) {
+        const code = event.metaKey ? (key === "s" ? keyCode("Save") : 0) :
+            /^[a-z]$/.test(key) ? key.charCodeAt(0) & 31 : 0;
+        if (mode === "command" && request !== undefined && !event.shiftKey && code) {
             event.preventDefault();
-            if (!event.repeat) sendInput({ type: "key", code: keyCode(shortcut) });
+            if (!event.repeat) sendInput({ type: "key", code });
         }
         return;
     }

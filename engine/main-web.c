@@ -107,6 +107,25 @@ enum web_input_mode web_set_input_mode(enum web_input_mode mode)
     return previous;
 }
 
+char web_choose_shape_action(const char *verb)
+{
+    struct menu *menu = menu_dynamic_new();
+    char title[96], action[96];
+    strnfmt(title, sizeof(title), "Change back and %s?", verb);
+    strnfmt(action, sizeof(action), "Change back and %s", verb);
+    menu->title = title;
+    menu->selections = "yrn";
+    menu->web_no_keyboard = true;
+    menu_dynamic_add(menu, action, 'y');
+    menu_dynamic_add(menu, "Return to normal", 'r');
+    menu_dynamic_add(menu, "Stay in current form", 'n');
+    menu->cursor = 2;
+    menu_layout(menu, &SCREEN_REGION);
+    int result = menu_dynamic_select(menu);
+    menu_dynamic_free(menu);
+    return result == 'y' || result == 'r' ? result : 'n';
+}
+
 const char *web_set_prompt(const char *prompt)
 {
     const char *previous = input_prompt;
@@ -1036,9 +1055,25 @@ EM_JS(void, send_quick_actions, (bool cast, bool fire, bool can_throw, bool comm
     Module['worldQuickActions'] = {
         cast: !!cast, fire: !!fire, throw: !!can_throw, commanding: !!commanding,
         canSteal: !!can_steal,
-        repeat: repeat ? UTF8ToString(repeat) : "",
+        repeat: repeat ? UTF8ToString(repeat) : "", keymaps: [],
     };
 });
+
+EM_JS(void, add_quick_keymap, (int code, int mods, const char *key, const char *action), {
+    const name = UTF8ToString(key);
+    Module['worldQuickActions'].keymaps.push({
+        id: "keymap:" + code + ":" + mods, code, mods, key: name,
+        label: "Keymap " + name + " → " + UTF8ToString(action),
+    });
+});
+
+static void publish_quick_keymap(struct keypress trigger, const struct keypress *actions)
+{
+    char key[80], sequence[512];
+    keypress_to_readable(key, sizeof(key), trigger);
+    keypress_to_text(sequence, sizeof(sequence), actions, true);
+    add_quick_keymap(trigger.code, trigger.mods, key, sequence);
+}
 
 static bool has_action_item(item_tester eligible, int locations)
 {
@@ -1088,6 +1123,7 @@ static void publish_quick_actions(void)
 {
     send_quick_actions(can_cast_at_target(), can_fire_at_target(), can_throw_at_target(),
         player->timed[TMD_COMMAND] != 0, player_has(player, PF_STEAL), web_repeat_label());
+    keymap_visit_custom(OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG, publish_quick_keymap);
 }
 
 enum { LOW_LIGHT_FUEL = 50 };
@@ -1192,6 +1228,12 @@ static void publish_map_status(void)
         publish_map_indicator(label, COLOUR_L_BLUE, "Directions move the commanded monster");
     }
     int moves = player->state.num_moves;
+    if (player_is_shapechanged(player)) {
+        char form[80];
+        strnfmt(form, sizeof(form), "%s form", player->shape->name);
+        my_strcap(form);
+        publish_map_indicator(form, COLOUR_L_GREEN, "Current shape");
+    }
     if (moves)
         publish_map_indicator(format("Moves %+d", moves), COLOUR_L_TEAL, "Movement speed");
     if (player->unignoring)
@@ -1653,11 +1695,13 @@ EM_JS(void, set_map_route_available, (bool available), {
     Module['inputContext'].mapCell.canRoute = !!available;
 });
 
-EM_JS(void, add_map_action, (int x, int y, int direction, int code, const char *label, int key), {
+EM_JS(void, add_map_action, (int x, int y, int direction, int code, const char *label, int key,
+        const char *detail), {
     const actions = Module['inputContext'].mapCell.actions;
     let action = actions.find((entry) => entry.code === code);
     if (!action) {
         action = { code, label: UTF8ToString(label), key };
+        if (detail) action.detail = UTF8ToString(detail);
         actions.push(action);
     }
     if (direction) {
@@ -1673,7 +1717,9 @@ static void describe_map_actions(int x, int y, int direction, unsigned enabled)
         if (!(enabled & (1U << code))) continue;
         cmd_code command = map_action_commands[code];
         int key = code == MAP_REST ? 'R' : command != CMD_NULL ? cmd_lookup_key(command, keymap) : 0;
-        add_map_action(x, y, direction, code, map_action_labels[code], key);
+        const char *detail = (code == MAP_EQUIP_LIGHT || code == MAP_REFILL) && player_has(player, PF_UNLIGHT) ?
+            "Unlight increases spell failure on lit squares." : NULL;
+        add_map_action(x, y, direction, code, map_action_labels[code], key, detail);
     }
 }
 
@@ -1878,19 +1924,21 @@ void web_poll_interrupt(void)
 EM_JS(int, take_input, (int *code, int *x, int *y, int row, int preview, int section,
         int store_action, int aim_cell, int target_cell, int map_cell, int map_action,
         int buy_stat, int sell_stat, int tiles_event, int name_event, int history_event,
-        int text_event, int delete_event, int run_direction, int character_event, int new_game, int quick_action), {
+        int text_event, int delete_event, int run_direction, int character_event, int new_game, int quick_action, int button), {
     const event = Module['takeInput']();
     if (!event) return 0;
     if (event.mouseAvailable !== undefined) Module['mouseAvailable'] = event.mouseAvailable;
     HEAP32[code >>> 2] = event.code ?? 0;
-    if (event.type === "store-action") {
+    if (event.type === "key") {
+        HEAP32[x >>> 2] = event.mods ?? 0;
+    } else if (event.type === "store-action") {
         HEAP32[x >>> 2] = event.row ?? 0;
     } else if (event.x !== undefined) {
         HEAP32[x >>> 2] = event.x;
         HEAP32[y >>> 2] = event.y;
     }
     switch (event.type) {
-        case "key": return 1;
+        case "key": return event.command ? button : 1;
         case "run-direction": return run_direction;
         case "quick-action": return quick_action;
         case "open-character": return character_event;
@@ -2052,7 +2100,7 @@ static errr queue_input(void)
         EVT_WEB_MENU_SECTION, EVT_WEB_STORE_ACTION, EVT_WEB_AIM_CELL, EVT_WEB_TARGET_CELL,
         EVT_WEB_MAP_CELL, EVT_WEB_MAP_ACTION, EVT_WEB_BUY_STAT, EVT_WEB_SELL_STAT, EVT_WEB_TILES,
         EVT_WEB_NAME, EVT_WEB_HISTORY, EVT_WEB_TEXT, EVT_WEB_DELETE, EVT_WEB_RUN_DIRECTION,
-        EVT_WEB_CHARACTER, EVT_WEB_NEW_GAME, EVT_WEB_QUICK_ACTION);
+        EVT_WEB_CHARACTER, EVT_WEB_NEW_GAME, EVT_WEB_QUICK_ACTION, EVT_BUTTON);
 
     if (type == EVT_NONE) return 1;
     if (type != EVT_WEB_TILES) {
@@ -2061,7 +2109,8 @@ static errr queue_input(void)
     }
 
     switch (type) {
-        case EVT_KBRD: return Term_keypress(code, 0);
+        case EVT_KBRD:
+        case EVT_BUTTON: return Term_keypress_as(type, code, x);
         case EVT_WEB_AIM_CELL:
         case EVT_WEB_MAP_CELL:
         case EVT_WEB_MAP_ACTION:
