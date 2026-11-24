@@ -1,4 +1,4 @@
-import { renderDescription, renderFrame, textColors } from "./frame-renderer.js";
+import { gameTextColor, renderDescription, renderFrame, styleGlyph, textColors } from "./frame-renderer.js";
 import { ExploreCamera } from "./explore-camera.js";
 import { renderInscriptionHelp } from "./inscriptions.js";
 import { applyOfflineUpdate, checkOfflineUpdate, prepareOffline } from "./offline.js";
@@ -247,6 +247,14 @@ const tilesMenu = makeButton("Tiles: ASCII");
 tilesMenu.removeAttribute("aria-label");
 tilesMenu.setAttribute("aria-controls", "actions-screen");
 tilesMenu.addEventListener("click", () => showPanel("tiles", openMenu));
+const themeMenu = document.createElement("button");
+themeMenu.type = "button";
+themeMenu.addEventListener("click", () => atlasTheme.toggle());
+function updateThemeButton() {
+    themeMenu.textContent = document.documentElement.dataset.theme === "light" ? "Theme: Light" : "Theme: Dark";
+}
+updateThemeButton();
+window.addEventListener("atlas-theme-change", updateThemeButton);
 const tilesStatus = document.createElement("p");
 tilesStatus.setAttribute("role", "status");
 const quantity = document.querySelector("#quantity");
@@ -629,7 +637,7 @@ function renderMonsterHealth(health) {
     monsterName.textContent = name || "";
     monsterHealth.setAttribute("aria-label", name ?
         `${name}: ${segments} of 10 health segments` : "Monster health");
-    monsterHealth.style.setProperty("--monster-health-color", color ?? "");
+    monsterHealth.style.setProperty("--monster-health-color", gameTextColor(color) ?? "");
     monsterSegments.forEach((segment, index) => segment.classList.toggle("filled", index < segments));
 }
 
@@ -646,9 +654,9 @@ function renderMapStatus(state, previousSpeed) {
     levelFeeling.hidden = !feeling;
     if (feeling) {
         feelingDanger.textContent = feeling.danger;
-        feelingDanger.style.color = feeling.dangerColor;
+        feelingDanger.style.color = gameTextColor(feeling.dangerColor);
         feelingTreasure.textContent = feeling.treasure;
-        feelingTreasure.style.color = feeling.treasureColor;
+        feelingTreasure.style.color = gameTextColor(feeling.treasureColor);
         const danger = feeling.danger === "?" ? "unknown" : feeling.danger;
         const treasure = feeling.treasure === "?" ? "unknown" : feeling.treasure;
         levelFeeling.setAttribute("aria-label", `Level feeling: danger ${danger}, treasure ${treasure}`);
@@ -660,7 +668,7 @@ function renderMapStatus(state, previousSpeed) {
     mapIndicators.replaceChildren(...state.mapStatus.indicators.map(({ label, color, description }) => {
         const indicator = document.createElement("span");
         indicator.textContent = label;
-        indicator.style.color = color;
+        indicator.style.color = gameTextColor(color);
         indicator.setAttribute("role", "img");
         indicator.setAttribute("aria-label", `${label}, ${description}`);
         return indicator;
@@ -1496,7 +1504,7 @@ function journalEntry({ text, count, color }) {
     const label = document.createElement("span");
     label.className = "journal-text";
     label.textContent = text;
-    if (color) label.style.color = color;
+    if (color) label.style.color = gameTextColor(color);
     row.append(label);
     if (count > 1) {
         const repeat = document.createElement("span");
@@ -1759,7 +1767,7 @@ function updateDetailsScreen() {
             const heading = document.createElement("p");
             heading.className = "visible-list-heading";
             heading.textContent = text;
-            if (color) heading.style.color = color;
+            if (color) heading.style.color = gameTextColor(color);
             return heading;
         }
         const row = document.createElement("div");
@@ -1791,12 +1799,12 @@ function updateDetailsScreen() {
             styleTerminalTile(glyph, tiles, tile);
         } else {
             glyph.textContent = String.fromCodePoint(symbol);
-            glyph.style.color = colors[symbolAttr % colors.length];
+            styleGlyph(glyph, colors[symbolAttr % colors.length]);
         }
         const name = document.createElement("span");
         name.className = "visible-list-name";
         name.textContent = text;
-        if (color) name.style.color = color;
+        if (color) name.style.color = gameTextColor(color);
         const distance = document.createElement("span");
         distance.className = "visible-list-location";
         distance.textContent = location;
@@ -2830,7 +2838,7 @@ function renderActionsPanel() {
         commands.onclick = () => showPanel("commands", openMenu);
         const settings = makeButton("Touch settings");
         settings.onclick = () => showPanel("touch-settings", openMenu);
-        rows.unshift(commands, tilesMenu, settings);
+        rows.unshift(commands, tilesMenu, themeMenu, settings);
     }
     if (openPanel === "commands") {
         const grouped = [];
@@ -3126,14 +3134,14 @@ function renderMenu(state, description = state?.description ?? "") {
         }
         const description = document.createElement("span");
         description.textContent = label;
-        if (row.color) description.style.color = row.color;
+        if (row.color) description.style.color = gameTextColor(row.color);
         if (row.spellInfo !== undefined) button.classList.add("spell-choice");
         if (row.detail && !state.birth) {
             const detail = document.createElement("small");
             detail.textContent = row.detail;
             if (row.spellInfo) {
                 const info = document.createElement("span");
-                info.style.color = row.color;
+                info.style.color = gameTextColor(row.color);
                 info.textContent = row.spellInfo;
                 detail.append(" ", info);
             }
@@ -3167,7 +3175,7 @@ function renderMenu(state, description = state?.description ?? "") {
             if (tile) styleTerminalTile(glyph, tiles, tile);
             else {
                 glyph.textContent = String.fromCodePoint(symbol);
-                glyph.style.color = color;
+                styleGlyph(glyph, color);
             }
             button.firstElementChild.replaceWith(glyph);
         }
@@ -3419,7 +3427,7 @@ function renderMessageRecall() {
         const matches = pattern ? [...line.matchAll(pattern)] : [];
         if (pattern && !matches.length) continue;
         const item = document.createElement("li");
-        if (entry.color) item.style.color = entry.color;
+        if (entry.color) item.style.color = gameTextColor(entry.color);
         let end = 0;
         for (const match of matches) {
             const highlighted = document.createElement("mark");
