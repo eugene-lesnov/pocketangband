@@ -249,7 +249,7 @@ index 317a820..00bbbfe 100644
  	{ "Square flag", { 'q' }, CMD_WIZ_QUERY_SQUARE_FLAG, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
  	{ "Noise and scent", { '_' }, CMD_WIZ_PEEK_NOISE_SCENT, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
  	{ "Keystroke log", { 'L' }, CMD_WIZ_DISPLAY_KEYLOG, NULL, player_can_debug_prereq, 0, NULL, NULL, NULL, 0 },
-@@ -522,6 +528,20 @@ void textui_process_command(void)
+@@ -522,6 +528,17 @@ void textui_process_command(void)
  	int mode = OPT(player, rogue_like_commands) ? KEYMAP_MODE_ROGUE : KEYMAP_MODE_ORIG;
  
  	switch (e.type) {
@@ -259,9 +259,6 @@ index 317a820..00bbbfe 100644
 +			return;
 +		case EVT_WEB_CHARACTER:
 +			if (key_confirm_command('C')) do_cmd_change_name();
-+			return;
-+		case EVT_WEB_PACK:
-+			if (key_confirm_command('i')) web_open_pack();
 +			return;
 +		case EVT_WEB_RUN_DIRECTION:
 +			web_run_direction(e.key.code);
@@ -625,7 +622,7 @@ diff --git a/src/ui-event.h b/src/ui-event.h
 index 9f70577..1d8f98a 100644
 --- a/src/ui-event.h
 +++ b/src/ui-event.h
-@@ -36,7 +36,29 @@ typedef enum
+@@ -36,7 +36,28 @@ typedef enum
  	EVT_ESCAPE	= 0x0010,	/* Get out of this menu */
  	EVT_MOVE	= 0x0020,	/* Menu movement */
  	EVT_SELECT	= 0x0040,	/* Menu selection */
@@ -651,7 +648,6 @@ index 9f70577..1d8f98a 100644
 +	EVT_WEB_CHARACTER = 0x8000000,
 +	EVT_WEB_MENU_PREVIEW = 0x10000000,
 +	EVT_WEB_NEW_GAME = 0x20000000,
-+	EVT_WEB_PACK = 0x40000000,
 +#endif
  } ui_event_type;
  
@@ -1619,7 +1615,7 @@ index ec19a5b..e782d88 100644
 diff --git a/src/ui-input.h b/src/ui-input.h
 --- a/src/ui-input.h
 +++ b/src/ui-input.h
-@@ -24,6 +24,140 @@
+@@ -24,6 +24,139 @@
  #include "ui-event.h"
  #include "ui-term.h"
  
@@ -1670,7 +1666,6 @@ diff --git a/src/ui-input.h b/src/ui-input.h
 +bool web_map_cell(int x, int y, int gesture);
 +bool web_act_on_map_cell(int x, int y, int action);
 +void web_inspect_floor(struct player *p, struct object **items, int count);
-+void web_open_pack(void);
 +void web_run_direction(int direction);
 +bool web_can_equip_light(const struct object *obj);
 +bool web_get_map_aim_dir(int *dir, struct loc grid);
@@ -4736,32 +4731,28 @@ index 554533d..68c2a78 100644
  }
  
  
-@@ -3910,17 +4257,21 @@ void do_cmd_messages(void)
- /**
-  * Display inventory
-  */
--void do_cmd_inven(void)
-+static void show_inventory(int section)
- {
+@@ -3915,12 +4262,20 @@ void do_cmd_inven(void)
  	struct object *obj = NULL;
  	int ret = 3;
  
 +#ifdef __EMSCRIPTEN__
 +	const char *empty_message = NULL;
++	struct object *floor_item;
++	player->upkeep->command_wrk = scan_floor(&floor_item, 1, player,
++		OFLOOR_TEST | OFLOOR_SENSE | OFLOOR_VISIBLE, NULL) ? USE_FLOOR : USE_INVEN;
 +#else
 +	const char *empty_message = "Error in do_cmd_inven(), please report.";
  	if (player->upkeep->inven[0] == NULL) {
  		msg("You have nothing in your inventory.");
  		return;
  	}
+ 
+ 	/* Start in "inventory" mode */
+ 	player->upkeep->command_wrk = (USE_INVEN);
 +#endif
  
--	/* Start in "inventory" mode */
--	player->upkeep->command_wrk = (USE_INVEN);
-+	player->upkeep->command_wrk = section;
- 
  	/* Loop this menu until an object context menu says differently */
-@@ -3929,8 +4280,7 @@ static void show_inventory(int section)
+@@ -3929,8 +4284,7 @@ void do_cmd_inven(void)
  		screen_save();
  
  		/* Get an item to use a context command on (Display the inventory) */
@@ -4771,27 +4762,6 @@ index 554533d..68c2a78 100644
  				CMD_NULL, NULL, GET_ITEM_PARAMS)) {
  			/* Load screen */
  			screen_load();
-@@ -3951,7 +4301,20 @@ void do_cmd_inven(void)
- 		}
- 	}
- }
- 
-+void do_cmd_inven(void)
-+{
-+	show_inventory(USE_INVEN);
-+}
-+
-+#ifdef __EMSCRIPTEN__
-+void web_open_pack(void)
-+{
-+	struct object *obj;
-+	int floor_count = scan_floor(&obj, 1, player, OFLOOR_TEST | OFLOOR_SENSE | OFLOOR_VISIBLE, NULL);
-+	show_inventory(floor_count ? USE_FLOOR : USE_INVEN);
-+}
-+#endif
- 
- /**
-  * Display equipment
 @@ -4292,7 +4643,9 @@ void do_cmd_query_symbol(void)
  	bool uniq = false;
  	bool norm = false;

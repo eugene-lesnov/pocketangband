@@ -2271,7 +2271,7 @@ function sendInput(input) {
     if ((running || mode === "command" || !hud.hidden || mode === "rest" ||
         (mode === "menu" && !menu?.store && !menu?.birth && !context.outcome && !menu?.title)) &&
         ["key", "menu-row", "aim-cell", "target-cell", "map-cell", "map-action", "run-direction",
-            "open-character", "open-pack"].includes(input.type)) {
+            "open-character"].includes(input.type)) {
         pendingInput = request;
         if (!running) {
             stopTimer = setTimeout(() => {
