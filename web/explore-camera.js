@@ -54,14 +54,16 @@ function placeArrow(button, target, screen, controls, protectedCells) {
     const start = rect(x - width / 2, y - height / 2, x + width / 2, y + height / 2);
     const { left, top, right, bottom } = screen;
     const edges = [
-        rect(left, top, left + width, bottom), rect(right - width, top, right, bottom),
-        rect(left, top, right, top + height), rect(left, bottom - height, right, bottom),
+        ["left", rect(left, top, left + width, bottom)],
+        ["right", rect(right - width, top, right, bottom)],
+        ["top", rect(left, top, right, top + height)],
+        ["bottom", rect(left, bottom - height, right, bottom)],
     ];
     let best;
     for (const obstacles of [[...controls, ...protectedCells], controls]) {
-        for (const edge of edges) {
-            const offset = nearestOffset([start], edge, obstacles);
-            if (offset && (!best || offset.distance < best.distance)) best = offset;
+        for (const [edge, bounds] of edges) {
+            const offset = nearestOffset([start], bounds, obstacles);
+            if (offset && (!best || offset.distance < best.distance)) best = { ...offset, edge };
         }
         if (best) break;
     }
@@ -71,7 +73,8 @@ function placeArrow(button, target, screen, controls, protectedCells) {
     }
     button.style.left = `${start.left + best.x}px`;
     button.style.top = `${start.top + best.y}px`;
-    button.firstElementChild.style.transform = `rotate(${Math.atan2(-best.y, -best.x)}rad)`;
+    button.dataset.edge = best.edge;
+    button.querySelector("svg").style.transform = `rotate(${Math.atan2(-best.y, -best.x)}rad)`;
 }
 
 export class ExploreCamera {
@@ -138,8 +141,7 @@ export class ExploreCamera {
         for (let i = 0; i < marks.length; i++) {
             const index = (this.first + i) % marks.length;
             if (visible(marks[index], screen, boxes)) continue;
-            const edge = rect(2, 2, screen.right - 2, screen.bottom - 2);
-            placeArrow(this.button, marks[index], edge, boxes, cells.filter(cell => visible(cell, screen, boxes)));
+            placeArrow(this.button, marks[index], screen, boxes, cells.filter(cell => visible(cell, screen, boxes)));
             this.target = index;
             return;
         }
