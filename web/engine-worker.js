@@ -68,7 +68,7 @@ self.addEventListener("message", ({ data }) => {
     } else if (data.type === "new-game") {
         if (waiting?.mode !== "save-slots" || data.request !== waiting.request ||
             !waiting.menu?.actions.some((action) => action.key === 0)) return;
-    } else if (data.type === "open-character") {
+    } else if (data.type === "open-character" || data.type === "open-pack") {
         if (waiting?.mode !== "command" || data.request !== waiting.request) return;
     } else if (data.type === "run-direction") {
         if (waiting?.mode !== "command" || data.request !== waiting.request ||
