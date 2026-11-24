@@ -336,7 +336,7 @@ const mapDirections = [
 
 const scales = [0.75, 0.875, 1, 1.25, 1.5, 1.75];
 const mapScales = [...scales, 2, 2.25];
-const defaultZoom = scales.indexOf(1.5);
+const defaultZoom = scales.indexOf(1.25);
 const views = {
     terminal: {
         viewport: document.querySelector("#terminal-screen"),
