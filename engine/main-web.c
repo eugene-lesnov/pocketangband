@@ -48,7 +48,7 @@
 #include "z-type.h"
 #include <emscripten.h>
 
-enum { RUN_STEP_DELAY_MS = 80 };
+enum { RUN_STEP_DELAY_MS = 80, EXPLORE_STEP_DELAY_MS = 60 };
 
 static enum web_input_mode input_mode;
 static const char *input_prompt;
@@ -1810,7 +1810,7 @@ void web_poll_interrupt(void)
             Term_activate(previous);
         }
         last_interrupt_poll = now;
-        emscripten_sleep(RUN_STEP_DELAY_MS);
+        emscripten_sleep(exploring ? EXPLORE_STEP_DELAY_MS : RUN_STEP_DELAY_MS);
     } else if (now - last_interrupt_poll >= 16) {
         last_interrupt_poll = now;
         emscripten_sleep(1);

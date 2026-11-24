@@ -2959,7 +2959,7 @@ index 918fc80..ecb8eeb 100644
  
  /**
   * Go up one level
-@@ -1074,6 +1077,9 @@ void move_player(int dir, bool disarm)
+@@ -1080,5 +1083,8 @@ void move_player(int dir, bool disarm)
  			/* Camouflaged monster wakes up and becomes aware */
  			monster_wake(mon, false, 100);
  		} else {
@@ -2968,7 +2968,6 @@ index 918fc80..ecb8eeb 100644
 +#endif
  			py_attack(player, grid);
  		}
- 	} else if (door && player->upkeep->exploring &&
 diff --git a/src/cmd-core.c b/src/cmd-core.c
 index b2ac4fc..22a6d94 100644
 --- a/src/cmd-core.c
