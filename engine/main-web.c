@@ -898,9 +898,13 @@ EM_JS(void, web_menu_action, (int key, const char *label), {
     Module['inputMenu'].actions.push({ key, label: UTF8ToString(label) });
 });
 
-void web_add_option_toggle(int row, const char *label, bool checked, bool enabled)
+EM_JS(bool, web_has_mouse, (void), {
+    return !!Module['mouseAvailable'];
+});
+
+void web_add_option_toggle(int row, const char *label, const char *detail, bool checked, bool enabled)
 {
-    web_add_menu_row(row, label, NULL, checked ? "On" : "Off", 0, enabled);
+    web_add_menu_row(row, label, detail, checked ? "On" : "Off", 0, enabled);
     EM_ASM({
         Module['inputMenu'].rows.at(-1).checked = !!$0;
     }, checked);
@@ -1027,10 +1031,10 @@ EM_JS(void, send_frame, (int map, int width, int height, const wchar_t *chars,
 });
 
 EM_JS(void, send_quick_actions, (const char *spell_action,
-        bool launcher, bool can_steal, bool can_explore, const char *repeat), {
+        bool launcher, bool can_steal, const char *repeat), {
     Module['worldQuickActions'] = {
         spell: UTF8ToString(spell_action),
-        launcher: !!launcher, canSteal: !!can_steal, canExplore: !!can_explore,
+        launcher: !!launcher, canSteal: !!can_steal,
         repeat: repeat ? UTF8ToString(repeat) : "",
     };
 });
@@ -1079,8 +1083,7 @@ static void publish_quick_actions(void)
         }
     }
 
-    send_quick_actions(spell_action, launcher, player_has(player, PF_STEAL),
-        OPT(player, autoexplore_commands), web_repeat_label());
+    send_quick_actions(spell_action, launcher, player_has(player, PF_STEAL), web_repeat_label());
 }
 
 enum { LOW_LIGHT_FUEL = 50 };
@@ -1830,6 +1833,7 @@ EM_JS(int, take_input, (int *code, int *x, int *y, int row, int preview, int sec
         int text_event, int delete_event, int run_direction, int character_event, int new_game), {
     const event = Module['takeInput']();
     if (!event) return 0;
+    if (event.mouseAvailable !== undefined) Module['mouseAvailable'] = event.mouseAvailable;
     HEAP32[code >>> 2] = event.code ?? 0;
     if (event.type === "store-action") {
         HEAP32[x >>> 2] = event.row ?? 0;
