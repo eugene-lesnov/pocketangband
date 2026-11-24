@@ -67,7 +67,7 @@ else
         for patch in "${patches[@]}"; do
             notice="Modified by PocketAngband on $angband_patch_date for the WebAssembly port."
             if [[ $patch == */angband-explore.patch ]]; then
-                notice="Modified by PocketAngband on 2026-11-22 for continuous exploration."
+                notice="Modified by PocketAngband on 2026-11-24 for continuous exploration."
             fi
             git apply --numstat "$patch" | while IFS=$'\t' read -r added removed path; do
                 case "$path" in
