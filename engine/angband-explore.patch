@@ -536,15 +536,6 @@ index d384de8..68045d5 100644
  	/* Cancel any command */
  	player_clear_timed(player, TMD_COMMAND, false, false);
  
-diff --git a/src/list-square-flags.h b/src/list-square-flags.h
-index 5cada7f..727f26d 100644
---- a/src/list-square-flags.h
-+++ b/src/list-square-flags.h
-@@ -32,3 +32,4 @@ SQUARE(PROJECT,		"marked for projection processing")
- SQUARE(DTRAP,		"trap detected square")
- SQUARE(NO_STAIRS,	"square is not suitable for placing stairs")
- SQUARE(CLOSE_PLAYER,	"square is seen and in player's light radius or UNLIGHT detection radius")
-+SQUARE(EXPLORE_LOCKED,	"reserved for older exploration saves")
 diff --git a/src/mon-move.c b/src/mon-move.c
 index c204fa5..2ee7e72 100644
 --- a/src/mon-move.c
